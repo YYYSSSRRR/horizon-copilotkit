@@ -1,0 +1,35 @@
+{
+  "name": "copilotkit-debug-example",
+  "version": "1.0.0",
+  "description": "CopilotKit Debug Example - 完整的前后端调试示例",
+  "private": true,
+  "scripts": {
+    "install-all": "npm run install-backend && npm run install-frontend",
+    "install-backend": "cd backend && npm install",
+    "install-frontend": "cd frontend && npm install",
+    "dev": "npm run dev-backend && npm run dev-frontend",
+    "dev-backend": "cd backend && npm run dev",
+    "dev-frontend": "cd frontend && npm run dev",
+    "debug-backend": "cd backend && npm run debug",
+    "build": "npm run build-backend && npm run build-frontend",
+    "build-backend": "cd backend && npm run build",
+    "build-frontend": "cd frontend && npm run build",
+    "start": "concurrently \"npm run start-backend\" \"npm run start-frontend\"",
+    "start-backend": "cd backend && npm start",
+    "start-frontend": "cd frontend && npm start",
+    "clean": "rm -rf backend/node_modules backend/dist frontend/node_modules frontend/.next",
+    "health": "curl http://localhost:3001/health",
+    "actions": "curl http://localhost:3001/api/actions"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
+} 
