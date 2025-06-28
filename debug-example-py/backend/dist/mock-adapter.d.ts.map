@@ -1,0 +1,1 @@
+{"version":3,"file":"mock-adapter.d.ts","sourceRoot":"","sources":["../src/mock-adapter.ts"],"names":[],"mappings":"AAAA;;GAEG;AACH,OAAO,EACL,qBAAqB,EACrB,mCAAmC,EACnC,oCAAoC,EACrC,MAAM,qBAAqB,CAAC;AAG7B,qBAAa,WAAY,YAAW,qBAAqB;IACjD,OAAO,CACX,OAAO,EAAE,mCAAmC,GAC3C,OAAO,CAAC,oCAAoC,CAAC;CA2FjD"}
