@@ -33,10 +33,6 @@ Stream tool calls as state to CopilotKit.
 
 ### Parameters
 
-<PropertyReference name="config" type="Dict[str, CopilotKitPredictStateConfig]" required> 
-The configuration to predict the state.
-</PropertyReference>
-
 ### Returns
 
 <PropertyReference name="returns" type="Awaitable[bool]">
@@ -64,10 +60,6 @@ Manually emits a message to CopilotKit. Useful in longer running nodes to update
 
 ### Parameters
 
-<PropertyReference name="message" type="str" required> 
-The message to emit.
-</PropertyReference>
-
 ### Returns
 
 <PropertyReference name="returns" type="Awaitable[bool]">
@@ -85,14 +77,6 @@ Manually emits a tool call to CopilotKit.
     ```
 
 ### Parameters
-
-<PropertyReference name="name" type="str" required> 
-The name of the tool to emit.
-</PropertyReference>
-
-<PropertyReference name="args" type="Dict[str, Any]" required> 
-The arguments to emit.
-</PropertyReference>
 
 ### Returns
 

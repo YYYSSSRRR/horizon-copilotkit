@@ -55,22 +55,6 @@ Customize the LangGraph configuration for use in CopilotKit.
 
 ### Parameters
 
-<PropertyReference name="base_config" type="Optional[RunnableConfig]" > 
-The LangChain/LangGraph configuration to customize. Pass None to make a new configuration.
-</PropertyReference>
-
-<PropertyReference name="emit_messages" type="Optional[bool]" > 
-Configure how messages are emitted. By default, all messages are emitted. Pass False to disable emitting messages.
-</PropertyReference>
-
-<PropertyReference name="emit_tool_calls" type="Optional[Union[bool, str, List[str]]]" > 
-Configure how tool calls are emitted. By default, all tool calls are emitted. Pass False to disable emitting tool calls. Pass a string or list of strings to emit only specific tool calls.
-</PropertyReference>
-
-<PropertyReference name="emit_intermediate_state" type="Optional[List[IntermediateStateConfig]]" > 
-Lets you emit tool calls as streaming LangGraph state.
-</PropertyReference>
-
 ### Returns
 
 <PropertyReference name="returns" type="RunnableConfig">
@@ -95,10 +79,6 @@ Exits the current agent after the run completes. Calling copilotkit_exit() will
 
 ### Parameters
 
-<PropertyReference name="config" type="RunnableConfig" required> 
-The LangGraph configuration.
-</PropertyReference>
-
 ### Returns
 
 <PropertyReference name="returns" type="Awaitable[bool]">
@@ -121,14 +101,6 @@ Emits intermediate state to CopilotKit. Useful if you have a longer running node
     ```
 
 ### Parameters
-
-<PropertyReference name="config" type="RunnableConfig" required> 
-The LangGraph configuration.
-</PropertyReference>
-
-<PropertyReference name="state" type="Any" required> 
-The state to emit (Must be JSON serializable).
-</PropertyReference>
 
 ### Returns
 
@@ -157,14 +129,6 @@ Manually emits a message to CopilotKit. Useful in longer running nodes to update
 
 ### Parameters
 
-<PropertyReference name="config" type="RunnableConfig" required> 
-The LangGraph configuration.
-</PropertyReference>
-
-<PropertyReference name="message" type="str" required> 
-The message to emit.
-</PropertyReference>
-
 ### Returns
 
 <PropertyReference name="returns" type="Awaitable[bool]">
@@ -182,18 +146,6 @@ Manually emits a tool call to CopilotKit.
     ```
 
 ### Parameters
-
-<PropertyReference name="config" type="RunnableConfig" required> 
-The LangGraph configuration.
-</PropertyReference>
-
-<PropertyReference name="name" type="str" required> 
-The name of the tool to emit.
-</PropertyReference>
-
-<PropertyReference name="args" type="Dict[str, Any]" required> 
-The arguments to emit.
-</PropertyReference>
 
 ### Returns
 
