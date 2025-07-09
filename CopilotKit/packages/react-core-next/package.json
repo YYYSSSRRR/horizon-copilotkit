@@ -1,5 +1,5 @@
 {
-  "name": "@copilotkit/react-core",
+  "name": "@copilotkit/react-core-next",
   "private": false,
   "homepage": "https://github.com/CopilotKit/CopilotKit",
   "repository": {
@@ -11,8 +11,8 @@
   },
   "version": "1.8.15-next.0",
   "sideEffects": false,
-  "main": "./src/index.tsx",
-  "module": "./src/index.tsx",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "exports": {
     ".": {
       "import": "./dist/index.mjs",
@@ -49,7 +49,6 @@
     "typescript": "^5.2.3"
   },
   "dependencies": {
-    "@copilotkit/runtime-client-gql": "workspace:*",
     "@copilotkit/shared": "workspace:*",
     "@scarf/scarf": "^1.3.0",
     "react-markdown": "^8.0.7",
@@ -65,6 +64,7 @@
     "assistant",
     "javascript",
     "automation",
-    "textarea"
+    "rest-api",
+    "websocket"
   ]
-}
+} 
