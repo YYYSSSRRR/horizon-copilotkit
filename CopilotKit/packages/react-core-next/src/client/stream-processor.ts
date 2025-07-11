@@ -147,8 +147,13 @@ export class StreamProcessor {
         
         // 检查是否是流式事件而不是完整消息
         if (this.isStreamEvent(parsed)) {
-          // 将流式事件转换为伪消息，用于回调处理
-          return this.createPseudoMessageFromStreamEvent(parsed);
+          // 处理流式事件：通过回调传递，但不添加到消息数组
+          const pseudoMessage = this.createPseudoMessageFromStreamEvent(parsed);
+          if (pseudoMessage && this.options.onMessage) {
+            this.options.onMessage(pseudoMessage);
+          }
+          // 返回 null，不添加到消息数组
+          return null;
         } else {
           // 处理完整消息
           const messages = convertJSONToMessages([parsed]);
@@ -188,7 +193,7 @@ export class StreamProcessor {
     const { type, data, timestamp } = eventData;
     
     // 创建一个伪文本消息来承载事件数据，用于回调处理
-    // 注意：这不是一个真正的消息，只是为了传递事件数据
+    // 注意：这不是一个真正的消息，只是为了传递事件数据，不会被添加到最终消息数组
     const pseudoMessage = new TextMessage({
       content: "",
       role: "assistant",

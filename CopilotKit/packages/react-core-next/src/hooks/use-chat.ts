@@ -12,6 +12,49 @@ import { CoAgentStateRender } from "../types/coagent-action";
 import { CoagentState } from "../types/coagent-state";
 import { CopilotRuntimeClient } from "../client/copilot-runtime-client";
 
+// Utility function to handle incomplete JSON (similar to untruncate-json)
+function parsePartialJson(jsonStr: string): any {
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    // Try to fix common truncation issues
+    let fixedStr = jsonStr;
+    
+    // If the string ends with incomplete object or array, try to close it
+    if (fixedStr.endsWith(',')) {
+      fixedStr = fixedStr.slice(0, -1);
+    }
+    
+    // Count braces and brackets to close them properly
+    let openBraces = 0;
+    let openBrackets = 0;
+    
+    for (const char of fixedStr) {
+      if (char === '{') openBraces++;
+      else if (char === '}') openBraces--;
+      else if (char === '[') openBrackets++;
+      else if (char === ']') openBrackets--;
+    }
+    
+    // Close unclosed braces and brackets
+    while (openBraces > 0) {
+      fixedStr += '}';
+      openBraces--;
+    }
+    while (openBrackets > 0) {
+      fixedStr += ']';
+      openBrackets--;
+    }
+    
+    try {
+      return JSON.parse(fixedStr);
+    } catch (e2) {
+      // If still can't parse, return null to indicate incomplete
+      return null;
+    }
+  }
+}
+
 /**
  * 代理会话类型
  */
@@ -313,7 +356,9 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
    * 运行聊天完成的核心实现 - 使用 CopilotRuntimeClient 流式传输
    */
   const runChatCompletion = useCallback(
-    async (previousMessages: Message[] = messages): Promise<Message[]> => {
+    async (previousMessages: Message[] = messages, isFollowUp: boolean = false): Promise<Message[]> => {
+
+      
       if (isLoading) {
         return previousMessages;
       }
@@ -407,7 +452,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               const actionMessage = new ActionExecutionMessage({
                 id: actionStartData.actionExecutionId,
                 name: actionStartData.actionName || "",
-                arguments: {},
+                arguments: { __rawArgs: "" }, // 初始化参数累积容器
                 parentMessageId: actionStartData.parentMessageId,
               });
               
@@ -423,39 +468,65 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               
               if (existingActionIndex >= 0) {
                 const existingAction = finalMessages[existingActionIndex] as ActionExecutionMessage;
-                try {
-                  const argsToAdd = typeof argsData.args === "string" ? JSON.parse(argsData.args) : argsData.args;
-                  existingAction.arguments = { ...existingAction.arguments, ...argsToAdd };
-                } catch {
-                  // 如果无法解析，存储为字符串
-                  existingAction.arguments.rawArgs = (existingAction.arguments.rawArgs || "") + argsData.args;
+                
+                // 累积参数字符串片段，类似 GraphQL 版本的处理方式
+                if (!existingAction.arguments.__rawArgs) {
+                  existingAction.arguments.__rawArgs = "";
                 }
+                existingAction.arguments.__rawArgs += argsData.args || "";
+                
+                // 尝试解析累积的参数字符串，使用改进的 JSON 解析
+                const parsedArgs = parsePartialJson(existingAction.arguments.__rawArgs);
+                if (parsedArgs !== null) {
+                  // 解析成功，用解析后的参数替换原参数，但保留 __rawArgs 用于调试
+                  const { __rawArgs, ...cleanArgs } = parsedArgs;
+                  existingAction.arguments = {
+                    ...cleanArgs,
+                    __rawArgs: existingAction.arguments.__rawArgs // 保留原始字符串用于调试
+                  };
+                }
+                // 如果解析失败（parsedArgs === null），继续累积
+                
                 setMessages([...previousMessages, ...finalMessages]);
               }
               break;
               
             case "action_execution_end":
-              // 动作执行结束，可能需要执行客户端动作
+              // 动作执行结束，确保参数完整并可能需要执行客户端动作
               const endData = eventData;
               const actionToExecute = finalMessages.find(
                 msg => msg.isActionExecutionMessage() && msg.id === endData.actionExecutionId
               ) as ActionExecutionMessage;
               
-              if (actionToExecute && onFunctionCall) {
-                executeAction({
-                  onFunctionCall,
-                  previousMessages: [...previousMessages, ...finalMessages],
-                  message: actionToExecute,
-                  chatAbortControllerRef,
-                  onError: (error) => console.error("Action execution error:", error),
-                }).then((resultMessage) => {
-                  if (resultMessage) {
-                    finalMessages.push(resultMessage);
-                    setMessages([...previousMessages, ...finalMessages]);
+              if (actionToExecute) {
+                // 确保在结束时参数被正确解析
+                if (actionToExecute.arguments.__rawArgs) {
+                  const finalParsedArgs = parsePartialJson(actionToExecute.arguments.__rawArgs);
+                  if (finalParsedArgs !== null) {
+                    const { __rawArgs, ...cleanArgs } = finalParsedArgs;
+                    actionToExecute.arguments = cleanArgs;
                   }
-                }).catch((error) => {
-                  console.error("Action execution failed:", error);
-                });
+                }
+                
+                // 如果有前端处理函数，执行客户端动作
+                if (onFunctionCall) {
+                  executeAction({
+                    onFunctionCall,
+                    previousMessages: [...previousMessages, ...finalMessages],
+                    message: actionToExecute,
+                    chatAbortControllerRef,
+                    onError: (error) => console.error("Action execution error:", error),
+                  }).then((resultMessage) => {
+                    if (resultMessage) {
+                      finalMessages.push(resultMessage);
+                      setMessages([...previousMessages, ...finalMessages]);
+                    }
+                  }).catch((error) => {
+                    console.error("Action execution failed:", error);
+                  });
+                }
+                
+                setMessages([...previousMessages, ...finalMessages]);
               }
               break;
               
@@ -571,9 +642,30 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         });
 
         // 处理最终消息 - streamResult 现在是 Message[] 数组
+        // 注意：由于流式事件在 StreamProcessor 中已经通过回调处理，streamResult 可能为空
+        // 真正的消息应该已经通过 handleStreamEvent 累积在 finalMessages 中
         if (Array.isArray(streamResult) && streamResult.length > 0) {
-          // 合并流式消息结果到 finalMessages，避免重复
-          const newStreamMessages = streamResult.filter(msg => 
+          // 过滤掉流式事件伪消息，只保留真正的消息
+          const realMessages = streamResult.filter(msg => {
+            // 检查是否是流式事件伪消息
+            const hasEventType = (msg as any).eventType;
+            const hasEventData = (msg as any).eventData;
+            
+            // 如果有 eventType 和 eventData，说明是伪消息，应该过滤掉
+            if (hasEventType && hasEventData) {
+              return false;
+            }
+            
+            // 过滤掉空内容的 TextMessage（可能是事件残留）
+            if (msg.type === "text" && (msg as TextMessage).content === "") {
+              return false;
+            }
+            
+            return true;
+          });
+          
+          // 合并真正的消息到 finalMessages，避免重复
+          const newStreamMessages = realMessages.filter(msg => 
             !finalMessages.find(existing => existing.id === msg.id)
           );
           finalMessages.push(...newStreamMessages);
@@ -589,9 +681,76 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
           finalMessages.push(finalMessage);
         }
 
+        // 将所有消息状态更新为 success（流式传输完成）
+        finalMessages.forEach(msg => {
+          if (msg.status.code === "pending") {
+            msg.status = { code: "success" };
+          }
+        });
+        
+        // 执行前端动作（只处理状态不是 pending 的消息，类似 react-core 行为）
+        if (onFunctionCall && finalMessages.length > 0) {
+          const lastMessages = [];
+          
+          // 从最后往前查找，收集所有需要执行的动作
+          for (let i = finalMessages.length - 1; i >= 0; i--) {
+            const message = finalMessages[i];
+            if (
+              (message.isActionExecutionMessage() || message.isResultMessage()) &&
+              message.status.code !== "pending"
+            ) {
+              lastMessages.unshift(message);
+            } else if (!message.isAgentStateMessage()) {
+              break;
+            }
+          }
+          
+          // 执行动作
+          for (const message of lastMessages) {
+            if (message.isActionExecutionMessage()) {
+              try {
+                const resultMessage = await executeAction({
+                  onFunctionCall,
+                  previousMessages: [...previousMessages, ...finalMessages],
+                  message: message as ActionExecutionMessage,
+                  chatAbortControllerRef,
+                  onError: (error) => console.error("Action execution error:", error),
+                });
+                
+                if (resultMessage) {
+                  finalMessages.push(resultMessage);
+                }
+              } catch (error) {
+                console.error("Action execution failed:", error);
+              }
+            }
+          }
+        }
+        
         // 确保界面显示最新状态
-        const completeFinalMessages = [...previousMessages, ...finalMessages];
-        setMessages(completeFinalMessages);
+        // finalMessages 已经包含了 previousMessages，不需要再次合并
+        setMessages(finalMessages);
+        
+        // 🔑 关键修复：检查是否需要后续请求（类似 react-core 行为）
+        // 只有在首次请求且执行了动作的情况下才触发后续请求
+        const didExecuteAction = finalMessages.some(msg => msg.isResultMessage());
+        
+        if (
+          !isFollowUp && // 只有非后续请求才能触发后续请求，避免死循环
+          didExecuteAction &&
+          !chatAbortControllerRef.current?.signal.aborted
+        ) {
+          console.log("🔄 Executed action in this run, triggering follow-up completion...");
+          
+          // 等待一个 tick 确保 React 状态更新完成
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          
+          // 🔑 关键：传递完整的消息列表，不是之前的 previousMessages
+          // 这样避免了重复，与 react-core 行为一致
+          const followUpMessages = await runChatCompletion(finalMessages, true);
+          return followUpMessages;
+        }
+        
         return finalMessages;
 
       } catch (error) {
@@ -642,7 +801,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
       const newMessages = [...messages, ...pending.map((p) => p.message)];
       setMessages(newMessages);
       if (followUp) {
-        runChatCompletion(newMessages);
+        runChatCompletion(newMessages, false); // 明确标记为非后续请求
       }
     }
   }, [isLoading, messages, setMessages, runChatCompletion]);
@@ -666,7 +825,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
 
       // 如果需要跟进，运行聊天完成
       if (followUp) {
-        await runChatCompletion(updatedMessages);
+        await runChatCompletion(updatedMessages, false); // 明确标记为非后续请求
       }
     },
     [messages, setMessages, isLoading, runChatCompletion]
@@ -684,7 +843,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
       const previousMessages = messages.slice(0, messageIndex);
       setMessages(previousMessages);
 
-      await runChatCompletion(previousMessages);
+      await runChatCompletion(previousMessages, false); // 明确标记为非后续请求
     },
     [messages, setMessages, runChatCompletion]
   );

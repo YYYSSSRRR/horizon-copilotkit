@@ -725,14 +725,39 @@ class CopilotRuntimeServer:
                 "actionExecutionParentMessageId": None,
             }
             
-            # 创建事件迭代器
-            async def event_iterator():
-                events = event_source.get_events()
-                for event in events:
+            # 创建真正的异步事件迭代器
+            async def real_event_iterator():
+                """真正的异步事件迭代器，实时获取事件"""
+                # 首先发送已有的事件
+                existing_events = event_source.get_events()
+                for event in existing_events:
                     yield event
+                
+                # 然后监听新事件（实时流式处理）
+                event_queue = asyncio.Queue()
+                
+                # 注册回调以接收新事件
+                async def event_callback(event_iter):
+                    async for event in event_iter:
+                        await event_queue.put(event)
+                
+                event_source.stream(event_callback)
+                
+                # 监听队列中的新事件
+                while event_source._streaming:
+                    try:
+                        # 等待新事件，设置超时避免永久阻塞
+                        event = await asyncio.wait_for(event_queue.get(), timeout=0.1)
+                        yield event
+                    except asyncio.TimeoutError:
+                        # 超时继续循环，检查是否还在流式传输
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error in event queue: {e}")
+                        break
             
             # 流式发送事件，并处理动作执行
-            async for event in event_iterator():
+            async for event in real_event_iterator():
                 # 更新动作状态
                 if event.type == "action_execution_start":
                     action_name = event.data.get("actionName")
