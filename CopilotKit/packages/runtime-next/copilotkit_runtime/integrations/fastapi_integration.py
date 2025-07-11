@@ -17,7 +17,7 @@ import uvicorn
 from ..runtime import CopilotRuntime
 from ..types.adapters import CopilotServiceAdapter
 from ..types.runtime import CopilotRuntimeRequest, RequestContext
-from ..types.messages import Message, TextMessage, MessageRole, convert_json_to_messages, convert_messages_to_json
+from ..types.messages import Message, TextMessage, ActionExecutionMessage, ResultMessage, MessageRole, convert_json_to_messages, convert_messages_to_json
 from ..types.actions import ActionResult
 from ..events.runtime_events import RuntimeEvent, RuntimeEventSource
 from ..utils.common import generate_id
@@ -233,7 +233,11 @@ class CopilotRuntimeServer:
                 runtime_response = await self.runtime.process_runtime_request(runtime_request)
                 
                 # 等待事件完成并收集响应消息
-                response_messages = await self._collect_response_messages(runtime_response.event_source)
+                response_messages = await self._collect_response_messages(
+                    runtime_response.event_source, 
+                    runtime_response.server_side_actions,
+                    thread_id
+                )
                 
                 return ChatResponse(
                     threadId=runtime_response.thread_id,
@@ -454,7 +458,12 @@ class CopilotRuntimeServer:
                 }
             }
     
-    async def _collect_response_messages(self, event_source: RuntimeEventSource) -> List[Message]:
+    async def _collect_response_messages(
+        self, 
+        event_source: RuntimeEventSource,
+        server_side_actions: List = None,
+        thread_id: str = None
+    ) -> List[Message]:
         """
         收集响应消息（非流式）
         
@@ -466,19 +475,129 @@ class CopilotRuntimeServer:
         """
         messages = []
         current_message = None
+        current_action_execution = None
+        action_executions = {}  # 存储动作执行信息
+        action_args_buffers = {}  # 存储参数累积缓冲区
         
         # 等待一段时间收集事件
         await asyncio.sleep(0.1)
         
         events = event_source.get_events()
         for event in events:
-            if event.type == "message_start":
+            # 处理文本消息事件
+            if event.type == "text_message_start":
+                current_message = TextMessage(
+                    role=MessageRole.ASSISTANT,
+                    content=""
+                )
+            elif event.type == "text_message_content" and current_message:
+                content = event.data.get("content", "")
+                current_message.content += content
+            elif event.type == "text_message_end" and current_message:
+                messages.append(current_message)
+                current_message = None
+            
+            # 处理动作执行事件
+            elif event.type == "action_execution_start":
+                action_execution_id = event.data.get("actionExecutionId")
+                action_name = event.data.get("actionName", "")
+                parent_message_id = event.data.get("parentMessageId")
+                
+                if action_execution_id:
+                    current_action_execution = ActionExecutionMessage(
+                        id=action_execution_id,
+                        name=action_name,
+                        arguments={},
+                        parent_message_id=parent_message_id
+                    )
+                    action_executions[action_execution_id] = current_action_execution
+                    action_args_buffers[action_execution_id] = ""  # 初始化参数缓冲区
+            
+            elif event.type == "action_execution_args":
+                action_execution_id = event.data.get("actionExecutionId")
+                args = event.data.get("args", "")
+                
+                if action_execution_id and action_execution_id in action_executions:
+                    # 累积参数到缓冲区（处理增量式参数）
+                    if action_execution_id not in action_args_buffers:
+                        action_args_buffers[action_execution_id] = ""
+                    
+                    action_args_buffers[action_execution_id] += str(args)
+                    
+                    # 尝试解析累积的参数
+                    accumulated_args = action_args_buffers[action_execution_id].strip()
+                    if accumulated_args:
+                        try:
+                            # 尝试解析完整的JSON
+                            if isinstance(accumulated_args, str):
+                                parsed_args = json.loads(accumulated_args)
+                            elif isinstance(args, dict):
+                                parsed_args = args
+                            else:
+                                continue
+                            
+                            # 成功解析，更新参数
+                            if isinstance(parsed_args, dict):
+                                action_executions[action_execution_id].arguments.update(parsed_args)
+                                # 清空缓冲区，表示已成功处理
+                                action_args_buffers[action_execution_id] = ""
+                            else:
+                                # 如果解析出来的不是字典，存储为特殊键
+                                action_executions[action_execution_id].arguments["parsed_value"] = parsed_args
+                                action_args_buffers[action_execution_id] = ""
+                                
+                        except json.JSONDecodeError:
+                            # JSON 还不完整，继续累积
+                            # 但如果缓冲区太大，可能是格式错误，存储为原始参数
+                            if len(accumulated_args) > 10000:  # 10KB 限制
+                                action_executions[action_execution_id].arguments["raw_args"] = accumulated_args
+                                action_args_buffers[action_execution_id] = ""
+            
+            elif event.type == "action_execution_end":
+                action_execution_id = event.data.get("actionExecutionId")
+                
+                if action_execution_id and action_execution_id in action_executions:
+                    # 处理任何剩余的缓冲区内容
+                    if action_execution_id in action_args_buffers:
+                        remaining_args = action_args_buffers[action_execution_id].strip()
+                        if remaining_args:
+                            # 尝试最后一次解析
+                            try:
+                                parsed_args = json.loads(remaining_args)
+                                if isinstance(parsed_args, dict):
+                                    action_executions[action_execution_id].arguments.update(parsed_args)
+                                else:
+                                    action_executions[action_execution_id].arguments["final_parsed_value"] = parsed_args
+                            except json.JSONDecodeError:
+                                # 最终解析失败，存储为原始参数
+                                action_executions[action_execution_id].arguments["raw_args"] = remaining_args
+                        
+                        # 清理缓冲区
+                        del action_args_buffers[action_execution_id]
+                    
+                    # 添加动作执行消息到结果中
+                    action_execution_msg = action_executions[action_execution_id]
+                    messages.append(action_execution_msg)
+                    
+                    # 执行服务器端动作
+                    if server_side_actions and thread_id:
+                        result_message = await self._execute_server_side_action(
+                            action_execution_msg, server_side_actions, thread_id
+                        )
+                        if result_message:
+                            messages.append(result_message)
+                    
+                    current_action_execution = None
+            
+            # 处理其他通用事件类型（兼容性）
+            elif event.type == "message_start":
                 current_message = TextMessage(
                     role=MessageRole.ASSISTANT,
                     content=""
                 )
             elif event.type == "text_delta" and current_message:
-                current_message.content += event.data.get("delta", "")
+                delta = event.data.get("delta", "")
+                current_message.content += delta
             elif event.type == "message_end" and current_message:
                 messages.append(current_message)
                 current_message = None
@@ -487,7 +606,70 @@ class CopilotRuntimeServer:
         if current_message:
             messages.append(current_message)
         
+        # 如果还有未完成的动作执行
+        if current_action_execution:
+            messages.append(current_action_execution)
+        
         return messages
+    
+    async def _execute_server_side_action(
+        self, 
+        action_execution_msg: ActionExecutionMessage,
+        server_side_actions: List,
+        thread_id: str
+    ) -> Optional[ResultMessage]:
+        """
+        执行服务器端动作
+        
+        Args:
+            action_execution_msg: 动作执行消息
+            server_side_actions: 服务器端动作列表
+            thread_id: 线程ID
+            
+        Returns:
+            结果消息，如果执行失败返回None
+        """
+        # 查找对应的动作
+        action = None
+        for server_action in server_side_actions:
+            if hasattr(server_action, 'name') and server_action.name == action_execution_msg.name:
+                action = server_action
+                break
+        
+        if not action:
+            logger.warning(f"Server-side action '{action_execution_msg.name}' not found")
+            return None
+        
+        try:
+            # 执行动作
+            result = await self.runtime.execute_action(
+                action_execution_msg.name, 
+                action_execution_msg.arguments
+            )
+            
+            # 创建结果消息
+            result_message = ResultMessage(
+                id=f"result-{action_execution_msg.id}",
+                action_execution_id=action_execution_msg.id,
+                action_name=action_execution_msg.name,
+                result=result.result if result.success else f"Error: {result.error}"
+            )
+            
+            logger.info(f"✅ [FastAPI] Action '{action_execution_msg.name}' executed successfully")
+            return result_message
+            
+        except Exception as e:
+            logger.error(f"❌ [FastAPI] Error executing action '{action_execution_msg.name}': {e}")
+            
+            # 创建错误结果消息
+            error_result_message = ResultMessage(
+                id=f"result-{action_execution_msg.id}",
+                action_execution_id=action_execution_msg.id,
+                action_name=action_execution_msg.name,
+                result=f"Error: {str(e)}"
+            )
+            
+            return error_result_message
     
     async def _create_event_stream(
         self, 
@@ -496,7 +678,7 @@ class CopilotRuntimeServer:
         run_id: str
     ) -> AsyncIterator[str]:
         """
-        创建事件流
+        创建事件流（实现动作执行逻辑）
         
         Args:
             event_source: 事件源
@@ -517,8 +699,31 @@ class CopilotRuntimeServer:
             }
             yield f"data: {json.dumps(session_start)}\n\n"
             
+            # 获取服务器端动作列表
+            try:
+                runtime_request = CopilotRuntimeRequest(
+                    service_adapter=self.service_adapter,
+                    messages=[],
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    context=RequestContext()
+                )
+                server_side_actions = await self.runtime._get_server_side_actions(runtime_request)
+            except Exception as e:
+                logger.error(f"Failed to get server side actions: {e}")
+                server_side_actions = []
+            
             # 开始流式传输
             await event_source.start_streaming()
+            
+            # 状态跟踪（类似 TypeScript 版本）
+            action_state = {
+                "callActionServerSide": False,
+                "args": "",
+                "actionExecutionId": None,
+                "action": None,
+                "actionExecutionParentMessageId": None,
+            }
             
             # 创建事件迭代器
             async def event_iterator():
@@ -526,8 +731,89 @@ class CopilotRuntimeServer:
                 for event in events:
                     yield event
             
-            # 流式发送事件
+            # 流式发送事件，并处理动作执行
             async for event in event_iterator():
+                # 更新动作状态
+                if event.type == "action_execution_start":
+                    action_name = event.data.get("actionName")
+                    action_state["callActionServerSide"] = any(
+                        action.name == action_name for action in server_side_actions
+                    )
+                    action_state["args"] = ""
+                    action_state["actionExecutionId"] = event.data.get("actionExecutionId")
+                    if action_state["callActionServerSide"]:
+                        action_state["action"] = next(
+                            (action for action in server_side_actions if action.name == action_name),
+                            None
+                        )
+                    action_state["actionExecutionParentMessageId"] = event.data.get("parentMessageId")
+                
+                elif event.type == "action_execution_args":
+                    action_state["args"] += event.data.get("args", "")
+                
+                elif event.type == "action_execution_end" and action_state["callActionServerSide"]:
+                    # 执行服务器端动作（类似 TypeScript 版本的 executeAction）
+                    try:
+                        # 解析参数
+                        args = {}
+                        if action_state["args"]:
+                            try:
+                                args = json.loads(action_state["args"])
+                            except json.JSONDecodeError:
+                                logger.error(f"Failed to parse action arguments: {action_state['args']}")
+                        
+                        # 执行动作
+                        action = action_state["action"]
+                        result = await self.runtime.execute_action(action.name, args)
+                        
+                        # 发送动作执行结果事件
+                        action_result_event = {
+                            "type": "action_execution_result",
+                            "data": {
+                                "actionExecutionId": action_state["actionExecutionId"],
+                                "actionName": action.name,
+                                "result": result.result if result.success else None,
+                                "error": result.error if not result.success else None,
+                                "success": result.success
+                            }
+                        }
+                        
+                        # 先发送原始事件
+                        sse_data = f"data: {event.to_json()}\n\n"
+                        yield sse_data
+                        
+                        # 然后发送执行结果事件
+                        result_sse_data = f"data: {json.dumps(action_result_event)}\n\n"
+                        yield result_sse_data
+                        
+                        logger.info(f"✅ [Stream] Action '{action.name}' executed and result sent")
+                        continue  # 跳过下面的常规事件发送
+                        
+                    except Exception as e:
+                        logger.error(f"❌ [Stream] Error executing action: {e}")
+                        
+                        # 发送错误结果事件
+                        error_result_event = {
+                            "type": "action_execution_result",
+                            "data": {
+                                "actionExecutionId": action_state["actionExecutionId"],
+                                "actionName": action_state["action"].name if action_state["action"] else "unknown",
+                                "result": None,
+                                "error": str(e),
+                                "success": False
+                            }
+                        }
+                        
+                        # 先发送原始事件
+                        sse_data = f"data: {event.to_json()}\n\n"
+                        yield sse_data
+                        
+                        # 然后发送错误结果事件
+                        error_sse_data = f"data: {json.dumps(error_result_event)}\n\n"
+                        yield error_sse_data
+                        continue  # 跳过下面的常规事件发送
+                
+                # 发送常规事件
                 sse_data = f"data: {event.to_json()}\n\n"
                 yield sse_data
             

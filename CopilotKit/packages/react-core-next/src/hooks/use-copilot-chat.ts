@@ -175,7 +175,7 @@ export function useCopilotChat({
     runId: runId || null,
     setRunId: setRunId || (() => {}),
     copilotConfig: {
-      chatApiEndpoint: runtimeClient ? `${runtimeClient.getBaseUrl()}/api/chat` : '/api/copilotkit/api/chat',
+      chatApiEndpoint: runtimeClient ? `${runtimeClient.getBaseUrl()}` : '/api/copilotkit',
       publicApiKey: typeof options.headers === 'object' && 'Authorization' in options.headers 
         ? (options.headers as Record<string, string>)['Authorization']?.replace('Bearer ', '')
         : undefined,

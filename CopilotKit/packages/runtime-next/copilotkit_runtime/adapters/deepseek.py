@@ -277,6 +277,71 @@ class DeepSeekAdapter(CopilotServiceAdapter):
             
             raise Exception(f"DeepSeek API request failed: {error}")
     
+    async def process_messages(
+        self,
+        messages: List[Message],
+        actions: Optional[List] = None,
+        event_source: Optional = None,
+        thread_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        **kwargs
+    ) -> List[Message]:
+        """
+        处理消息并生成响应（CopilotRuntime期望的接口）
+        
+        Args:
+            messages: 输入消息列表
+            actions: 可用动作列表
+            event_source: 事件源（用于流式响应）
+            thread_id: 线程ID
+            run_id: 运行ID
+            **kwargs: 其他参数
+            
+        Returns:
+            响应消息列表
+        """
+        # 转换为 AdapterRequest 格式并调用 process 方法
+        action_inputs = []
+        if actions:
+            # 转换 actions 为 ActionInput 格式
+            for action in actions:
+                if hasattr(action, 'name') and hasattr(action, 'description'):
+                    # 构建 ActionInput
+                    from ..types.actions import ActionInput, ParameterDefinition, ParameterType
+                    
+                    parameters = []
+                    if hasattr(action, 'parameters') and action.parameters:
+                        for param in action.parameters:
+                            if hasattr(param, 'name'):
+                                parameters.append(ParameterDefinition(
+                                    name=param.name,
+                                    type=getattr(param, 'type', ParameterType.STRING),
+                                    description=getattr(param, 'description', ''),
+                                    required=getattr(param, 'required', False)
+                                ))
+                    
+                    action_inputs.append(ActionInput(
+                        name=action.name,
+                        description=action.description,
+                        parameters=parameters
+                    ))
+        
+        request = AdapterRequest(
+            thread_id=thread_id,
+            model=kwargs.get('model', self.config.model),
+            messages=messages,
+            actions=action_inputs,
+            event_source=event_source,
+            forwarded_parameters=kwargs.get('forwarded_parameters')
+        )
+        
+        # 调用主要的 process 方法
+        await self.process(request)
+        
+        # 由于流式响应，我们返回一个空列表
+        # 实际的响应通过事件源发送
+        return []
+    
     def _filter_messages_with_allowlist(self, messages: List[Message]) -> List[Message]:
         """
         使用 ALLOWLIST 方法过滤消息（复制 TypeScript 版本的逻辑）
@@ -441,121 +506,117 @@ class DeepSeekAdapter(CopilotServiceAdapter):
         thread_id: str,
         actions: List[ActionInput]
     ):
-        """处理流式响应（复制 TypeScript 版本的完整逻辑）"""
+        """处理流式响应（直接处理而不使用回调）"""
         
-        async def stream_callback(event_stream_iter):
-            event_stream = EventStream(event_source)
+        event_stream = EventStream(event_source)
+        
+        mode: Optional[str] = None  # "function" | "message" | None
+        current_message_id: str = ""
+        current_tool_call_id: str = ""
+        current_action_name: str = ""
+        
+        try:
+            logger.info("🔄 [DeepSeek] Starting stream iteration...")
+            chunk_count = 0
             
-            mode: Optional[str] = None  # "function" | "message" | None
-            current_message_id: str = ""
-            current_tool_call_id: str = ""
-            current_action_name: str = ""
-            
-            try:
-                logger.info("🔄 [DeepSeek] Starting stream iteration...")
-                chunk_count = 0
+            async for chunk in stream:
+                chunk_count += 1
                 
-                async for chunk in stream:
-                    chunk_count += 1
-                    
-                    logger.debug(f"📦 [DeepSeek] Received chunk #{chunk_count}: "
-                               f"choices_length={len(chunk.choices)}, "
-                               f"finish_reason={chunk.choices[0].finish_reason if chunk.choices else None}")
-                    
-                    if not chunk.choices:
-                        continue
-                    
-                    choice = chunk.choices[0]
-                    tool_call = choice.delta.tool_calls[0] if choice.delta.tool_calls else None
-                    content = choice.delta.content
-                    finish_reason = choice.finish_reason
-                    
-                    # 检查是否应该结束流
-                    if finish_reason:
-                        logger.info(f"🏁 [DeepSeek] Finish reason detected: {finish_reason}")
-                    
-                    # 模式切换逻辑（来自 TypeScript 版本）
-                    # 从消息模式切换到函数模式
-                    if mode == "message" and tool_call and tool_call.id:
-                        logger.debug("🔧 [DeepSeek] Switching from message to function mode")
-                        mode = None
-                        await event_stream.send_text_message_end({"messageId": current_message_id})
-                    
-                    # 从函数模式切换到消息模式或新函数
-                    elif mode == "function" and (not tool_call or tool_call.id):
-                        logger.debug("🔧 [DeepSeek] Switching from function to message/new function mode")
-                        mode = None
-                        await event_stream.send_action_execution_end({"actionExecutionId": current_tool_call_id})
-                    
-                    # 开始新的模式
-                    if mode is None:
-                        if tool_call and tool_call.id:
-                            logger.debug("🚀 [DeepSeek] Starting function mode")
-                            mode = "function"
-                            current_tool_call_id = tool_call.id
-                            current_action_name = tool_call.function.name if tool_call.function else ""
-                            
-                            await event_stream.send_action_execution_start({
-                                "actionExecutionId": current_tool_call_id,
-                                "parentMessageId": chunk.id,
-                                "actionName": current_action_name
-                            })
+                logger.debug(f"📦 [DeepSeek] Received chunk #{chunk_count}: "
+                           f"choices_length={len(chunk.choices)}, "
+                           f"finish_reason={chunk.choices[0].finish_reason if chunk.choices else None}")
+                
+                if not chunk.choices:
+                    continue
+                
+                choice = chunk.choices[0]
+                tool_call = choice.delta.tool_calls[0] if choice.delta.tool_calls else None
+                content = choice.delta.content
+                finish_reason = choice.finish_reason
+                
+                # 检查是否应该结束流
+                if finish_reason:
+                    logger.info(f"🏁 [DeepSeek] Finish reason detected: {finish_reason}")
+                
+                # 模式切换逻辑（来自 TypeScript 版本）
+                # 从消息模式切换到函数模式
+                if mode == "message" and tool_call and tool_call.id:
+                    logger.debug("🔧 [DeepSeek] Switching from message to function mode")
+                    mode = None
+                    await event_stream.send_text_message_end({"messageId": current_message_id})
+                
+                # 从函数模式切换到消息模式或新函数
+                elif mode == "function" and (not tool_call or tool_call.id):
+                    logger.debug("🔧 [DeepSeek] Switching from function to message/new function mode")
+                    mode = None
+                    await event_stream.send_action_execution_end({"actionExecutionId": current_tool_call_id})
+                
+                # 开始新的模式
+                if mode is None:
+                    if tool_call and tool_call.id:
+                        logger.debug("🚀 [DeepSeek] Starting function mode")
+                        mode = "function"
+                        current_tool_call_id = tool_call.id
+                        current_action_name = tool_call.function.name if tool_call.function else ""
                         
-                        elif content:
-                            logger.debug("💬 [DeepSeek] Starting message mode")
-                            mode = "message"
-                            current_message_id = chunk.id or generate_id()
-                            await event_stream.send_text_message_start({"messageId": current_message_id})
-                    
-                    # 发送内容事件
-                    if mode == "message" and content:
-                        logger.debug(f"💬 [DeepSeek] Sending text content: {content}")
-                        await event_stream.send_text_message_content({
-                            "messageId": current_message_id,
-                            "content": content
-                        })
-                    
-                    elif mode == "function" and tool_call and tool_call.function and tool_call.function.arguments:
-                        logger.debug(f"📝 [DeepSeek] Sending function arguments: {tool_call.function.arguments}")
-                        await event_stream.send_action_execution_args({
+                        await event_stream.send_action_execution_start({
                             "actionExecutionId": current_tool_call_id,
-                            "args": tool_call.function.arguments
+                            "parentMessageId": chunk.id,
+                            "actionName": current_action_name
                         })
                     
-                    # 如果有结束原因，跳出循环
-                    if finish_reason:
-                        logger.debug(f"🔚 [DeepSeek] Breaking loop due to finish reason: {finish_reason}")
-                        break
+                    elif content:
+                        logger.debug("💬 [DeepSeek] Starting message mode")
+                        mode = "message"
+                        current_message_id = chunk.id or generate_id()
+                        await event_stream.send_text_message_start({"messageId": current_message_id})
                 
-                # 发送最终结束事件
-                logger.info(f"🏁 [DeepSeek] Stream loop ended after {chunk_count} chunks, sending final events")
+                # 发送内容事件
+                if mode == "message" and content:
+                    logger.debug(f"💬 [DeepSeek] Sending text content: {content}")
+                    await event_stream.send_text_message_content({
+                        "messageId": current_message_id,
+                        "content": content
+                    })
                 
-                if mode == "message":
-                    logger.debug("💬 [DeepSeek] Ending final text message")
-                    await event_stream.send_text_message_end({"messageId": current_message_id})
-                elif mode == "function":
-                    logger.debug("🔧 [DeepSeek] Ending final function execution")
-                    await event_stream.send_action_execution_end({"actionExecutionId": current_tool_call_id})
+                elif mode == "function" and tool_call and tool_call.function and tool_call.function.arguments:
+                    logger.debug(f"📝 [DeepSeek] Sending function arguments: {tool_call.function.arguments}")
+                    await event_stream.send_action_execution_args({
+                        "actionExecutionId": current_tool_call_id,
+                        "args": tool_call.function.arguments
+                    })
                 
-            except Exception as error:
-                logger.error(f"❌ [DeepSeek] Streaming error: {error}")
-                
-                # 错误清理
-                if mode == "message":
-                    logger.debug("💬 [DeepSeek] Error cleanup: ending text message")
-                    await event_stream.send_text_message_end({"messageId": current_message_id})
-                elif mode == "function" and current_tool_call_id:
-                    logger.debug("🔧 [DeepSeek] Error cleanup: ending function execution")
-                    await event_stream.send_action_execution_end({"actionExecutionId": current_tool_call_id})
-                
-                raise error
+                # 如果有结束原因，跳出循环
+                if finish_reason:
+                    logger.debug(f"🔚 [DeepSeek] Breaking loop due to finish reason: {finish_reason}")
+                    break
             
-            # 完成事件流
-            logger.info("🎉 [DeepSeek] Completing event stream")
-            event_stream.complete()
+            # 发送最终结束事件
+            logger.info(f"🏁 [DeepSeek] Stream loop ended after {chunk_count} chunks, sending final events")
+            
+            if mode == "message":
+                logger.debug("💬 [DeepSeek] Ending final text message")
+                await event_stream.send_text_message_end({"messageId": current_message_id})
+            elif mode == "function":
+                logger.debug("🔧 [DeepSeek] Ending final function execution")
+                await event_stream.send_action_execution_end({"actionExecutionId": current_tool_call_id})
+            
+        except Exception as error:
+            logger.error(f"❌ [DeepSeek] Streaming error: {error}")
+            
+            # 错误清理
+            if mode == "message":
+                logger.debug("💬 [DeepSeek] Error cleanup: ending text message")
+                await event_stream.send_text_message_end({"messageId": current_message_id})
+            elif mode == "function" and current_tool_call_id:
+                logger.debug("🔧 [DeepSeek] Error cleanup: ending function execution")
+                await event_stream.send_action_execution_end({"actionExecutionId": current_tool_call_id})
+            
+            raise error
         
-        # 启动流处理
-        event_source.stream(stream_callback)
+        # 完成事件流
+        logger.info("🎉 [DeepSeek] Completing event stream")
+        event_stream.complete()
 
 
 # 便捷函数

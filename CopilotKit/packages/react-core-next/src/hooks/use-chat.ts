@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useRef, useMemo, useEffect } from "react";
 import { randomId } from "@copilotkit/shared";
 import { 
   Message, 
@@ -10,6 +10,7 @@ import {
 import { FrontendAction } from "../types/frontend-action";
 import { CoAgentStateRender } from "../types/coagent-action";
 import { CoagentState } from "../types/coagent-state";
+import { CopilotRuntimeClient } from "../client/copilot-runtime-client";
 
 /**
  * 代理会话类型
@@ -279,6 +280,16 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
     setLangGraphInterruptAction,
   } = options;
 
+  // 创建 CopilotRuntimeClient 实例
+  const runtimeClient = useMemo(() => {
+    return new CopilotRuntimeClient({
+      url: copilotConfig.chatApiEndpoint,
+      publicApiKey: copilotConfig.publicApiKey,
+      headers: copilotConfig.headers,
+      credentials: copilotConfig.credentials,
+    });
+  }, [copilotConfig]);
+
   // 内部引用管理
   const runChatCompletionRef = useRef<(previousMessages: Message[]) => Promise<Message[]>>();
   
@@ -295,8 +306,11 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
   // 待处理的追加消息队列
   const pendingAppendsRef = useRef<{ message: Message; followUp: boolean }[]>([]);
 
+  // 当前的占位符消息引用
+  const currentPlaceholderRef = useRef<TextMessage | null>(null);
+
   /**
-   * 运行聊天完成的核心实现
+   * 运行聊天完成的核心实现 - 使用 CopilotRuntimeClient 流式传输
    */
   const runChatCompletion = useCallback(
     async (previousMessages: Message[] = messages): Promise<Message[]> => {
@@ -312,7 +326,8 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
           content: "",
           role: "assistant",
         });
-
+        
+        currentPlaceholderRef.current = placeholderMessage;
         chatAbortControllerRef.current = new AbortController();
 
         // 更新消息列表
@@ -328,91 +343,255 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
 
         // 准备请求数据
         const requestData = {
-          messages: messagesWithContext.map(msg => msg.toJSON()),
+          messages: messagesWithContext,
           actions: actions.map(action => ({
             name: action.name,
-            description: action.description,
-            parameters: action.parameters,
+            description: action.description || "",
+            parameters: action.parameters || [],
+            available: "enabled" as const,
           })),
           threadId: threadId,
-          runId: runIdRef.current,
+          agentSession: agentSession ? {
+            agentName: agentSession.agentName,
+            threadId: agentSession.threadId,
+          } : undefined,
           extensions: extensionsRef.current,
-          agentStates: Object.values(coagentStatesRef.current || {}).map((state) => ({
-            agentName: state.name,
-            state: JSON.stringify(state.state),
-          })),
           forwardedParameters: options.forwardedParameters || {},
         };
 
-        // 获取公共 API 密钥和请求头
-        const publicApiKey = copilotConfig.publicApiKey;
-        const headers = {
-          'Content-Type': 'application/json',
-          ...(copilotConfig.headers || {}),
-          ...(publicApiKey ? { "X-Copilot-Public-Api-Key": publicApiKey } : {}),
-        };
-
-        // 发送请求
-        const response = await fetch(copilotConfig.chatApiEndpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(requestData),
-          signal: chatAbortControllerRef.current.signal,
-          credentials: copilotConfig.credentials,
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        let finalMessages: Message[] = [...previousMessages];
         let accumulatedContent = "";
+        let finalMessages: Message[] = [...previousMessages];
 
-        // 处理响应
-        if (response.body) {
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder();
-
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
+        // 处理流式事件的辅助函数
+        const handleStreamEvent = (eventType: string, eventData: any, finalMessages: Message[], previousMessages: Message[], placeholderMessage: TextMessage) => {
+          switch (eventType) {
+            case "session_start":
+              // 会话开始，可以更新线程ID等信息
+              if (eventData.threadId) {
+                setThreadId(eventData.threadId);
+              }
+              if (eventData.runId) {
+                setRunId(eventData.runId);
+              }
+              console.log("🚀 Session started:", eventData);
+              break;
               
-              if (done) break;
-
-              const chunk = decoder.decode(value, { stream: true });
-              accumulatedContent += chunk;
-
-              // 更新消息内容
+            case "session_end":
+              // 会话结束
+              console.log("🏁 Session ended:", eventData);
+              break;
+              
+            case "text_delta":
+              accumulatedContent += eventData.delta || "";
+              // 实时更新占位符消息
               const updatedMessage = new TextMessage({
                 id: placeholderMessage.id,
                 content: accumulatedContent,
                 role: "assistant",
               });
+              
+              // 更新finalMessages以保持同步
+              const currentMessageIndex = finalMessages.findIndex(msg => msg.id === placeholderMessage.id);
+              if (currentMessageIndex >= 0) {
+                finalMessages[currentMessageIndex] = updatedMessage;
+              } else {
+                finalMessages.push(updatedMessage);
+              }
+              
+              // 实时更新界面
+              setMessages([...previousMessages, ...finalMessages]);
+              break;
+              
+            case "action_execution_start":
+              const actionStartData = eventData;
+              const actionMessage = new ActionExecutionMessage({
+                id: actionStartData.actionExecutionId,
+                name: actionStartData.actionName || "",
+                arguments: {},
+                parentMessageId: actionStartData.parentMessageId,
+              });
+              
+              finalMessages.push(actionMessage);
+              setMessages([...previousMessages, ...finalMessages]);
+              break;
+              
+            case "action_execution_args":
+              const argsData = eventData;
+              const existingActionIndex = finalMessages.findIndex(
+                msg => msg.isActionExecutionMessage() && msg.id === argsData.actionExecutionId
+              );
+              
+              if (existingActionIndex >= 0) {
+                const existingAction = finalMessages[existingActionIndex] as ActionExecutionMessage;
+                try {
+                  const argsToAdd = typeof argsData.args === "string" ? JSON.parse(argsData.args) : argsData.args;
+                  existingAction.arguments = { ...existingAction.arguments, ...argsToAdd };
+                } catch {
+                  // 如果无法解析，存储为字符串
+                  existingAction.arguments.rawArgs = (existingAction.arguments.rawArgs || "") + argsData.args;
+                }
+                setMessages([...previousMessages, ...finalMessages]);
+              }
+              break;
+              
+            case "action_execution_end":
+              // 动作执行结束，可能需要执行客户端动作
+              const endData = eventData;
+              const actionToExecute = finalMessages.find(
+                msg => msg.isActionExecutionMessage() && msg.id === endData.actionExecutionId
+              ) as ActionExecutionMessage;
+              
+              if (actionToExecute && onFunctionCall) {
+                executeAction({
+                  onFunctionCall,
+                  previousMessages: [...previousMessages, ...finalMessages],
+                  message: actionToExecute,
+                  chatAbortControllerRef,
+                  onError: (error) => console.error("Action execution error:", error),
+                }).then((resultMessage) => {
+                  if (resultMessage) {
+                    finalMessages.push(resultMessage);
+                    setMessages([...previousMessages, ...finalMessages]);
+                  }
+                }).catch((error) => {
+                  console.error("Action execution failed:", error);
+                });
+              }
+              break;
+              
+            case "action_execution_result":
+              // 处理动作执行结果事件
+              const resultData = eventData;
+              const resultMessage = new ResultMessage({
+                id: `result-${resultData.actionExecutionId}`,
+                actionExecutionId: resultData.actionExecutionId,
+                actionName: resultData.actionName,
+                result: resultData.success ? resultData.result : `Error: ${resultData.error}`,
+              });
+              
+              finalMessages.push(resultMessage);
+              setMessages([...previousMessages, ...finalMessages]);
+              
+              if (resultData.success) {
+                console.log(`✅ Action '${resultData.actionName}' completed:`, resultData.result);
+              } else {
+                console.error(`❌ Action '${resultData.actionName}' failed:`, resultData.error);
+              }
+              break;
+              
+            case "error":
+              // 处理错误事件
+              console.error("❌ Stream error:", eventData);
+              break;
+              
+            case "ping":
+            case "heartbeat":
+              // 心跳事件，保持连接活跃
+              console.debug("💓 Heartbeat:", eventType, eventData);
+              break;
+              
+            default:
+              console.debug("🔍 Unknown stream event:", eventType, eventData);
+              break;
+          }
+        };
 
-              setMessages([...previousMessages, updatedMessage]);
+        // 使用 CopilotRuntimeClient 进行流式传输
+        const streamResult = await runtimeClient.generateResponse(requestData, true, {
+          enableWebSocket: false,
+          fallbackToRest: true,
+          onMessage: (streamMessage: Message) => {
+            try {
+              // 检查是否是流式事件伪消息
+              const eventType = (streamMessage as any).eventType;
+              const eventData = (streamMessage as any).eventData;
+              
+              if (eventType) {
+                // 处理流式事件（SSE 模式）
+                handleStreamEvent(eventType, eventData, finalMessages, previousMessages, placeholderMessage);
+              } else {
+                // 处理完整消息（非 SSE 流式模式）
+                finalMessages.push(streamMessage);
+                setMessages([...previousMessages, ...finalMessages]);
+                
+                // 处理特定类型的消息
+                if (streamMessage.type === "action_execution" && onFunctionCall) {
+                  const actionMessage = streamMessage as ActionExecutionMessage;
+                  executeAction({
+                    onFunctionCall,
+                    previousMessages: [...previousMessages, ...finalMessages],
+                    message: actionMessage,
+                    chatAbortControllerRef,
+                    onError: (error) => console.error("Action execution error:", error),
+                  }).then((resultMessage) => {
+                    if (resultMessage) {
+                      finalMessages.push(resultMessage);
+                      setMessages([...previousMessages, ...finalMessages]);
+                    }
+                  }).catch((error) => {
+                    console.error("Action execution failed:", error);
+                  });
+                } else if (streamMessage.type === "agent_state") {
+                  const agentStateMessage = streamMessage as AgentStateMessage;
+                  
+                  if (agentStateMessage.agentName && agentStateMessage.state) {
+                    setCoagentStatesWithRef(prev => ({
+                      ...prev,
+                      [agentStateMessage.agentName]: {
+                        name: agentStateMessage.agentName,
+                        state: agentStateMessage.state,
+                        running: agentStateMessage.running,
+                        threadId: agentStateMessage.threadId,
+                        active: agentStateMessage.active,
+                      },
+                    }));
+                  }
+                  
+                  if (onCoAgentStateRender && agentStateMessage.state) {
+                    const renderInfo = agentStateMessage.state.render || agentStateMessage.state;
+                    onCoAgentStateRender(renderInfo, agentStateMessage.state);
+                  }
+                }
+              }
+            } catch (error) {
+              console.error("Error processing stream message:", error);
             }
-          } finally {
-            reader.releaseLock();
-          }
-        } else {
-          // 非流式响应
-          const responseData = await response.json();
-          if (responseData.content) {
-            accumulatedContent = responseData.content;
-          }
-        }
+          },
+          onComplete: (completedMessages: Message[]) => {
+            // 流式传输完成
+            console.log("Stream completed with", completedMessages.length, "messages");
+          },
+          onError: (error: Error) => {
+            console.error("Stream error:", error);
+            
+            // 移除占位符消息
+            setMessages(previousMessages);
+            throw error;
+          },
+        });
 
-        // 最终消息
-        if (accumulatedContent) {
+        // 处理最终消息 - streamResult 现在是 Message[] 数组
+        if (Array.isArray(streamResult) && streamResult.length > 0) {
+          // 合并流式消息结果到 finalMessages，避免重复
+          const newStreamMessages = streamResult.filter(msg => 
+            !finalMessages.find(existing => existing.id === msg.id)
+          );
+          finalMessages.push(...newStreamMessages);
+        } 
+        
+        // 确保至少有一个响应消息（如果通过回调累积了内容但没有正式消息）
+        if (finalMessages.length === 0 && accumulatedContent) {
           const finalMessage = new TextMessage({
             id: placeholderMessage.id,
             content: accumulatedContent,
             role: "assistant",
           });
-          finalMessages = [...previousMessages, finalMessage];
+          finalMessages.push(finalMessage);
         }
 
-        setMessages(finalMessages);
+        // 确保界面显示最新状态
+        const completeFinalMessages = [...previousMessages, ...finalMessages];
+        setMessages(completeFinalMessages);
         return finalMessages;
 
       } catch (error) {
@@ -421,10 +600,16 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         // 移除占位符消息
         setMessages(previousMessages);
         
+        // 如果是中止错误，不重新抛出
+        if (error instanceof Error && error.name === 'AbortError') {
+          return previousMessages;
+        }
+        
         throw error;
       } finally {
         setIsLoading(false);
         chatAbortControllerRef.current = null;
+        currentPlaceholderRef.current = null;
       }
     },
     [
@@ -439,11 +624,28 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
       coagentStatesRef,
       threadId,
       options.forwardedParameters,
+      runtimeClient,
+      onFunctionCall,
+      onCoAgentStateRender,
+      setCoagentStatesWithRef,
     ]
   );
 
   // 存储 runChatCompletion 引用
   runChatCompletionRef.current = runChatCompletion;
+
+  // 处理待处理的消息队列
+  React.useEffect(() => {
+    if (!isLoading && pendingAppendsRef.current.length > 0) {
+      const pending = pendingAppendsRef.current.splice(0);
+      const followUp = pending.some((p) => p.followUp);
+      const newMessages = [...messages, ...pending.map((p) => p.message)];
+      setMessages(newMessages);
+      if (followUp) {
+        runChatCompletion(newMessages);
+      }
+    }
+  }, [isLoading, messages, setMessages, runChatCompletion]);
 
   /**
    * 追加消息
@@ -452,25 +654,19 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
     async (message: Message, options: AppendMessageOptions = {}) => {
       const { followUp = true } = options;
 
-      // 添加到待处理队列
-      pendingAppendsRef.current.push({ message, followUp });
+      // 如果正在加载，添加到待处理队列
+      if (isLoading) {
+        pendingAppendsRef.current.push({ message, followUp });
+        return;
+      }
 
-      // 如果当前没有正在进行的请求，开始处理
-      if (!isLoading) {
-        const updatedMessages = [...messages, message];
-        setMessages(updatedMessages);
+      // 立即更新消息列表
+      const updatedMessages = [...messages, message];
+      setMessages(updatedMessages);
 
-        if (followUp) {
-          await runChatCompletion(updatedMessages);
-        }
-
-        // 处理队列中的其他消息
-        while (pendingAppendsRef.current.length > 0) {
-          const pending = pendingAppendsRef.current.shift();
-          if (pending && pending.followUp) {
-            await runChatCompletion();
-          }
-        }
+      // 如果需要跟进，运行聊天完成
+      if (followUp) {
+        await runChatCompletion(updatedMessages);
       }
     },
     [messages, setMessages, isLoading, runChatCompletion]

@@ -30,10 +30,8 @@ export class CopilotWebSocketClient {
   private reconnectDelay = 1000;
 
   constructor(options: CopilotClientOptions) {
-    // 将 HTTP URL 转换为 WebSocket URL
-    this.url = options.url
-      .replace(/^http/, "ws")
-      .replace(/\/$/, "") + "/ws";
+    // 构建 WebSocket URL，支持相对和绝对路径
+    this.url = this.buildWebSocketUrl(options.url);
     
     this.headers = options.headers || {};
     this.errorHandler = new ErrorHandler({
@@ -47,6 +45,41 @@ export class CopilotWebSocketClient {
     }
   }
 
+  // 构建 WebSocket URL
+  private buildWebSocketUrl(url: string): string {
+    try {
+      // 如果是相对路径，构建完整的 URL
+      if (url.startsWith('/')) {
+        if (typeof window !== 'undefined') {
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const host = window.location.host;
+          return `${protocol}//${host}${url.replace(/\/$/, "")}/ws`;
+        } else {
+          // 服务器端或无法获取 window 对象时，返回相对 WebSocket URL
+          return `ws://localhost:3000${url.replace(/\/$/, "")}/ws`;
+        }
+      }
+
+      // 处理绝对路径
+      const httpUrl = new URL(url);
+      
+      // 将协议转换为 WebSocket
+      const wsProtocol = httpUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+      
+      // 构建 WebSocket URL
+      return `${wsProtocol}//${httpUrl.host}${httpUrl.pathname.replace(/\/$/, "")}/ws${httpUrl.search}`;
+      
+    } catch (error) {
+      this.errorHandler?.handleError(new Error(`Failed to build WebSocket URL from "${url}": ${error}`));
+      // 回退到默认 URL
+      if (typeof window !== 'undefined') {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${protocol}//${window.location.host}/api/copilotkit/ws`;
+      }
+      return 'ws://localhost:3000/api/copilotkit/ws';
+    }
+  }
+
   // 连接 WebSocket
   async connect(): Promise<void> {
     if (this.isConnected || this.isConnecting) {
@@ -57,17 +90,36 @@ export class CopilotWebSocketClient {
 
     return new Promise((resolve, reject) => {
       try {
-        // 构建包含认证信息的 URL
-        const wsUrl = new URL(this.url);
+        // 验证 WebSocket URL
+        if (!this.url) {
+          throw new Error("WebSocket URL is not defined");
+        }
+
+        let wsUrl: URL;
+        try {
+          wsUrl = new URL(this.url);
+        } catch (error) {
+          throw new Error(`Invalid WebSocket URL "${this.url}": ${error}`);
+        }
+
+        // 验证 WebSocket 协议
+        if (!wsUrl.protocol.startsWith('ws')) {
+          throw new Error(`Invalid WebSocket protocol "${wsUrl.protocol}". Expected "ws:" or "wss:"`);
+        }
         
         // 将 headers 作为查询参数添加
         Object.entries(this.headers).forEach(([key, value]) => {
-          wsUrl.searchParams.set(key, value);
+          if (value) {
+            wsUrl.searchParams.set(key, value);
+          }
         });
+
+        console.log(`🔌 Attempting WebSocket connection to: ${wsUrl.toString()}`);
 
         this.ws = new WebSocket(wsUrl.toString());
 
         this.ws.onopen = () => {
+          console.log(`✅ WebSocket connected to: ${wsUrl.toString()}`);
           this.isConnected = true;
           this.isConnecting = false;
           this.reconnectAttempts = 0;
@@ -87,12 +139,14 @@ export class CopilotWebSocketClient {
         };
 
         this.ws.onerror = (event) => {
+          console.error(`❌ WebSocket error:`, event);
           this.isConnecting = false;
           this.errorHandler.handleWebSocketError(event);
-          reject(new Error("WebSocket connection failed"));
+          reject(new Error(`WebSocket connection failed to ${wsUrl.toString()}`));
         };
 
         this.ws.onclose = (event) => {
+          console.log(`🔌 WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
           this.isConnected = false;
           this.isConnecting = false;
           
@@ -103,6 +157,7 @@ export class CopilotWebSocketClient {
         };
 
       } catch (error) {
+        console.error(`❌ WebSocket connection setup failed:`, error);
         this.isConnecting = false;
         reject(error);
       }

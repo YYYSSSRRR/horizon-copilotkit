@@ -20,7 +20,7 @@ export function HomePage() {
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const response = await fetch('/api/health')
+        const response = await fetch('/health')
         if (response.ok) {
           const data = await response.json()
           setBackendStatus(`✅ 后端正常运行 (${data.adapter?.provider}: ${data.adapter?.model})`)

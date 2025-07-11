@@ -1,4 +1,4 @@
-import { Message, convertJSONToMessages } from "./message-types";
+import { Message, TextMessage, convertJSONToMessages } from "./message-types";
 
 export interface StreamProcessorOptions {
   onMessage?: (message: Message) => void;
@@ -57,7 +57,7 @@ export class StreamProcessor {
   // 处理 Server-Sent Events (SSE) 流
   async processSSEStream(
     response: Response,
-    parseMessage: (data: string) => Message | null = this.parseSSEMessage
+    parseMessage: (data: string) => Message | null = (data: string) => this.parseSSEMessage(data)
   ): Promise<Message[]> {
     if (!response.body) {
       throw new Error("Response body is null");
@@ -144,8 +144,16 @@ export class StreamProcessor {
 
       try {
         const parsed = JSON.parse(jsonStr);
-        const messages = convertJSONToMessages([parsed]);
-        return messages[0] || null;
+        
+        // 检查是否是流式事件而不是完整消息
+        if (this.isStreamEvent(parsed)) {
+          // 将流式事件转换为伪消息，用于回调处理
+          return this.createPseudoMessageFromStreamEvent(parsed);
+        } else {
+          // 处理完整消息
+          const messages = convertJSONToMessages([parsed]);
+          return messages[0] || null;
+        }
       } catch (error) {
         console.warn("Failed to parse SSE JSON:", jsonStr, error);
         return null;
@@ -153,6 +161,45 @@ export class StreamProcessor {
     }
 
     return null;
+  }
+
+  // 检查是否是流式事件
+  private isStreamEvent(data: any): boolean {
+    const streamEventTypes = [
+      "session_start",
+      "session_end", 
+      "message_start",
+      "text_delta", 
+      "message_end",
+      "action_execution_start",
+      "action_execution_args", 
+      "action_execution_end",
+      "action_execution_result",
+      "error",
+      "ping",
+      "heartbeat"
+    ];
+    
+    return streamEventTypes.includes(data.type);
+  }
+
+  // 将流式事件转换为伪消息，用于回调处理
+  private createPseudoMessageFromStreamEvent(eventData: any): Message | null {
+    const { type, data, timestamp } = eventData;
+    
+    // 创建一个伪文本消息来承载事件数据，用于回调处理
+    // 注意：这不是一个真正的消息，只是为了传递事件数据
+    const pseudoMessage = new TextMessage({
+      content: "",
+      role: "assistant",
+    });
+    
+    // 添加事件特定的属性
+    (pseudoMessage as any).eventType = type;
+    (pseudoMessage as any).eventData = data;
+    (pseudoMessage as any).timestamp = timestamp;
+    
+    return pseudoMessage;
   }
 
   // 处理分块传输编码的响应
