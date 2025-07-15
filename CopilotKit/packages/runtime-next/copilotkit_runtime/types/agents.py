@@ -2,8 +2,11 @@
 代理相关类型定义。
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from .endpoints import EndpointDefinition
 
 
 class Agent(BaseModel):
@@ -29,3 +32,8 @@ class AgentSession(BaseModel):
     agent_name: str = Field(..., description="代理名称")
     thread_id: str = Field(..., description="线程ID")
     config: Dict[str, Any] = Field(default_factory=dict, description="会话配置") 
+
+
+class AgentWithEndpoint(Agent):
+    """包含端点信息的代理"""
+    endpoint: "EndpointDefinition" = Field(..., description="关联的端点")

@@ -13,7 +13,7 @@ CopilotKit Runtime Next - Python实现。
 """
 
 # 核心运行时
-from .runtime import CopilotRuntime
+from .runtime.copilot_runtime import CopilotRuntime
 from .runtime.enhanced_copilot_runtime import EnhancedCopilotRuntime, create_enhanced_runtime
 
 # 类型系统

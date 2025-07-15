@@ -69,3 +69,19 @@ class CopilotServiceAdapter(ABC):
     def supports_function_calling(self) -> bool:
         """是否支持函数调用"""
         return True 
+
+
+class EmptyAdapter(CopilotServiceAdapter):
+    """空适配器，用于agent lock模式"""
+    
+    async def process(self, request: AdapterRequest) -> AdapterResponse:
+        """
+        空适配器不处理请求，抛出错误
+        """
+        raise RuntimeError("EmptyAdapter不应该被用于处理请求。这个适配器只用于agent lock模式。")
+    
+    def supports_streaming(self) -> bool:
+        return False
+    
+    def supports_function_calling(self) -> bool:
+        return False

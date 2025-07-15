@@ -2,9 +2,17 @@
 动作相关类型定义。
 """
 
+from enum import Enum
 from typing import Any, Dict, List, Optional, Callable, Awaitable, Union
 from pydantic import BaseModel, Field
 from .core import Parameter, BaseType
+
+
+class ActionAvailability(str, Enum):
+    """动作可用性枚举"""
+    DISABLED = "disabled"
+    ENABLED = "enabled"
+    REMOTE = "remote"
 
 
 class ActionInput(BaseType):

@@ -9,6 +9,7 @@ from .adapters import *
 from .runtime import *
 from .middleware import *
 from .agents import *
+from .endpoints import *
 
 __all__ = [
     # Core types
@@ -30,6 +31,7 @@ __all__ = [
     "Action",
     "ActionInput",
     "ActionResult",
+    "ActionAvailability",
     
     # Adapter types
     "CopilotServiceAdapter",

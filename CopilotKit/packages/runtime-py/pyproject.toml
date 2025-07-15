@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "copilotkit-runtime-py"
+version = "0.1.0"
+description = "CopilotKit Python Runtime - FastAPI based runtime without GraphQL"
+authors = [
+    {name = "CopilotKit Team", email = "team@copilotkit.dev"}
+]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.4.0",
+    "rxpy>=4.0.0",
+    "httpx>=0.25.0",
+    "python-json-logger>=2.0.7",
+    "typing-extensions>=4.8.0",
+    "asyncio-mqtt>=0.16.0",
+    "sse-starlette>=1.6.5",
+    "python-multipart>=0.0.6",
+    "aiofiles>=23.2.1"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.9.1",
+    "isort>=5.12.0",
+    "mypy>=1.6.0",
+    "pre-commit>=3.4.0"
+]
+
+[project.urls]
+Homepage = "https://copilotkit.ai"
+Repository = "https://github.com/CopilotKit/CopilotKit"
+Documentation = "https://docs.copilotkit.ai"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["copilotkit_runtime*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"] 
