@@ -11,8 +11,8 @@
   },
   "version": "1.8.15-next.0",
   "sideEffects": false,
-  "main": "./dist/index.js",
-  "module": "./dist/index.mjs",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
   "exports": {
     ".": {
       "import": "./dist/index.mjs",

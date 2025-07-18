@@ -1,5 +1,6 @@
 packages:
   - "examples/*"
   - "examples/*/backend"
+  - "examples/*/frontend"
   - "packages/*"
   - "utilities/*"

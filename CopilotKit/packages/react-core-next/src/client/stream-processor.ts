@@ -156,8 +156,13 @@ export class StreamProcessor {
           return null;
         } else {
           // 处理完整消息
-          const messages = convertJSONToMessages([parsed]);
-          return messages[0] || null;
+          if (parsed.type) {
+            const messages = convertJSONToMessages([parsed]);
+            return messages[0] || null;
+          } else {
+            // 处理没有type字段的元数据，不是消息
+            return null;
+          }
         }
       } catch (error) {
         console.warn("Failed to parse SSE JSON:", jsonStr, error);

@@ -40,6 +40,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    // 去重依赖，确保只有一个 React 和 CopilotKit 实例
+    dedupe: ['react', 'react-dom', '@copilotkit/react-core'],
   },
 
   // 优化配置
