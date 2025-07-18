@@ -153,9 +153,29 @@ CopilotKitRemoteEndpoint lets you connect actions and agents written in Python t
 
 ### Parameters
 
+<PropertyReference name="actions" type="Optional[Union[List[Action], Callable[[CopilotKitContext], List[Action]]]]" > 
+The actions to make available to the Copilot.
+</PropertyReference>
+
+<PropertyReference name="agents" type="Optional[Union[List[Agent], Callable[[CopilotKitContext], List[Agent]]]]" > 
+The agents to make available to the Copilot.
+</PropertyReference>
+
 ## CopilotKitContext
 
 CopilotKit Context
 
 ### Parameters
+
+<PropertyReference name="properties" type="Any" required> 
+The properties provided to the frontend via `<CopilotKit properties={...} />`
+</PropertyReference>
+
+<PropertyReference name="frontend_url" type="Optional[str]" > 
+The current URL of the frontend
+</PropertyReference>
+
+<PropertyReference name="headers" type="Mapping[str, str]" required> 
+The headers of the request
+</PropertyReference>
 
