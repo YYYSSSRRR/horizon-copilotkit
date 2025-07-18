@@ -11,8 +11,8 @@
     "debug": "node --inspect-brk=9229 -r ts-node/register src/server.ts"
   },
   "dependencies": {
-    "@copilotkit/runtime": "file:../../CopilotKit/packages/runtime",
-    "@copilotkit/shared": "file:../../CopilotKit/packages/shared",
+    "@copilotkit/runtime": "workspace:*",
+    "@copilotkit/shared": "workspace:*",
     "express": "^4.19.2",
     "cors": "^2.8.5",
     "openai": "4.85.1",

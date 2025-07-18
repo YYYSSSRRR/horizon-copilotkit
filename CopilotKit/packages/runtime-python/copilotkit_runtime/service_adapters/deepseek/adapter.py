@@ -274,8 +274,27 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
             return CopilotRuntimeChatCompletionResponse(thread_id=thread_id)
             
         except Exception as error:
-            self.logger.error("DeepSeek API error", error=str(error))
+            self.logger.error("DeepSeek API error", error=str(error), exc_info=True)
+            # Send error to event stream for better debugging
+            try:
+                await self._send_error_to_stream(event_source, f"DeepSeek API error: {str(error)}")
+            except Exception as stream_error:
+                self.logger.error("Failed to send error to stream", error=str(stream_error))
             raise Exception(f"DeepSeek API request failed: {str(error)}")
+    
+    async def _send_error_to_stream(self, event_source: RuntimeEventSource, error_message: str):
+        """Send error message to event stream."""
+        async def error_handler(event_stream):
+            error_id = str(uuid.uuid4())
+            event_stream.send_text_message_start(error_id)
+            event_stream.send_text_message_content(error_id, f"❌ Error: {error_message}")
+            event_stream.send_text_message_end(error_id)
+            if hasattr(event_stream, 'complete'):
+                event_stream.complete()
+            elif hasattr(event_stream, 'on_completed'):
+                event_stream.on_completed()
+        
+        await event_source.stream(error_handler)
     
     async def _simulate_test_response(self, event_source: RuntimeEventSource):
         """Simulate a test response when using test API key."""
@@ -287,7 +306,10 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
             event_stream.send_text_message_content(test_message_id, 
                 "Hello! This is a test response from DeepSeek adapter (no valid API key configured). Please set DEEPSEEK_API_KEY environment variable to use real DeepSeek API.")
             event_stream.send_text_message_end(test_message_id)
-            event_stream.complete()
+            if hasattr(event_stream, 'complete'):
+                event_stream.complete()
+            elif hasattr(event_stream, 'on_completed'):
+                event_stream.on_completed()
         
         await event_source.stream(stream_handler)
     
@@ -305,10 +327,13 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
                 chunk_count = 0
                 
                 async with http_response_stream as response:
+                    self.logger.info(f"🌐 HTTP Response status: {response.status_code}")
                     
                     if not response.is_success:
                         error_data = await response.aread()
-                        raise Exception(f"DeepSeek API error: {response.status_code} - {error_data}")
+                        error_text = error_data.decode('utf-8') if isinstance(error_data, bytes) else str(error_data)
+                        self.logger.error(f"DeepSeek API HTTP error: {response.status_code} - {error_text}")
+                        raise Exception(f"DeepSeek API error: {response.status_code} - {error_text}")
                     
                     async for line in response.aiter_lines():
                         if not line.startswith("data: "):
@@ -322,7 +347,8 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
                         
                         try:
                             chunk = json.loads(data_str)
-                        except json.JSONDecodeError:
+                        except json.JSONDecodeError as e:
+                            self.logger.warning(f"Failed to parse JSON chunk: {data_str[:100]}... - {str(e)}")
                             continue
                         
                         chunk_count += 1
@@ -407,18 +433,30 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
                     event_stream.send_action_execution_end(current_tool_call_id)
                     
             except Exception as error:
-                self.logger.error("Streaming error", error=str(error))
+                self.logger.error("Streaming error", error=str(error), exc_info=True)
                 if mode == "message":
                     self.logger.debug("Error cleanup: ending text message")
-                    event_stream.send_text_message_end(current_message_id)
+                    try:
+                        event_stream.send_text_message_end(current_message_id)
+                    except Exception as cleanup_error:
+                        self.logger.error("Error in cleanup", error=str(cleanup_error))
                 elif mode == "function" and current_tool_call_id:
                     self.logger.debug("Error cleanup: ending function execution")
-                    event_stream.send_action_execution_end(current_tool_call_id)
-                raise error
+                    try:
+                        event_stream.send_action_execution_end(current_tool_call_id)
+                    except Exception as cleanup_error:
+                        self.logger.error("Error in cleanup", error=str(cleanup_error))
+                # Don't re-raise, let the stream complete gracefully
+                self.logger.warning("Stream error handled, completing event stream")
             
             # Complete event stream
             self.logger.info("Completing event stream")
-            event_stream.complete()
+            if hasattr(event_stream, 'complete'):
+                event_stream.complete()
+            elif hasattr(event_stream, 'on_completed'):
+                event_stream.on_completed()
+            else:
+                self.logger.warning(f"Event stream {type(event_stream)} has no complete method")
         
         await event_source.stream(stream_handler)
     
