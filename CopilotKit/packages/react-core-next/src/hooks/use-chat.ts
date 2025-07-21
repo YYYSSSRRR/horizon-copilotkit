@@ -358,7 +358,6 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
   const runChatCompletion = useCallback(
     async (previousMessages: Message[] = messages, isFollowUp: boolean = false): Promise<Message[]> => {
 
-      
       if (isLoading) {
         return previousMessages;
       }
@@ -569,8 +568,6 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
 
         // 使用 CopilotRuntimeClient 进行流式传输
         const streamResult = await runtimeClient.generateResponse(requestData, true, {
-          enableWebSocket: false,
-          fallbackToRest: true,
           onMessage: (streamMessage: Message) => {
             try {
               // 检查是否是流式事件伪消息

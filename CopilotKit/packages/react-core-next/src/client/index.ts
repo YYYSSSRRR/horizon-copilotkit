@@ -1,7 +1,6 @@
 // 主要客户端类
 export { CopilotRuntimeClient, createCopilotRuntimeClient } from "./copilot-runtime-client";
 export { CopilotRestClient } from "./rest-client";
-export { CopilotWebSocketClient } from "./websocket-client";
 export { StreamProcessor } from "./stream-processor";
 
 // 消息类型
@@ -28,11 +27,6 @@ export type {
 export type {
   StreamResponseOptions,
 } from "./copilot-runtime-client";
-
-export type {
-  WebSocketMessage,
-  StreamChunk,
-} from "./websocket-client";
 
 export type {
   StreamProcessorOptions,

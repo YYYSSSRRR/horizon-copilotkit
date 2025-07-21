@@ -1,5 +1,4 @@
 import { CopilotRestClient } from "./rest-client";
-import { CopilotWebSocketClient } from "./websocket-client";
 import { StreamProcessor } from "./stream-processor";
 import { 
   CopilotClientOptions, 
@@ -12,8 +11,6 @@ import {
 import { Message } from "./message-types";
 
 export interface StreamResponseOptions {
-  enableWebSocket?: boolean;
-  fallbackToRest?: boolean;
   onMessage?: (message: Message) => void;
   onComplete?: (messages: Message[]) => void;
   onError?: (error: Error) => void;
@@ -21,81 +18,28 @@ export interface StreamResponseOptions {
 
 export class CopilotRuntimeClient {
   private restClient: CopilotRestClient;
-  private wsClient: CopilotWebSocketClient;
   private streamProcessor: StreamProcessor;
-  private preferWebSocket: boolean;
 
-  constructor(options: CopilotClientOptions & { preferWebSocket?: boolean }) {
+  constructor(options: CopilotClientOptions) {
     this.restClient = new CopilotRestClient(options);
     this.streamProcessor = new StreamProcessor();
-    this.preferWebSocket = options.preferWebSocket ?? true;
-    
-    // 尝试初始化 WebSocket 客户端，如果失败则禁用 WebSocket
-    try {
-      this.wsClient = new CopilotWebSocketClient(options);
-    } catch (error) {
-      console.warn("⚠️ Failed to initialize WebSocket client, disabling WebSocket support:", error);
-      this.preferWebSocket = false;
-      // 创建一个空的 WebSocket 客户端以避免空引用错误
-      this.wsClient = null as any;
-    }
   }
 
-  // 统一的响应生成接口，自动选择最佳传输方式
+  // 统一的响应生成接口，使用 SSE 流式传输
   async generateResponse(
     data: GenerateResponseRequest, 
     stream = false,
     options: StreamResponseOptions = {}
   ): Promise<ChatResponse | Message[]> {
     if (stream) {
-      return this.generateStreamResponse(data, options);
+      return this.generateSSEStreamResponse(data, options);
     } else {
       return this.restClient.generateResponse(data);
     }
   }
 
-  // 流式响应生成
-  private async generateStreamResponse(
-    data: GenerateResponseRequest,
-    options: StreamResponseOptions
-  ): Promise<Message[]> {
-    const useWebSocket = options.enableWebSocket ?? this.preferWebSocket;
-    
-    if (useWebSocket && this.wsClient) {
-      try {
-        // 优先尝试 WebSocket
-        if (!this.wsClient.isReady()) {
-          console.log("🔌 WebSocket not ready, attempting to connect...");
-          await this.wsClient.connect();
-        }
-
-        console.log("📡 Using WebSocket for streaming response");
-        const stream = this.wsClient.streamResponse(data);
-        return await this.streamProcessor.processStream(stream);
-      } catch (error) {
-        console.error("❌ WebSocket streaming failed:", error);
-        
-        // 如果启用了 REST 回退，则使用 REST API
-        if (options.fallbackToRest !== false) {
-          console.warn("🔄 WebSocket streaming failed, falling back to REST API");
-          return this.generateRESTStreamResponse(data, options);
-        } else {
-          throw error;
-        }
-      }
-    } else {
-      if (useWebSocket && !this.wsClient) {
-        console.warn("⚠️ WebSocket requested but client is not available, using REST API");
-      } else {
-        console.log("📡 Using REST API for streaming response");
-      }
-      // 直接使用 REST API 流式请求
-      return this.generateRESTStreamResponse(data, options);
-    }
-  }
-
-  // REST API 流式响应（使用 Server-Sent Events 或分块传输）
-  private async generateRESTStreamResponse(
+  // SSE 流式响应（使用 Server-Sent Events）
+  private async generateSSEStreamResponse(
     data: GenerateResponseRequest,
     options: StreamResponseOptions
   ): Promise<Message[]> {
@@ -175,41 +119,11 @@ export class CopilotRuntimeClient {
   // 中止所有请求
   abort() {
     this.restClient.abort();
-    if (this.wsClient) {
-      this.wsClient.disconnect();
-    }
   }
 
   // 健康检查
   async healthCheck(): Promise<boolean> {
     return this.restClient.healthCheck();
-  }
-
-  // 连接状态检查
-  isWebSocketConnected(): boolean {
-    return this.wsClient?.isReady() || false;
-  }
-
-  // 强制连接 WebSocket
-  async connectWebSocket(): Promise<void> {
-    if (!this.wsClient) {
-      throw new Error("WebSocket client is not available");
-    }
-    if (!this.wsClient.isReady()) {
-      await this.wsClient.connect();
-    }
-  }
-
-  // 断开 WebSocket 连接
-  disconnectWebSocket(): void {
-    if (this.wsClient) {
-      this.wsClient.disconnect();
-    }
-  }
-
-  // 设置传输偏好
-  setTransportPreference(preferWebSocket: boolean): void {
-    this.preferWebSocket = preferWebSocket;
   }
 
   // 创建流式转换器（用于高级用例）
@@ -220,8 +134,6 @@ export class CopilotRuntimeClient {
   // 获取客户端统计信息
   getClientStats() {
     return {
-      preferWebSocket: this.preferWebSocket,
-      webSocketConnected: this.wsClient?.isReady() || false,
       lastMessages: this.streamProcessor.getMessages(),
     };
   }
