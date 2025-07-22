@@ -386,15 +386,82 @@ class CopilotRuntimeServer:
         return str(uuid.uuid4())
     
     def _convert_to_messages(self, messages: List[Dict[str, Any]]) -> List[Message]:
-        """转换消息格式"""
+        """转换消息格式 - 匹配前端扁平化消息结构"""
         converted_messages = []
+        
         for i, msg in enumerate(messages):
-            message = Message(
-                id=msg.get("id", f"msg_{i}_{datetime.now().timestamp()}"),
-                role=msg.get("role", "user"),
-                content=msg.get("content", "")
-            )
-            converted_messages.append(message)
+            if not isinstance(msg, dict):
+                continue
+                
+            message_type = msg.get("type", "text")
+            message_id = msg.get("id", f"msg_{i}_{datetime.now().timestamp()}")
+            
+            if message_type == "text":
+                # 处理文本消息
+                role = msg.get("role", "user")
+                if role in ["user", "assistant", "system"]:  # 只处理有效角色
+                    message = Message(
+                        id=message_id,
+                        role=role,
+                        content=msg.get("content", ""),
+                        text_content=msg.get("content", "")
+                    )
+                    converted_messages.append(message)
+            
+            elif message_type == "action_execution":
+                # 处理动作执行消息
+                message = Message(
+                    id=message_id,
+                    role="assistant",  # 动作执行消息通常是 assistant 角色
+                    content="",  # 动作执行消息内容为空
+                    name=msg.get("name", ""),
+                    arguments=msg.get("arguments", {})
+                )
+                converted_messages.append(message)
+            
+            elif message_type == "result":
+                # 处理结果消息
+                message = Message(
+                    id=message_id,
+                    role="function",  # 结果消息使用 function 角色（Python 没有 tool 角色）
+                    content=str(msg.get("result", "")),  # result 作为 content
+                    result=msg.get("result", ""),
+                    action_execution_id=msg.get("actionExecutionId", "")  # 注意字段名的差异
+                )
+                converted_messages.append(message)
+            
+            elif message_type == "agent_state":
+                # 处理代理状态消息
+                message = Message(
+                    id=message_id,
+                    role="assistant",
+                    content="",  # 状态消息内容可以为空或存储状态信息
+                )
+                converted_messages.append(message)
+            
+            elif message_type == "image":
+                # 处理图像消息
+                message = Message(
+                    id=message_id,
+                    role=msg.get("role", "user"),
+                    content=msg.get("content", ""),
+                    # 可以添加图像相关字段如果 Message 模型支持
+                )
+                converted_messages.append(message)
+            
+            else:
+                # 未知类型，尝试作为文本消息处理（向后兼容）
+                if "role" in msg and "content" in msg:
+                    role = msg.get("role")
+                    if role in ["user", "assistant", "system"]:
+                        message = Message(
+                            id=message_id,
+                            role=role,
+                            content=msg.get("content", ""),
+                            text_content=msg.get("content", "")
+                        )
+                        converted_messages.append(message)
+        
         return converted_messages
     
     def _get_available_actions(self) -> List[ActionInput]:
