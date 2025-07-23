@@ -365,17 +365,13 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
       setIsLoading(true);
 
       try {
-        // 创建占位符消息
-        const placeholderMessage = new TextMessage({
-          content: "",
-          role: "assistant",
-        });
+        // 为流式内容生成唯一 ID
+        const streamingMessageId = randomId();
         
-        currentPlaceholderRef.current = placeholderMessage;
         chatAbortControllerRef.current = new AbortController();
 
-        // 更新消息列表
-        setMessages([...previousMessages, placeholderMessage]);
+        // 保持原有消息列表
+        setMessages([...previousMessages]);
 
         // 获取系统消息
         const systemMessage = makeSystemMessageCallback();
@@ -407,7 +403,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         let finalMessages: Message[] = [...previousMessages];
 
         // 处理流式事件的辅助函数
-        const handleStreamEvent = (eventType: string, eventData: any, finalMessages: Message[], previousMessages: Message[], placeholderMessage: TextMessage) => {
+        const handleStreamEvent = (eventType: string, eventData: any, finalMessages: Message[], previousMessages: Message[], streamingMessageId: string) => {
           switch (eventType) {
             case "session_start":
               // 会话开始，可以更新线程ID等信息
@@ -425,38 +421,17 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               console.log("🏁 Session ended:", eventData);
               break;
               
-            case "text_delta":
-              accumulatedContent += eventData.delta || "";
-              // 实时更新占位符消息
-              const updatedMessage = new TextMessage({
-                id: placeholderMessage.id,
-                content: accumulatedContent,
-                role: "assistant",
-              });
-              
-              // 更新finalMessages以保持同步
-              const currentMessageIndex = finalMessages.findIndex(msg => msg.id === placeholderMessage.id);
-              if (currentMessageIndex >= 0) {
-                finalMessages[currentMessageIndex] = updatedMessage;
-              } else {
-                finalMessages.push(updatedMessage);
-              }
-              
-              // 实时更新界面
-              setMessages([...previousMessages, ...finalMessages]);
-              break;
-              
             case "text_content":
               // 处理累加内容（匹配 TypeScript 版本的行为）
               const cumulativeContent = eventData.content || "";
               const cumulativeMessage = new TextMessage({
-                id: placeholderMessage.id,
+                id: streamingMessageId,
                 content: cumulativeContent,
                 role: "assistant",
               });
               
               // 更新finalMessages
-              const cumulativeMessageIndex = finalMessages.findIndex(msg => msg.id === placeholderMessage.id);
+              const cumulativeMessageIndex = finalMessages.findIndex(msg => msg.id === streamingMessageId);
               if (cumulativeMessageIndex >= 0) {
                 finalMessages[cumulativeMessageIndex] = cumulativeMessage;
               } else {
@@ -469,7 +444,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               
             case "text_end":
               // 文本消息结束，标记为成功状态
-              const endMessageIndex = finalMessages.findIndex(msg => msg.id === eventData.messageId);
+              const endMessageIndex = finalMessages.findIndex(msg => msg.id === streamingMessageId);
               if (endMessageIndex >= 0) {
                 finalMessages[endMessageIndex].status = { code: "success" };
                 setMessages([...previousMessages, ...finalMessages]);
@@ -499,8 +474,13 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               if (existingActionIndex >= 0) {
                 const existingAction = finalMessages[existingActionIndex] as ActionExecutionMessage;
                 
+                // 确保 arguments 对象存在
+                if (!existingAction.arguments) {
+                  existingAction.arguments = {};
+                }
+                
                 // 累积参数字符串片段，类似 GraphQL 版本的处理方式
-                if (!existingAction.arguments.__rawArgs) {
+                if (typeof existingAction.arguments.__rawArgs !== 'string') {
                   existingAction.arguments.__rawArgs = "";
                 }
                 existingAction.arguments.__rawArgs += argsData.args || "";
@@ -530,7 +510,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               
               if (actionToExecute) {
                 // 确保在结束时参数被正确解析
-                if (actionToExecute.arguments.__rawArgs) {
+                if (actionToExecute.arguments && actionToExecute.arguments.__rawArgs) {
                   const finalParsedArgs = parsePartialJson(actionToExecute.arguments.__rawArgs);
                   if (finalParsedArgs !== null) {
                     const { __rawArgs, ...cleanArgs } = finalParsedArgs;
@@ -607,7 +587,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               
               if (eventType) {
                 // 处理流式事件（SSE 模式）
-                handleStreamEvent(eventType, eventData, finalMessages, previousMessages, placeholderMessage);
+                handleStreamEvent(eventType, eventData, finalMessages, previousMessages, streamingMessageId);
               } else {
                 // 处理完整消息（非 SSE 流式模式）
                 finalMessages.push(streamMessage);
@@ -702,7 +682,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         // 确保至少有一个响应消息（如果通过回调累积了内容但没有正式消息）
         if (finalMessages.length === 0 && accumulatedContent) {
           const finalMessage = new TextMessage({
-            id: placeholderMessage.id,
+            id: streamingMessageId,
             content: accumulatedContent,
             role: "assistant",
           });

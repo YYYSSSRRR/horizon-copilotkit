@@ -441,11 +441,16 @@ class CopilotHandlerComplete:
                     )
                     
                 elif event.type == RuntimeEventTypes.ACTION_EXECUTION_ARGS:
-                    # Action execution arguments - stream these but don't yield to client
-                    # This matches TypeScript behavior where args are collected but not directly sent
+                    # Action execution arguments - stream these to client (like TypeScript pushArgumentsChunk)
                     handler_logger.debug(f"Action execution args: {getattr(event, 'args', '')}")
-                    # Note: TypeScript collects these in argumentChunks but doesn't send individual chunks to client
-                    pass
+                    yield SSEMessage(
+                        event="action_execution_args",
+                        data=json.dumps({
+                            "actionExecutionId": getattr(event, 'action_execution_id', ''),
+                            "args": getattr(event, 'args', ''),
+                            "createdAt": datetime.now().isoformat()
+                        })
+                    )
                     
                 elif event.type == RuntimeEventTypes.ACTION_EXECUTION_RESULT:
                     # Action execution result (like TypeScript version)

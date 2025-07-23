@@ -244,6 +244,7 @@ export function createMessageFromJSON(data: any): Message {
     case "action_execution":
       return new ActionExecutionMessage({
         ...data,
+        arguments: data.arguments || {}, // 确保 arguments 不为 undefined
         createdAt: new Date(data.createdAt),
       });
     case "result":

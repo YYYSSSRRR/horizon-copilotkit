@@ -179,7 +179,6 @@ export class StreamProcessor {
       "session_start",
       "session_end", 
       "message_start",
-      "text_delta", 
       "text_content", // 新增：支持累加内容事件
       "text_end", // 文本消息结束
       "message_end",
@@ -206,10 +205,17 @@ export class StreamProcessor {
       role: "assistant",
     });
     
-    // 添加事件特定的属性
-    (pseudoMessage as any).eventType = type;
-    (pseudoMessage as any).eventData = data;
-    (pseudoMessage as any).timestamp = timestamp;
+    // 对于 action_execution_args，数据在顶层而不是嵌套在 data 中
+    if (type === "action_execution_args") {
+      (pseudoMessage as any).eventType = type;
+      (pseudoMessage as any).eventData = eventData; // 使用整个 eventData 对象
+      (pseudoMessage as any).timestamp = timestamp;
+    } else {
+      // 添加事件特定的属性
+      (pseudoMessage as any).eventType = type;
+      (pseudoMessage as any).eventData = data;
+      (pseudoMessage as any).timestamp = timestamp;
+    }
     
     return pseudoMessage;
   }

@@ -611,6 +611,10 @@ class CopilotRuntimeServer:
                         # Add type field for action execution messages
                         data_dict["type"] = "action_execution"
                         yield f"data: {json.dumps(data_dict)}\n\n"
+                    elif sse_message.event == "action_execution_args":
+                        # Add type field for action execution args events
+                        data_dict["type"] = "action_execution_args"
+                        yield f"data: {json.dumps(data_dict)}\n\n"
                     elif sse_message.event in ["action_execution_result"]:
                         # Add type field for result messages
                         data_dict["type"] = "result"
