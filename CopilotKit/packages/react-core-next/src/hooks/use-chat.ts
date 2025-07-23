@@ -664,8 +664,8 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               return false;
             }
             
-            // 过滤掉空内容的 TextMessage（可能是事件残留）
-            if (msg.type === "text" && (msg as TextMessage).content === "") {
+            // 过滤掉空内容的 TextMessage（可能是事件残留或占位符消息）
+            if (msg.type === "text" && (!((msg as TextMessage).content) || (msg as TextMessage).content === "")) {
               return false;
             }
             

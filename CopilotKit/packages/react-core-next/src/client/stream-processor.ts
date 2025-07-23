@@ -157,6 +157,11 @@ export class StreamProcessor {
         } else {
           // 处理完整消息
           if (parsed.type) {
+            // 过滤掉空内容的文本消息（通常是占位符消息）
+            if (parsed.type === "text" && (!parsed.content || parsed.content === "")) {
+              return null;
+            }
+            
             const messages = convertJSONToMessages([parsed]);
             return messages[0] || null;
           } else {
