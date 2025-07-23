@@ -180,6 +180,8 @@ export class StreamProcessor {
       "session_end", 
       "message_start",
       "text_delta", 
+      "text_content", // 新增：支持累加内容事件
+      "text_end", // 文本消息结束
       "message_end",
       "action_execution_start",
       "action_execution_args", 

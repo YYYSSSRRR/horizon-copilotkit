@@ -446,6 +446,37 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               setMessages([...previousMessages, ...finalMessages]);
               break;
               
+            case "text_content":
+              // 处理累加内容（匹配 TypeScript 版本的行为）
+              const cumulativeContent = eventData.content || "";
+              const cumulativeMessage = new TextMessage({
+                id: placeholderMessage.id,
+                content: cumulativeContent,
+                role: "assistant",
+              });
+              
+              // 更新finalMessages
+              const cumulativeMessageIndex = finalMessages.findIndex(msg => msg.id === placeholderMessage.id);
+              if (cumulativeMessageIndex >= 0) {
+                finalMessages[cumulativeMessageIndex] = cumulativeMessage;
+              } else {
+                finalMessages.push(cumulativeMessage);
+              }
+              
+              // 实时更新界面
+              setMessages([...previousMessages, ...finalMessages]);
+              break;
+              
+            case "text_end":
+              // 文本消息结束，标记为成功状态
+              const endMessageIndex = finalMessages.findIndex(msg => msg.id === eventData.messageId);
+              if (endMessageIndex >= 0) {
+                finalMessages[endMessageIndex].status = { code: "success" };
+                setMessages([...previousMessages, ...finalMessages]);
+              }
+              console.log("📝 Text message completed:", eventData);
+              break;
+              
             case "action_execution_start":
               const actionStartData = eventData;
               const actionMessage = new ActionExecutionMessage({

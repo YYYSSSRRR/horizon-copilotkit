@@ -811,24 +811,22 @@ def create_fastapi_event_data(event: RuntimeEvent) -> Dict[str, Any]:
             "status": {"code": "pending"}
         }
     elif isinstance(event, TextMessageContentEvent):
-        # Update existing text message with content
+        # Convert to text_content format for frontend (cumulative content like TypeScript)
         return {
-            "id": event.message_id,
-            "type": "text",
-            "role": "assistant",
-            "content": event.content,
-            "createdAt": datetime.now().isoformat(),
-            "status": {"code": "pending"}
+            "type": "text_content",
+            "data": {
+                "content": event.content,  # 累加的完整内容
+                "messageId": event.message_id
+            }
         }
     elif isinstance(event, TextMessageEndEvent):
-        # Finalize text message
+        # Text message end - signal completion
         return {
-            "id": event.message_id,
-            "type": "text",
-            "role": "assistant",
-            "content": "",  # Final content should be set by last content event
-            "createdAt": datetime.now().isoformat(),
-            "status": {"code": "success"}
+            "type": "text_end",
+            "data": {
+                "messageId": event.message_id,
+                "status": "completed"
+            }
         }
     elif isinstance(event, ActionExecutionStartEvent):
         # Create action execution message

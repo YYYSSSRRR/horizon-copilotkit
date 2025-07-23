@@ -578,9 +578,34 @@ class CopilotRuntimeServer:
                     data_dict = json.loads(sse_message.data)
                     
                     # Convert certain events to proper frontend message format
-                    if sse_message.event in ["text_message_start", "text_message_content", "text_message_end"]:
-                        # Add type field for text messages
+                    if sse_message.event == "text_message_start":
+                        # Add type field for text message start
                         data_dict["type"] = "text"
+                        yield f"data: {json.dumps(data_dict)}\n\n"
+                    elif sse_message.event == "text_message_end":
+                        # Text message end events are handled by create_fastapi_event_data
+                        if data_dict.get("type") == "text_end":
+                            yield f"data: {json.dumps(data_dict)}\n\n"
+                        else:
+                            # Skip old format text_message_end events
+                            continue
+                    elif sse_message.event == "text_message_content":
+                        # Convert text_message_content to text_content format
+                        if data_dict.get("type") == "text_content":
+                            # Already in correct format
+                            yield f"data: {json.dumps(data_dict)}\n\n"
+                        else:
+                            # Need to convert format
+                            content_event = {
+                                "type": "text_content",
+                                "data": {
+                                    "content": data_dict.get("content", ""),
+                                    "messageId": data_dict.get("id", "")
+                                }
+                            }
+                            yield f"data: {json.dumps(content_event)}\n\n"
+                    elif data_dict.get("type") == "text_content":
+                        # Forward text_content events directly (cumulative content)
                         yield f"data: {json.dumps(data_dict)}\n\n"
                     elif sse_message.event in ["action_execution_start"]:
                         # Add type field for action execution messages

@@ -321,6 +321,7 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
             current_message_id = ""
             current_tool_call_id = ""
             current_action_name = ""
+            accumulated_content = ""  # 累加内容，匹配 TypeScript 版本
             
             try:
                 self.logger.info("🔄 Starting stream iteration...")
@@ -378,6 +379,7 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
                         if mode == "message" and tool_call and tool_call.get("id"):
                             self.logger.debug("Switching from message to function mode")
                             mode = None
+                            accumulated_content = ""  # 重置累加内容
                             event_stream.send_text_message_end(message_id=current_message_id)
                         elif mode == "function" and (not tool_call or tool_call.get("id")):
                             self.logger.debug("Switching from function to message mode")
@@ -400,14 +402,19 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
                                 self.logger.debug("Starting message mode")
                                 mode = "message"
                                 current_message_id = chunk.get("id", str(uuid.uuid4()))
+                                accumulated_content = ""  # 重置累加内容
                                 event_stream.send_text_message_start(current_message_id)
                         
                         # Send content events
                         if mode == "message" and content:
-                            self.logger.debug("Sending text content", content=content)
+                            # 累加内容以匹配 TypeScript 版本的行为
+                            accumulated_content += content
+                            self.logger.debug("Sending accumulated text content", 
+                                            delta=content, 
+                                            accumulated=accumulated_content)
                             event_stream.send_text_message_content(
                                 current_message_id,
-                                content
+                                accumulated_content  # 发送累加的内容，而不是增量
                             )
                         elif mode == "function" and tool_call and tool_call.get("function", {}).get("arguments"):
                             args = tool_call["function"]["arguments"]
