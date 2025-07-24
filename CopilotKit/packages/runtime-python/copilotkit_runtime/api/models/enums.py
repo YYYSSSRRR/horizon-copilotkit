@@ -10,6 +10,7 @@ class MessageRole(str, Enum):
     ASSISTANT = "assistant"
     SYSTEM = "system"
     FUNCTION = "function"
+    TOOL = "tool"
 
 
 class ActionInputAvailability(str, Enum):

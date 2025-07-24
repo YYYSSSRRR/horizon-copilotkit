@@ -18,7 +18,7 @@ export abstract class BaseMessage {
   constructor(props: Partial<BaseMessage>) {
     this.id = props.id ?? randomId();
     this.createdAt = props.createdAt ?? new Date();
-    this.status = props.status ?? { code: "pending" };
+    this.status = props.status ?? { code: "success" };
     Object.assign(this, props);
   }
 

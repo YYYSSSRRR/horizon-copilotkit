@@ -400,10 +400,12 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         };
 
         let accumulatedContent = "";
-        let finalMessages: Message[] = [...previousMessages];
+        let finalMessages: Message[] = [];
+        let syncedMessages: Message[] = [];
+        let newMessages: Message[] = [];
 
         // 处理流式事件的辅助函数
-        const handleStreamEvent = (eventType: string, eventData: any, finalMessages: Message[], previousMessages: Message[], streamingMessageId: string) => {
+        const handleStreamEvent = (eventType: string, eventData: any, streamingMessageId: string) => {
           switch (eventType) {
             case "session_start":
               // 会话开始，可以更新线程ID等信息
@@ -430,24 +432,31 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
                 role: "assistant",
               });
               
-              // 更新finalMessages
-              const cumulativeMessageIndex = finalMessages.findIndex(msg => msg.id === streamingMessageId);
+              // 更新newMessages
+              const cumulativeMessageIndex = newMessages.findIndex(msg => msg.id === streamingMessageId);
               if (cumulativeMessageIndex >= 0) {
-                finalMessages[cumulativeMessageIndex] = cumulativeMessage;
+                newMessages[cumulativeMessageIndex] = cumulativeMessage;
               } else {
-                finalMessages.push(cumulativeMessage);
+                newMessages.push(cumulativeMessage);
               }
               
-              // 实时更新界面
-              setMessages([...previousMessages, ...finalMessages]);
+              // 构造最终消息列表并实时更新界面
+              finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
+              setMessages(finalMessages);
+
+              if (isFollowUp && !onFunctionCall) {
+                console.log("📝 Text completed, no actions to execute, setting loading to false");
+                setIsLoading(false);
+              }
               break;
               
             case "text_end":
               // 文本消息结束，标记为成功状态
-              const endMessageIndex = finalMessages.findIndex(msg => msg.id === streamingMessageId);
+              const endMessageIndex = newMessages.findIndex(msg => msg.id === streamingMessageId);
               if (endMessageIndex >= 0) {
-                finalMessages[endMessageIndex].status = { code: "success" };
-                setMessages([...previousMessages, ...finalMessages]);
+                newMessages[endMessageIndex].status = { code: "success" };
+                finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
+                setMessages(finalMessages);
               }
               console.log("📝 Text message completed:", eventData);
               break;
@@ -461,18 +470,19 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
                 parentMessageId: actionStartData.parentMessageId,
               });
               
-              finalMessages.push(actionMessage);
-              setMessages([...previousMessages, ...finalMessages]);
+              newMessages.push(actionMessage);
+              finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
+              setMessages(finalMessages);
               break;
               
             case "action_execution_args":
               const argsData = eventData;
-              const existingActionIndex = finalMessages.findIndex(
+              const existingActionIndex = newMessages.findIndex(
                 msg => msg.isActionExecutionMessage() && msg.id === argsData.actionExecutionId
               );
               
               if (existingActionIndex >= 0) {
-                const existingAction = finalMessages[existingActionIndex] as ActionExecutionMessage;
+                const existingAction = newMessages[existingActionIndex] as ActionExecutionMessage;
                 
                 // 确保 arguments 对象存在
                 if (!existingAction.arguments) {
@@ -497,14 +507,15 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
                 }
                 // 如果解析失败（parsedArgs === null），继续累积
                 
-                setMessages([...previousMessages, ...finalMessages]);
+                finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
+                setMessages(finalMessages);
               }
               break;
               
             case "action_execution_end":
               // 动作执行结束，确保参数完整并可能需要执行客户端动作
               const endData = eventData;
-              const actionToExecute = finalMessages.find(
+              const actionToExecute = newMessages.find(
                 msg => msg.isActionExecutionMessage() && msg.id === endData.actionExecutionId
               ) as ActionExecutionMessage;
               
@@ -522,21 +533,23 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
                 if (onFunctionCall) {
                   executeAction({
                     onFunctionCall,
-                    previousMessages: [...previousMessages, ...finalMessages],
+                    previousMessages: constructFinalMessages(syncedMessages, previousMessages, newMessages),
                     message: actionToExecute,
                     chatAbortControllerRef,
                     onError: (error) => console.error("Action execution error:", error),
                   }).then((resultMessage) => {
                     if (resultMessage) {
-                      finalMessages.push(resultMessage);
-                      setMessages([...previousMessages, ...finalMessages]);
+                      newMessages.push(resultMessage);
+                      finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
+                      setMessages(finalMessages);
                     }
                   }).catch((error) => {
                     console.error("Action execution failed:", error);
                   });
                 }
                 
-                setMessages([...previousMessages, ...finalMessages]);
+                finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
+                setMessages(finalMessages);
               }
               break;
               
@@ -550,8 +563,9 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
                 result: resultData.success ? resultData.result : `Error: ${resultData.error}`,
               });
               
-              finalMessages.push(resultMessage);
-              setMessages([...previousMessages, ...finalMessages]);
+              newMessages.push(resultMessage);
+              finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
+              setMessages(finalMessages);
               
               if (resultData.success) {
                 console.log(`✅ Action '${resultData.actionName}' completed:`, resultData.result);
@@ -587,25 +601,27 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               
               if (eventType) {
                 // 处理流式事件（SSE 模式）
-                handleStreamEvent(eventType, eventData, finalMessages, previousMessages, streamingMessageId);
+                handleStreamEvent(eventType, eventData, streamingMessageId);
               } else {
                 // 处理完整消息（非 SSE 流式模式）
-                finalMessages.push(streamMessage);
-                setMessages([...previousMessages, ...finalMessages]);
+                newMessages.push(streamMessage);
+                finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
+                setMessages(finalMessages);
                 
                 // 处理特定类型的消息
                 if (streamMessage.type === "action_execution" && onFunctionCall) {
                   const actionMessage = streamMessage as ActionExecutionMessage;
                   executeAction({
                     onFunctionCall,
-                    previousMessages: [...previousMessages, ...finalMessages],
+                    previousMessages: finalMessages,
                     message: actionMessage,
                     chatAbortControllerRef,
                     onError: (error) => console.error("Action execution error:", error),
                   }).then((resultMessage) => {
                     if (resultMessage) {
-                      finalMessages.push(resultMessage);
-                      setMessages([...previousMessages, ...finalMessages]);
+                      newMessages.push(resultMessage);
+                      finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
+                      setMessages(finalMessages);
                     }
                   }).catch((error) => {
                     console.error("Action execution failed:", error);
@@ -637,8 +653,9 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
             }
           },
           onComplete: (completedMessages: Message[]) => {
-            // 流式传输完成
-            console.log("Stream completed with", completedMessages.length, "messages");
+            // 🔧 修复：流式传输完成时，如果不是后续请求且没有需要执行的动作，可以提前设置 loading 为 false
+            // 这样可以避免等到 finally 块才设置，提升用户体验
+            console.log("🏁 Stream completed with", completedMessages.length, "messages");
           },
           onError: (error: Error) => {
             console.error("Stream error:", error);
@@ -672,22 +689,25 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
             return true;
           });
           
-          // 合并真正的消息到 finalMessages，避免重复
+          // 合并真正的消息到 newMessages，避免重复
           const newStreamMessages = realMessages.filter(msg => 
-            !finalMessages.find(existing => existing.id === msg.id)
+            !newMessages.find(existing => existing.id === msg.id)
           );
-          finalMessages.push(...newStreamMessages);
+          newMessages.push(...newStreamMessages);
         } 
         
         // 确保至少有一个响应消息（如果通过回调累积了内容但没有正式消息）
-        if (finalMessages.length === 0 && accumulatedContent) {
+        if (newMessages.length === 0 && accumulatedContent) {
           const finalMessage = new TextMessage({
             id: streamingMessageId,
             content: accumulatedContent,
             role: "assistant",
           });
-          finalMessages.push(finalMessage);
+          newMessages.push(finalMessage);
         }
+
+        // 构造最终消息列表
+        finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
 
         // 将所有消息状态更新为 success（流式传输完成）
         finalMessages.forEach(msg => {
@@ -695,6 +715,15 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
             msg.status = { code: "success" };
           }
         });
+        
+        // 🔧 提前检查：如果流式内容已完成且没有需要执行的动作，可以提前设置 loading 为 false
+        // 避免在有内容显示时仍然显示 loading 状态
+        const hasCompletedContent = newMessages.some(msg => 
+          msg.type === "text" && msg.content && msg.status.code === "success"
+        );
+        if (hasCompletedContent && !isFollowUp) {
+          console.log("📝 Content completed, checking if can set loading to false early");
+        }
         
         // 执行前端动作（只处理状态不是 pending 的消息，类似 react-core 行为）
         if (onFunctionCall && finalMessages.length > 0) {
@@ -719,14 +748,18 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               try {
                 const resultMessage = await executeAction({
                   onFunctionCall,
-                  previousMessages: [...previousMessages, ...finalMessages],
+                  previousMessages: finalMessages,
                   message: message as ActionExecutionMessage,
                   chatAbortControllerRef,
                   onError: (error) => console.error("Action execution error:", error),
                 });
                 
                 if (resultMessage) {
-                  finalMessages.push(resultMessage);
+                  // 找到消息在 finalMessages 中的位置，并插入结果消息
+                  const messageIndex = finalMessages.findIndex(msg => msg.id === message.id);
+                  if (messageIndex !== -1) {
+                    finalMessages.splice(messageIndex + 1, 0, resultMessage);
+                  }
                 }
               } catch (error) {
                 console.error("Action execution failed:", error);
@@ -741,7 +774,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         
         // 🔑 关键修复：检查是否需要后续请求（类似 react-core 行为）
         // 只有在首次请求且执行了动作的情况下才触发后续请求
-        const didExecuteAction = finalMessages.some(msg => msg.isResultMessage());
+        const didExecuteAction = newMessages.some(msg => msg.isResultMessage());
         
         if (
           !isFollowUp && // 只有非后续请求才能触发后续请求，避免死循环
@@ -759,7 +792,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
           return followUpMessages;
         }
         
-        return finalMessages;
+        return newMessages;
 
       } catch (error) {
         console.error('Chat completion error:', error);
@@ -774,6 +807,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         
         throw error;
       } finally {
+        // 确保 loading 状态被设置为 false（可能已经在流式处理中设置过了）
         setIsLoading(false);
         chatAbortControllerRef.current = null;
         currentPlaceholderRef.current = null;

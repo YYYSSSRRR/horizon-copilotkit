@@ -1086,16 +1086,34 @@ class CopilotRuntime:
         for msg_input in message_inputs:
             # Handle both dictionary and object formats
             if isinstance(msg_input, dict):
-                # Direct dictionary access
-                if 'text_message' in msg_input and msg_input['text_message']:
+                # Handle action execution messages
+                if 'type' in msg_input and msg_input['type'] == 'action_execution':
+                    messages.append(Message(
+                        id=msg_input.get('id', ''),
+                        role='assistant',
+                        content='',
+                        name=msg_input.get('name', ''),
+                        arguments=json.loads(msg_input.get('arguments', '{}')) if isinstance(msg_input.get('arguments'), str) else msg_input.get('arguments', {})
+                    ))
+                # Handle result messages
+                elif 'type' in msg_input and msg_input['type'] == 'result':
+                    messages.append(Message(
+                        id=msg_input.get('id', ''),
+                        role='tool',
+                        content=str(msg_input.get('result', '')),
+                        result=str(msg_input.get('result', '')),
+                        action_execution_id=msg_input.get('action_execution_id', '')
+                    ))
+                # Handle text messages with text_message field
+                elif 'text_message' in msg_input and msg_input['text_message']:
                     text_msg = msg_input['text_message']
                     messages.append(Message(
                         id=msg_input.get('id', ''),
                         role=text_msg.get('role', 'user') if isinstance(text_msg, dict) else getattr(text_msg, 'role', 'user'),
                         content=text_msg.get('content', '') if isinstance(text_msg, dict) else getattr(text_msg, 'content', '')
                     ))
+                # Handle direct text message format
                 elif 'type' in msg_input and msg_input['type'] == 'text':
-                    # Handle direct text message format
                     messages.append(Message(
                         id=msg_input.get('id', ''),
                         role=msg_input.get('role', 'user'),
@@ -1103,7 +1121,31 @@ class CopilotRuntime:
                     ))
             else:
                 # Object format (Pydantic model or similar)
-                if hasattr(msg_input, 'text_message') and msg_input.text_message:
+                if hasattr(msg_input, 'action_execution_message') and msg_input.action_execution_message:
+                    action_msg = msg_input.action_execution_message
+                    arguments = getattr(action_msg, 'arguments', '{}')
+                    if isinstance(arguments, str):
+                        try:
+                            arguments = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            arguments = {}
+                    messages.append(Message(
+                        id=getattr(msg_input, 'id', ''),
+                        role='assistant',
+                        content='',
+                        name=getattr(action_msg, 'name', ''),
+                        arguments=arguments
+                    ))
+                elif hasattr(msg_input, 'result_message') and msg_input.result_message:
+                    result_msg = msg_input.result_message
+                    messages.append(Message(
+                        id=getattr(msg_input, 'id', ''),
+                        role='tool',
+                        content=str(getattr(result_msg, 'result', '')),
+                        result=str(getattr(result_msg, 'result', '')),
+                        action_execution_id=getattr(result_msg, 'action_execution_id', '')
+                    ))
+                elif hasattr(msg_input, 'text_message') and msg_input.text_message:
                     text_msg = msg_input.text_message
                     role = text_msg.role if hasattr(text_msg, 'role') else text_msg.get('role', 'user')
                     content = text_msg.content if hasattr(text_msg, 'content') else text_msg.get('content', '')

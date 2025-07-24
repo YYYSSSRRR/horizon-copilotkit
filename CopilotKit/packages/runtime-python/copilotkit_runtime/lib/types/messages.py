@@ -53,7 +53,9 @@ class Message(BaseModel):
     
     def is_result_message(self) -> bool:
         """Check if this is a result message."""
-        return self.role == "tool" or (self.result is not None and self.action_execution_id is not None)
+        return (self.role == "tool" or self.role == "function") or (
+            self.result is not None and self.action_execution_id is not None
+        )
 
 
 class BaseMessage(BaseModel):

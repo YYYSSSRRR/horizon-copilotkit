@@ -386,8 +386,10 @@ class CopilotRuntimeServer:
         return str(uuid.uuid4())
     
     def _convert_to_messages(self, messages: List[Dict[str, Any]]) -> List[Message]:
-        """转换消息格式 - 匹配前端扁平化消息结构"""
+        """转换消息格式 - 匹配前端扁平化消息结构，兼容 OpenAI 工具调用格式"""
         converted_messages = []
+        
+        logger.info(f"🔄 Converting {len(messages)} input messages to CopilotKit Message format")
         
         for i, msg in enumerate(messages):
             if not isinstance(msg, dict):
@@ -399,7 +401,7 @@ class CopilotRuntimeServer:
             if message_type == "text":
                 # 处理文本消息
                 role = msg.get("role", "user")
-                if role in ["user", "assistant", "system"]:  # 只处理有效角色
+                if role in ["user", "assistant", "system", "developer"]:  # 只处理有效角色
                     message = Message(
                         id=message_id,
                         role=role,
@@ -409,24 +411,24 @@ class CopilotRuntimeServer:
                     converted_messages.append(message)
             
             elif message_type == "action_execution":
-                # 处理动作执行消息
+                # 处理动作执行消息 - 需要确保正确设置字段以便 is_action_execution_message() 返回 True
                 message = Message(
                     id=message_id,
-                    role="assistant",  # 动作执行消息通常是 assistant 角色
+                    role="assistant",  # 动作执行消息必须是 assistant 角色
                     content="",  # 动作执行消息内容为空
-                    name=msg.get("name", ""),
-                    arguments=msg.get("arguments", {})
+                    name=msg.get("name", ""),  # 必须设置 name 字段
+                    arguments=msg.get("arguments", {})  # 确保有 arguments 字段
                 )
                 converted_messages.append(message)
             
             elif message_type == "result":
-                # 处理结果消息
+                # 处理结果消息 - 需要确保正确设置字段以便 is_result_message() 返回 True
                 message = Message(
                     id=message_id,
-                    role="function",  # 结果消息使用 function 角色（Python 没有 tool 角色）
+                    role="tool",  # 使用 tool 角色以匹配 TypeScript 版本
                     content=str(msg.get("result", "")),  # result 作为 content
-                    result=msg.get("result", ""),
-                    action_execution_id=msg.get("actionExecutionId", "")  # 注意字段名的差异
+                    result=str(msg.get("result", "")),  # 必须设置 result 字段
+                    action_execution_id=msg.get("actionExecutionId", "")  # 必须设置 action_execution_id 字段
                 )
                 converted_messages.append(message)
             
@@ -461,6 +463,12 @@ class CopilotRuntimeServer:
                             text_content=msg.get("content", "")
                         )
                         converted_messages.append(message)
+        
+        logger.info(f"✅ Converted to {len(converted_messages)} CopilotKit messages:")
+        for i, msg in enumerate(converted_messages):
+            logger.info(f"  Message {i}: role={msg.role}, type={msg.__class__.__name__}, "
+                       f"is_text={msg.is_text_message()}, is_action={msg.is_action_execution_message()}, "
+                       f"is_result={msg.is_result_message()}, content_preview={str(msg.content)[:50]}...")
         
         return converted_messages
     
@@ -531,21 +539,57 @@ class CopilotRuntimeServer:
             copilot_handler = CopilotHandlerComplete(context)
             
             # 构造 GenerateCopilotResponseInput
-            # 需要将 Message 转换为 MessageInput 格式
+            # 需要将 Message 转换为 MessageInput 格式，根据消息类型分别处理
             message_inputs = []
             for msg in messages:
-                # 创建 MessageInput 对象
-                from ...api.models.messages import MessageInput, TextMessageInput
+                from ...api.models.messages import (
+                    MessageInput, TextMessageInput, ActionExecutionMessageInput, 
+                    ResultMessageInput
+                )
                 from ...api.models.enums import MessageRole
                 
-                text_message = TextMessageInput(
-                    id=msg.id,
-                    content=msg.content,
-                    role=MessageRole(msg.role)
-                )
+                message_input = None
                 
-                message_input = MessageInput(text_message=text_message)
-                message_inputs.append(message_input)
+                if msg.is_text_message():
+                    # 处理文本消息
+                    text_message = TextMessageInput(
+                        id=msg.id,
+                        content=str(msg.content),
+                        role=MessageRole(msg.role)
+                    )
+                    message_input = MessageInput(text_message=text_message)
+                
+                elif msg.is_action_execution_message():
+                    # 处理动作执行消息
+                    action_message = ActionExecutionMessageInput(
+                        id=msg.id,
+                        name=msg.name or "",
+                        arguments=json.dumps(msg.arguments or {})
+                    )
+                    message_input = MessageInput(action_execution_message=action_message)
+                
+                elif msg.is_result_message():
+                    # 处理结果消息
+                    result_message = ResultMessageInput(
+                        id=msg.id,
+                        action_execution_id=msg.action_execution_id or "",
+                        action_name="",  # 这个字段在API模型中必需，但在转换中可能没有
+                        result=msg.result or str(msg.content)
+                    )
+                    message_input = MessageInput(result_message=result_message)
+                
+                else:
+                    # 默认作为文本消息处理
+                    logger.warning(f"Unknown message type, treating as text: {msg}")
+                    text_message = TextMessageInput(
+                        id=msg.id,
+                        content=str(msg.content),
+                        role=MessageRole.USER  # 默认角色
+                    )
+                    message_input = MessageInput(text_message=text_message)
+                
+                if message_input:
+                    message_inputs.append(message_input)
             
             # 获取 frontend actions（暂时使用空数组）
             from ...api.models.requests import FrontendInput, GenerateCopilotResponseMetadataInput

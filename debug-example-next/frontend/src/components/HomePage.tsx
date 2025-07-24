@@ -244,6 +244,8 @@ export function HomePage() {
                 if (!message.isTextMessage()) {
                   return null;
                 }
+
+                console.log(message.status.code, message.content);
                 
                 const textMessage = message;
                 return (
