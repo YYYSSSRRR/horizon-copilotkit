@@ -445,7 +445,6 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               setMessages(finalMessages);
 
               if (isFollowUp && !onFunctionCall) {
-                console.log("📝 Text completed, no actions to execute, setting loading to false");
                 setIsLoading(false);
               }
               break;
