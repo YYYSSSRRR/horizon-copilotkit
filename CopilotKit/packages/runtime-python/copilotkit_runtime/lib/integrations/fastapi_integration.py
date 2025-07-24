@@ -319,7 +319,7 @@ class CopilotRuntimeServer:
                 )
         
         @self.app.post(f"{self.prefix}/api/chat/stream")
-        async def chat_stream(request: ChatRequest):
+        async def chat_stream(request: ChatRequest, http_request: Request = None):
             """聊天流式端点"""
             try:
                 thread_id = request.thread_id or self._generate_id()
@@ -330,7 +330,7 @@ class CopilotRuntimeServer:
                 
                 # 创建流式响应
                 return StreamingResponse(
-                    self._create_event_stream(messages, thread_id, run_id),
+                    self._create_event_stream(messages, thread_id, run_id, request, http_request),
                     media_type="text/event-stream",
                     headers={
                         "Cache-Control": "no-cache",
@@ -510,7 +510,9 @@ class CopilotRuntimeServer:
         self, 
         messages: List[Message], 
         thread_id: str,
-        run_id: str
+        run_id: str,
+        request: ChatRequest = None,
+        http_request: Request = None
     ) -> AsyncIterator[str]:
         """创建事件流 - 使用 CopilotHandlerComplete.generate_copilot_response"""
         try:
@@ -591,13 +593,65 @@ class CopilotRuntimeServer:
                 if message_input:
                     message_inputs.append(message_input)
             
-            # 获取 frontend actions（暂时使用空数组）
+            # 导入必要的模型
             from ...api.models.requests import FrontendInput, GenerateCopilotResponseMetadataInput
             from ...api.models.enums import CopilotRequestType
             
+            # 获取 frontend actions（从请求中的 actions 参数获取）
+            frontend_actions = []
+            if request and request.actions:
+                # 转换 actions 格式以匹配 FrontendInput 的期望格式
+                from ...api.models.requests import ActionInput as ActionInputModel
+                for action in request.actions:
+                    try:
+                        # 转换 parameters 格式为 OpenAI 函数调用 schema 格式
+                        parameters = action.get('parameters', {})
+                        if isinstance(parameters, list):
+                            # 如果 parameters 是列表格式，转换为 OpenAI schema 格式
+                            properties = {}
+                            required = []
+                            for param in parameters:
+                                if isinstance(param, dict) and 'name' in param:
+                                    param_name = param['name']
+                                    properties[param_name] = {
+                                        'type': param.get('type', 'string'),
+                                        'description': param.get('description', '')
+                                    }
+                                    if param.get('required', False):
+                                        required.append(param_name)
+                            
+                            parameters = {
+                                'type': 'object',
+                                'properties': properties,
+                                'required': required
+                            }
+                        
+                        # 创建 ActionInput 实例
+                        action_input = ActionInputModel(
+                            name=action.get('name', ''),
+                            description=action.get('description', ''),
+                            parameters=parameters,
+                            available=action.get('available', 'enabled')  # 默认为 enabled
+                        )
+                        frontend_actions.append(action_input)
+                    except Exception as e:
+                        logger.warning(f"Failed to convert action {action}: {e}")
+                        continue
+            
+            # 获取 URL（从 HTTP headers 中获取）
+            frontend_url = ""
+            if http_request:
+                # 尝试从常见的 headers 中获取前端 URL
+                frontend_url = (
+                    http_request.headers.get('origin', '') or
+                    http_request.headers.get('referer', '') or
+                    http_request.headers.get('x-forwarded-host', '') or
+                    ""
+                )
+            
             frontend_input = FrontendInput(
-                actions=[],  # TODO: 从 runtime 获取实际的 actions
-                url=""  # TODO: 从请求中获取 URL
+                actions=frontend_actions,
+                url=frontend_url
             )
             
             # 创建 metadata

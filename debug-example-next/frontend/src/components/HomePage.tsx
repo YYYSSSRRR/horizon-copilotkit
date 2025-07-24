@@ -60,7 +60,7 @@ export function HomePage() {
     handler: timeHandler
   }), [timeHandler])
 
-  useCopilotAction(timeAction)
+  // useCopilotAction(timeAction)
 
   const calculateHandler = useCallback(async (args: any) => {
     const { expression } = args || {}
@@ -99,7 +99,7 @@ export function HomePage() {
     handler: calculateHandler
   }), [calculateHandler])
 
-  useCopilotAction(calculateAction)
+  // useCopilotAction(calculateAction)
 
   const userInfoHandler = useCallback(async (args: any) => {
     const { type } = args || {}
@@ -129,7 +129,7 @@ export function HomePage() {
     handler: userInfoHandler
   }), [userInfoHandler])
 
-  useCopilotAction(userInfoAction)
+  // useCopilotAction(userInfoAction)
 
   const statusHandler = useCallback(async (args: any) => {
     const { component } = args || {}
@@ -169,7 +169,31 @@ export function HomePage() {
     handler: statusHandler
   }), [statusHandler])
 
-  useCopilotAction(statusAction)
+  // useCopilotAction(statusAction)
+
+  // 注册前端 Action 来测试工具调用
+  useCopilotAction({
+    name: "showNotification",
+    description: "显示前端通知消息",
+    parameters: [
+      {
+        name: "message",
+        description: "通知消息内容",
+        type: "string",
+        required: true,
+      },
+      {
+        name: "type",
+        description: "通知类型: success, error, warning, info",
+        type: "string",
+        required: false,
+      },
+    ],
+    handler: ({ message, type = "info" }: { message: string; type?: string }) => {
+      alert(`${type.toUpperCase()}: ${message}`);
+      return `已显示通知: ${message}`;
+    },
+  });
 
   // 使用CopilotChat
   const { 
@@ -319,12 +343,18 @@ export function HomePage() {
               >
                 用户信息
               </button>
-              <button
-                onClick={() => handleSendMessage("检查系统状态")}
-                className="w-full px-3 py-2 text-sm bg-orange-500 text-white rounded hover:bg-orange-600"
-              >
-                系统状态
-              </button>
+                <button
+                  onClick={() => handleSendMessage("检查系统状态")}
+                  className="w-full px-3 py-2 text-sm bg-orange-500 text-white rounded hover:bg-orange-600"
+                >
+                  系统状态
+                </button>
+                <button
+                  onClick={() => handleSendMessage("显示通知消息")}
+                  className="w-full px-3 py-2 text-sm bg-red-500 text-white rounded hover:bg-red-600"
+                >
+                  显示通知
+                </button>
             </div>
           </div>
 

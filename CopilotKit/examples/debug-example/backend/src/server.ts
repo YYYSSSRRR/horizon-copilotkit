@@ -130,6 +130,7 @@ const runtime = new CopilotRuntime({
     }
   }))
 });
+// const runtime = new CopilotRuntime();
 
 // 💡 Express 应用设置
 const app = express();

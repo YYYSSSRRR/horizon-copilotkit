@@ -232,6 +232,18 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
             
             if tools:
                 request_payload["tools"] = tools
+                # Add detailed tools logging
+                self.logger.info("🔧 Tools being sent to DeepSeek API", 
+                               tools_count=len(tools),
+                               tools_summary=[{
+                                   "name": tool.get("function", {}).get("name", "unknown"),
+                                   "parameters_type": type(tool.get("function", {}).get("parameters", {})),
+                                   "parameters_keys": list(tool.get("function", {}).get("parameters", {}).keys()) if isinstance(tool.get("function", {}).get("parameters"), dict) else "not_dict"
+                               } for tool in tools])
+                
+                # Log full tools for debugging (first tool only to avoid spam)
+                if tools:
+                    self.logger.info("🔧 First tool full structure", tool=tools[0])
             
             if forwarded_parameters:
                 if forwarded_parameters.max_tokens:
@@ -334,6 +346,25 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
                         error_data = await response.aread()
                         error_text = error_data.decode('utf-8') if isinstance(error_data, bytes) else str(error_data)
                         self.logger.error(f"DeepSeek API HTTP error: {response.status_code} - {error_text}")
+                        
+                        # Try to parse error as JSON for better debugging
+                        try:
+                            error_json = json.loads(error_text)
+                            self.logger.error("🔍 DeepSeek API error details", error_json=error_json)
+                            
+                            # Look for schema validation errors specifically
+                            if "error" in error_json:
+                                error_details = error_json["error"]
+                                if isinstance(error_details, dict):
+                                    if "message" in error_details:
+                                        self.logger.error("🔍 Error message", message=error_details["message"])
+                                    if "type" in error_details:
+                                        self.logger.error("🔍 Error type", error_type=error_details["type"])
+                                    if "code" in error_details:
+                                        self.logger.error("🔍 Error code", code=error_details["code"])
+                        except json.JSONDecodeError:
+                            self.logger.error("🔍 Could not parse error response as JSON")
+                        
                         raise Exception(f"DeepSeek API error: {response.status_code} - {error_text}")
                     
                     async for line in response.aiter_lines():
@@ -472,6 +503,14 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
         # Handle both lib.types.ActionInput (with json_schema) and api.models.requests.ActionInput (with parameters)
         parameters = {}
         
+        # Add debug logging
+        self.logger.info("🔍 Converting action to OpenAI tool", 
+                        action_name=action.name,
+                        has_json_schema=hasattr(action, 'json_schema'),
+                        has_parameters=hasattr(action, 'parameters'),
+                        json_schema_value=getattr(action, 'json_schema', None),
+                        parameters_value=getattr(action, 'parameters', None))
+        
         # Try to get json_schema first
         if hasattr(action, 'json_schema') and getattr(action, 'json_schema', None):
             # lib.types.ActionInput format
@@ -481,22 +520,70 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
                     parameters = json.loads(json_schema)
                 else:
                     parameters = json_schema
-            except (json.JSONDecodeError, TypeError):
+                self.logger.info("✅ Parsed json_schema successfully", 
+                               parameters=parameters,
+                               parameters_type=type(parameters))
+            except (json.JSONDecodeError, TypeError) as e:
+                self.logger.warning("❌ Failed to parse json_schema", 
+                                  error=str(e),
+                                  json_schema=json_schema)
                 parameters = {}
         elif hasattr(action, 'parameters') and getattr(action, 'parameters', None):
             # api.models.requests.ActionInput format
             action_parameters = getattr(action, 'parameters')
             if isinstance(action_parameters, dict):
-                # Create a basic JSON schema from parameters dict
-                parameters = {
-                    "type": "object",
-                    "properties": action_parameters,
-                    "required": []
-                }
+                # Check if parameters is already a valid JSON schema
+                if action_parameters.get('type') == 'object' and 'properties' in action_parameters:
+                    # Already in OpenAI schema format, use as-is
+                    parameters = action_parameters
+                    self.logger.info("✅ Using existing schema format", 
+                                   parameters=parameters)
+                else:
+                    # Create a basic JSON schema from parameters dict
+                    parameters = {
+                        "type": "object",
+                        "properties": action_parameters,
+                        "required": []
+                    }
+                    self.logger.info("✅ Created schema from parameters dict", 
+                                   parameters=parameters)
             else:
+                self.logger.warning("❌ action_parameters is not a dict", 
+                                  action_parameters=action_parameters,
+                                  type=type(action_parameters))
                 parameters = {}
+        else:
+            self.logger.info("ℹ️ No json_schema or parameters found, using empty parameters")
+            parameters = {}
         
-        return {
+        # Ensure parameters is a valid JSON schema object
+        if not isinstance(parameters, dict):
+            self.logger.warning("⚠️ parameters is not a dict, converting to empty object", 
+                              parameters=parameters,
+                              type=type(parameters))
+            parameters = {}
+        
+        # If parameters dict is empty, set a minimal valid schema
+        if not parameters:
+            parameters = {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+            self.logger.info("🔧 Using minimal schema for empty parameters")
+        
+        # Validate the parameters schema structure
+        if "type" not in parameters:
+            self.logger.warning("⚠️ Schema missing 'type' field, adding it", parameters=parameters)
+            parameters["type"] = "object"
+        
+        # Ensure type is not the string "object" but the actual type
+        if parameters.get("type") == "object" and not isinstance(parameters.get("properties"), dict):
+            self.logger.warning("⚠️ Schema has type='object' but no properties dict", parameters=parameters)
+            if "properties" not in parameters:
+                parameters["properties"] = {}
+        
+        result_tool = {
             "type": "function",
             "function": {
                 "name": action.name,
@@ -504,6 +591,12 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
                 "parameters": parameters,
             }
         }
+        
+        self.logger.info("🔧 Generated OpenAI tool", 
+                        tool=result_tool,
+                        parameters_keys=list(parameters.keys()) if isinstance(parameters, dict) else "not_dict")
+        
+        return result_tool
     
     def _convert_message_to_openai_message(self, message: Message, keep_system_role: bool = False) -> Dict[str, Any]:
         """Convert Message to OpenAI message format."""
