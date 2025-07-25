@@ -172,7 +172,7 @@ export function HomePage() {
   // useCopilotAction(statusAction)
 
   // 注册前端 Action 来测试工具调用
-  useCopilotAction({
+  useCopilotAction(useCallback({
     name: "showNotification",
     description: "显示前端通知消息",
     parameters: [
@@ -193,7 +193,7 @@ export function HomePage() {
       alert(`${type.toUpperCase()}: ${message}`);
       return `已显示通知: ${message}`;
     },
-  });
+  }, []));
 
   // 使用CopilotChat
   const { 

@@ -444,7 +444,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
               setMessages(finalMessages);
 
-              if (isFollowUp && !onFunctionCall) {
+              if (isFollowUp) {
                 setIsLoading(false);
               }
               break;
@@ -512,7 +512,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               break;
               
             case "action_execution_end":
-              // 动作执行结束，确保参数完整并可能需要执行客户端动作
+              // 动作执行结束，确保参数完整但不在这里执行客户端动作
               const endData = eventData;
               const actionToExecute = newMessages.find(
                 msg => msg.isActionExecutionMessage() && msg.id === endData.actionExecutionId
@@ -528,28 +528,11 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
                   }
                 }
                 
-                // 如果有前端处理函数，执行客户端动作
-                if (onFunctionCall) {
-                  executeAction({
-                    onFunctionCall,
-                    previousMessages: constructFinalMessages(syncedMessages, previousMessages, newMessages),
-                    message: actionToExecute,
-                    chatAbortControllerRef,
-                    onError: (error) => console.error("Action execution error:", error),
-                  }).then((resultMessage) => {
-                    if (resultMessage) {
-                      newMessages.push(resultMessage);
-                      finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
-                      setMessages(finalMessages);
-                    }
-                  }).catch((error) => {
-                    console.error("Action execution failed:", error);
-                  });
-                }
-                
+                // 只更新消息状态，不执行动作（等待流式传输完成后统一执行）
                 finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
                 setMessages(finalMessages);
               }
+              console.log("📝 Action execution ended:", endData);
               break;
               
             case "action_execution_result":
@@ -608,24 +591,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
                 setMessages(finalMessages);
                 
                 // 处理特定类型的消息
-                if (streamMessage.type === "action_execution" && onFunctionCall) {
-                  const actionMessage = streamMessage as ActionExecutionMessage;
-                  executeAction({
-                    onFunctionCall,
-                    previousMessages: finalMessages,
-                    message: actionMessage,
-                    chatAbortControllerRef,
-                    onError: (error) => console.error("Action execution error:", error),
-                  }).then((resultMessage) => {
-                    if (resultMessage) {
-                      newMessages.push(resultMessage);
-                      finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
-                      setMessages(finalMessages);
-                    }
-                  }).catch((error) => {
-                    console.error("Action execution failed:", error);
-                  });
-                } else if (streamMessage.type === "agent_state") {
+                if (streamMessage.type === "agent_state") {
                   const agentStateMessage = streamMessage as AgentStateMessage;
                   
                   if (agentStateMessage.agentName && agentStateMessage.state) {
@@ -724,11 +690,18 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
           console.log("📝 Content completed, checking if can set loading to false early");
         }
         
-        // 执行前端动作（只处理状态不是 pending 的消息，类似 react-core 行为）
+        
+        // 确保界面显示最新状态
+        // finalMessages 已经包含了 previousMessages，不需要再次合并
+        setMessages(finalMessages);
+        
+        // 执行前端动作（类似 react-core 行为，在流式传输完成后）
+        let didExecuteAction = false;
+        
         if (onFunctionCall && finalMessages.length > 0) {
+          // 找到连续的需要执行的动作消息（从末尾开始）
           const lastMessages = [];
           
-          // 从最后往前查找，收集所有需要执行的动作
           for (let i = finalMessages.length - 1; i >= 0; i--) {
             const message = finalMessages[i];
             if (
@@ -741,19 +714,27 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
             }
           }
           
-          // 执行动作
+          // 同步执行动作（类似 react-core 的行为）
           for (const message of lastMessages) {
-            if (message.isActionExecutionMessage()) {
+            // 先更新UI状态，显示当前消息
+            setMessages(finalMessages);
+            
+            // 查找对应的前端动作
+            const action = actions.find(
+              (action) => action.name === (message as ActionExecutionMessage).name,
+            );
+            
+            // 只有找到对应的前端动作才执行（react-core 的行为）
+            if (action && message.isActionExecutionMessage()) {
               try {
                 const resultMessage = await executeAction({
                   onFunctionCall,
-                  previousMessages: finalMessages,
                   message: message as ActionExecutionMessage,
-                  chatAbortControllerRef,
                   onError: (error) => console.error("Action execution error:", error),
                 });
                 
                 if (resultMessage) {
+                  didExecuteAction = true;
                   // 找到消息在 finalMessages 中的位置，并插入结果消息
                   const messageIndex = finalMessages.findIndex(msg => msg.id === message.id);
                   if (messageIndex !== -1) {
@@ -763,21 +744,26 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               } catch (error) {
                 console.error("Action execution failed:", error);
               }
+            } else if (message.isActionExecutionMessage()) {
+              // 如果找不到对应的前端动作，说明这是后端动作，跳过执行
+              console.log(`Skipping backend action: ${(message as ActionExecutionMessage).name}`);
             }
           }
+          
+          // 最终更新消息状态
+          setMessages(finalMessages);
         }
         
-        // 确保界面显示最新状态
-        // finalMessages 已经包含了 previousMessages，不需要再次合并
-        setMessages(finalMessages);
-        
-        // 🔑 关键修复：检查是否需要后续请求（类似 react-core 行为）
-        // 只有在首次请求且执行了动作的情况下才触发后续请求
-        const didExecuteAction = newMessages.some(msg => msg.isResultMessage());
+        // 检查是否需要后续请求（类似 react-core 行为）
+        // 对于后端动作，我们也需要触发后续请求，因为后端可能返回需要处理的结果
+        const hasBackendActions = finalMessages.some((msg: Message) => 
+          msg.isActionExecutionMessage() && 
+          !actions.find(action => action.name === (msg as ActionExecutionMessage).name)
+        );
         
         if (
           !isFollowUp && // 只有非后续请求才能触发后续请求，避免死循环
-          didExecuteAction &&
+          (didExecuteAction || hasBackendActions) && // 前端动作执行或存在后端动作时都需要后续请求
           !chatAbortControllerRef.current?.signal.aborted
         ) {
           console.log("🔄 Executed action in this run, triggering follow-up completion...");
@@ -909,23 +895,53 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
 }
 
 /**
- * 执行前端动作
+ * 创建函数调用处理器
  */
-export async function executeAction({
+export function createFunctionCallHandler(actions: FrontendAction<any>[]): FunctionCallHandler {
+  return async (message: ActionExecutionMessage): Promise<ResultMessage | void> => {
+    const action = actions.find((a) => a.name === message.name);
+    if (!action) {
+      // 如果找不到对应的前端动作，说明这是后端动作，直接返回 void 而不是抛出异常
+      console.log(`Skipping backend action in function call handler: ${message.name}`);
+      return;
+    }
+    
+    try {
+      if (!action.handler) {
+        throw new Error(`Action ${message.name} has no handler function`);
+      }
+      
+      const result = await action.handler(message.arguments);
+      
+      return new ResultMessage({
+        id: `result-${message.id}`,
+        actionExecutionId: message.id,
+        actionName: message.name,
+        result: typeof result === 'string' ? result : JSON.stringify(result),
+      });
+    } catch (error) {
+      return new ResultMessage({
+        id: `result-${message.id}`,
+        actionExecutionId: message.id,
+        actionName: message.name,
+        result: `Error: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  };
+}
+
+async function executeAction({
   onFunctionCall,
-  previousMessages,
   message,
-  chatAbortControllerRef,
   onError,
 }: {
   onFunctionCall: FunctionCallHandler;
-  previousMessages: Message[];
   message: ActionExecutionMessage;
-  chatAbortControllerRef: React.MutableRefObject<AbortController | null>;
   onError: (error: Error) => void;
 }) {
   try {
     const result = await onFunctionCall(message);
+    // 如果 onFunctionCall 返回 void，说明是后端动作，应该跳过
     return result;
   } catch (error) {
     onError(error as Error);

@@ -46,7 +46,7 @@ import { useRef, useEffect, useCallback, useState } from "react";
 import { useCopilotContext } from "../context/copilot-context";
 import { Message, TextMessage } from "../client/message-types";
 import { SystemMessageFunction } from "../types/system-message";
-import { useChat, AppendMessageOptions } from "./use-chat";
+import { useChat, AppendMessageOptions, createFunctionCallHandler } from "./use-chat";
 import { defaultCopilotContextCategories } from "../components";
 import { useMessagesContext } from "../context/messages-context";
 import { CoagentState } from "../types/coagent-state";
@@ -144,13 +144,11 @@ export function useCopilotChat({
   // Get chat helpers with updated config
   const chatAbortControllerRef = useRef<AbortController | null>(null);
   const coagentStatesRef = useRef<Record<string, CoagentState>>({});
-  const [coagentStates, setCoagentStates] = useState<Record<string, CoagentState>>({});
   const [extensions, setExtensions] = useState<any>({});
-  const [agentLock, setAgentLock] = useState<string | null>(null);
+  const [agentLock] = useState<string | null>(null);
   const [langGraphInterruptAction, setLangGraphInterruptActionLocal] = useState<any>(null);
 
   const setCoagentStatesWithRef = useCallback((newStates: React.SetStateAction<Record<string, CoagentState>>) => {
-    setCoagentStates(newStates);
     if (typeof newStates === 'function') {
       coagentStatesRef.current = newStates(coagentStatesRef.current);
     } else {
@@ -162,6 +160,7 @@ export function useCopilotChat({
     ...options,
     actions: Object.values(actions),
     initialMessages: options.initialMessages || [],
+    onFunctionCall: createFunctionCallHandler(Object.values(actions)),
     messages,
     setMessages: setMessages as React.Dispatch<React.SetStateAction<Message[]>>,
     makeSystemMessageCallback,
