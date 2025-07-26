@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "debug-example-langgraph"
+version = "0.1.0"
+description = "Debug Example LangGraph Server"
+authors = ["Claude"]
+readme = "README.md"
+packages = [{include = "debug_langgraph"}]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.13"
+copilotkit = "0.1.48"
+uvicorn = "^0.34.0"
+fastapi = "^0.115.4"
+python-dotenv = "^1.0.0"
+langchain = ">=0.1.0"
+langchain-core = ">=0.1.5"
+langchain-openai = ">=0.0.1"
+langgraph = "^0.3.25"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+langgraph_server = "debug_langgraph.server:main"

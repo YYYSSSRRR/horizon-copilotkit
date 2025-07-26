@@ -10,7 +10,6 @@ function App() {
     }
     
     // 2. 根据当前前端端口自动推断后端端口
-    const currentPort = window.location.port;
     const currentProtocol = window.location.protocol;
     const currentHostname = window.location.hostname;
     
@@ -27,15 +26,24 @@ function App() {
   console.log('🔗 Frontend URL:', window.location.origin);
   console.log('🔗 Backend URL:', backendUrl);
 
+  // 检查是否启用LangGraph模式
+  const isLangGraphMode = new URLSearchParams(window.location.search).get('langgraph') === 'true';
+  const runtimeUrl = isLangGraphMode ? `${backendUrl}/api/copilotkit?langgraph=true` : `${backendUrl}/api/copilotkit`;
+  
+  console.log('🗺️ LangGraph Mode:', isLangGraphMode);
+  console.log('🗺️ Runtime URL:', runtimeUrl);
+  
   return (
     <CopilotKit 
-      runtimeUrl={`${backendUrl}/api/copilotkit`}
+      runtimeUrl={runtimeUrl}
       publicApiKey=""
       showDevConsole={true}
       // 🔧 强制流超时设置
       headers={{
         'x-copilotkit-stream-timeout': '30000' // 30秒超时
       }}
+      // 🗺️ 启用 LangGraph agent
+      agent={isLangGraphMode ? "debug_human_in_the_loop" : undefined}
     >
       <HomePage />
     </CopilotKit>

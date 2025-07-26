@@ -188,12 +188,35 @@ app.use(cors({
 
 app.use(express.json());
 
-// 📡 CopilotKit Runtime 端点 - 添加超时和错误处理
-app.use("/api/copilotkit", copilotRuntimeNodeHttpEndpoint({
-  endpoint: "/api/copilotkit",
-  runtime,
-  serviceAdapter,
-}));
+// 📡 CopilotKit Runtime 端点 - 支持LangGraph remote endpoints
+app.use("/api/copilotkit", (req, res, next) => {
+  // 检查是否启用 LangGraph 模式
+  const isLangGraphMode = req.query.langgraph === 'true';
+  
+  console.log(`🔗 CopilotKit 请求模式: ${isLangGraphMode ? 'LangGraph' : '标准模式'}`);
+  
+  let currentRuntime;
+  if (isLangGraphMode) {
+    // LangGraph 模式 - 使用 remote endpoints
+    console.log("🐍 启用 LangGraph 模式，连接到 remote endpoint");
+    currentRuntime = new CopilotRuntime({
+      remoteEndpoints: [
+        {
+          url: "http://localhost:8001/copilotkit",
+        },
+      ],
+    });
+  } else {
+    // 标准模式 - 使用本地 actions
+    currentRuntime = runtime;
+  }
+  
+  copilotRuntimeNodeHttpEndpoint({
+    endpoint: "/api/copilotkit",
+    runtime: currentRuntime,
+    serviceAdapter,
+  })(req, res, next);
+});
 
 // 🔧 添加超时处理中间件
 app.use("/api/copilotkit", (req, res, next) => {

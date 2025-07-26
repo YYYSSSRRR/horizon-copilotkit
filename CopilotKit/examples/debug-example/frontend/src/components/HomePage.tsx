@@ -1,10 +1,30 @@
 import { useState, useEffect } from "react";
 import { CopilotSidebar, CopilotKitCSSProperties } from "@copilotkit/react-ui";
 import { useCopilotAction, useCopilotChat } from "@copilotkit/react-core";
-import { MessageSquare, Settings, Activity, Database, Send } from "lucide-react";
-import { TextMessage, Role } from "@copilotkit/runtime-client-gql";
+import { MessageSquare, Settings, Activity, Database, Send, Play } from "lucide-react";
+// 内联类型定义来避免导入问题
+type TextMessage = {
+  content: string;
+  role: 'user' | 'assistant';
+  id?: string;
+};
+
+enum Role {
+  User = 'user',
+  Assistant = 'assistant'
+}
+import HumanInTheLoopPage from "./HumanInTheLoopPage";
 
 export default function HomePage() {
+  // 检查是否启用LangGraph模式
+  const isLangGraphMode = new URLSearchParams(window.location.search).get('langgraph') === 'true';
+  
+  // 如果是LangGraph模式，直接使用专门的Human-in-the-Loop页面
+  if (isLangGraphMode) {
+    return <HumanInTheLoopPage />;
+  }
+
+  // 标准调试模式
   const [backendStatus, setBackendStatus] = useState<'connected' | 'disconnected' | 'loading'>('loading');
   const [backendActions, setBackendActions] = useState<any[]>([]);
   const [debugInfo, setDebugInfo] = useState<any>(null);
@@ -34,6 +54,7 @@ export default function HomePage() {
         const textMessage = lastMessage as any; // TextMessage
         addDebugLog(`Last message: role=${textMessage.role}, content length=${textMessage.content?.length || 0}`);
         addDebugLog(`Content preview: "${textMessage.content?.substring(0, 50)}..."`);
+        
       } else {
         addDebugLog(`Last message: type=${lastMessage.constructor.name}, id=${lastMessage.id}`);
       }
@@ -58,10 +79,10 @@ export default function HomePage() {
       addDebugLog('Sending test message...');
       // 添加时间戳使每次消息都是唯一的，避免缓存问题
       const timestamp = new Date().toLocaleTimeString();
-      const testMessage = new TextMessage({
+      const testMessage: TextMessage = {
         content: `现在几点了？请使用getCurrentTime函数获取准确时间 (${timestamp})`,
         role: Role.User,
-      });
+      };
       
       // 🔧 添加超时检测
       const sendTimeout = setTimeout(() => {
@@ -71,7 +92,10 @@ export default function HomePage() {
         }
       }, 20000); // 20秒超时
       
-      await appendMessage(testMessage);
+      await appendMessage({
+        content: testMessage.content,
+        role: testMessage.role
+      } as any);
       clearTimeout(sendTimeout);
       addDebugLog('Test message sent successfully');
     } catch (error) {
@@ -184,6 +208,16 @@ export default function HomePage() {
               <span className="text-sm text-gray-500">
                 消息数: {visibleMessages.length} | 加载中: {isLoading ? '是' : '否'} | Actions: {backendActions.length}
               </span>
+              
+              {/* 模式切换按钮 */}
+              <a
+                href="?langgraph=true"
+                className="flex items-center space-x-2 px-3 py-1 bg-purple-500 text-white rounded-md hover:bg-purple-600 text-sm"
+              >
+                <Play size={14} />
+                <span>LangGraph模式</span>
+              </a>
+              
               <button
                 onClick={sendTestMessage}
                 disabled={backendStatus !== 'connected' || isLoading}
@@ -387,7 +421,7 @@ export default function HomePage() {
       <CopilotSidebar
         labels={{
           title: "AI 助手 (DeepSeek + Vite 调试模式)",
-          initial: "👋 你好！我是 CopilotKit + DeepSeek + Vite 调试助手。\n\n🔧 **调试功能:**\n- 使用 DeepSeek Chat 模型\n- 基于 Vite 构建，启动更快\n- 可以执行多种自定义 Actions\n- 后端使用 Express + CopilotKit Runtime + DeepSeek Adapter\n- 你可以在代码中设置断点进行调试\n\n💡 **试试问我:**\n- \"现在几点了？\"\n- \"计算 10 + 20 * 3\"\n- \"查询用户1的信息\"\n- \"获取运行时状态\"\n- \"显示一个通知\"\n\n⚡ **调试提示:**\n- 查看左侧调试面板的日志\n- 如果第一次没有回复，请稍等或重试\n- 每次问题都会添加时间戳避免缓存\n\n让我们开始调试吧！",
+          initial: "👋 你好！我是 CopilotKit + DeepSeek + Vite 调试助手。\n\n🔧 **调试功能:**\n- 使用 DeepSeek Chat 模型\n- 基于 Vite 构建，启动更快\n- 可以执行多种自定义 Actions\n- 后端使用 Express + CopilotKit Runtime + DeepSeek Adapter\n\n💡 **试试问我:**\n- \"现在几点了？\"\n- \"计算 10 + 20 * 3\"\n- \"查询用户1的信息\"\n- \"获取运行时状态\"\n- \"显示一个通知\"\n\n⚡ **调试提示:**\n- 查看左侧调试面板的日志\n- 如果第一次没有回复，请稍等或重试\n- 每次问题都会添加时间戳避免缓存\n- 要使用Human-in-the-Loop功能，请点击右上角切换到LangGraph模式\n\n让我们开始调试吧！",
           placeholder: "输入消息进行调试...",
         }}
         defaultOpen={true}
@@ -397,4 +431,4 @@ export default function HomePage() {
       />
     </div>
   );
-} 
+}
