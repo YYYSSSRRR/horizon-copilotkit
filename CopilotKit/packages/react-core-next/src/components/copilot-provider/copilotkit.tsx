@@ -3,7 +3,7 @@ import { randomId } from "@copilotkit/shared";
 import { CopilotContextProvider, CopilotContextValue, CopilotReadable } from "../../context/copilot-context";
 import { MessagesContextProvider, MessagesContextValue } from "../../context/messages-context";
 import { createCopilotRuntimeClient, CopilotRuntimeClient } from "../../client";
-import { FrontendAction } from "../../types/frontend-action";
+import { FrontendAction, ScriptAction } from "../../types/frontend-action";
 import { CopilotChatSuggestionConfiguration } from "../../types/chat-suggestion-configuration";
 import { DocumentPointer } from "../../types/document-pointer";
 import { CoAgentStateRender } from "../../types/coagent-action";
@@ -170,6 +170,7 @@ export function CopilotKit({
 
   // 核心状态管理
   const [actions, setActionsState] = useState<Record<string, FrontendAction>>({});
+  const [scriptActions, setScriptActionsState] = useState<Record<string, ScriptAction>>({});
   const [readables, setReadablesState] = useState<Record<string, CopilotReadable>>({});
   const [chatSuggestions, setChatSuggestionsState] = useState<Record<string, CopilotChatSuggestionConfiguration>>({});
   const [documentPointers, setDocumentPointersState] = useState<Record<string, DocumentPointer>>({});
@@ -192,6 +193,45 @@ export function CopilotKit({
       return rest;
     });
   }, []);
+
+  // 脚本动作管理
+  const setScriptAction = useCallback((id: string, scriptAction: ScriptAction) => {
+    setScriptActionsState(prev => ({ ...prev, [id]: scriptAction }));
+  }, []);
+
+  const removeScriptAction = useCallback((id: string) => {
+    setScriptActionsState(prev => {
+      const { [id]: removed, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+
+  const executeScriptAction = useCallback(async (id: string, args?: any) => {
+    const scriptAction = scriptActions[id];
+    if (!scriptAction) {
+      throw new Error(`Script action with id "${id}" not found`);
+    }
+
+    try {
+      if (scriptAction.executeOnClient && typeof window !== 'undefined') {
+        // 在客户端执行脚本
+        const func = new Function('args', scriptAction.script);
+        return func(args);
+      } else if (scriptAction.handler) {
+        // 使用自定义处理器
+        return await scriptAction.handler(args);
+      } else {
+        // 默认行为：在服务端通过 runtime 执行
+        if (runtimeClient) {
+          // 这里需要 runtime 支持脚本执行
+          console.warn('Script execution via runtime not implemented yet');
+        }
+      }
+    } catch (error) {
+      console.error(`Error executing script action "${id}":`, error);
+      throw error;
+    }
+  }, [scriptActions, runtimeClient]);
 
   // 可读上下文管理
   const setReadable = useCallback((id: string, readable: CopilotReadable) => {
@@ -339,6 +379,7 @@ export function CopilotKit({
 
   // 缓存数组和对象以避免无限循环
   const actionsArray = useMemo(() => Object.values(actions), [actions]);
+  const scriptActionsArray = useMemo(() => Object.values(scriptActions), [scriptActions]);
   const chatSuggestionsArray = useMemo(() => Object.values(chatSuggestions), [chatSuggestions]);
   const documentPointersArray = useMemo(() => Object.values(documentPointers), [documentPointers]);
   const cloudConfig = useMemo(() => ({ guardrails: guardrails_c }), [guardrails_c]);
@@ -358,6 +399,10 @@ export function CopilotKit({
     actions: actionsArray,
     setAction,
     removeAction,
+    scriptActions: scriptActionsArray,
+    setScriptAction,
+    removeScriptAction,
+    executeScriptAction,
     readables,
     setReadable,
     removeReadable,
@@ -396,6 +441,10 @@ export function CopilotKit({
     actionsArray,
     setAction,
     removeAction,
+    scriptActionsArray,
+    setScriptAction,
+    removeScriptAction,
+    executeScriptAction,
     readables,
     setReadable,
     removeReadable,

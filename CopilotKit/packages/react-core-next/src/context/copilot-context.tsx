@@ -1,6 +1,6 @@
 import React, { createContext, useContext, ReactNode } from "react";
 import { CopilotRuntimeClient } from "../client";
-import { FrontendAction } from "../types/frontend-action";
+import { FrontendAction, ScriptAction } from "../types/frontend-action";
 import { CopilotChatSuggestionConfiguration } from "../types/chat-suggestion-configuration";
 import { DocumentPointer } from "../types/document-pointer";
 import { CoAgentStateRender } from "../types/coagent-action";
@@ -22,6 +22,12 @@ export interface CopilotContextValue {
   actions: FrontendAction[];
   setAction: (id: string, actionDef: FrontendAction) => void;
   removeAction: (id: string) => void;
+  
+  // 脚本动作系统
+  scriptActions: ScriptAction[];
+  setScriptAction: (id: string, scriptAction: ScriptAction) => void;
+  removeScriptAction: (id: string) => void;
+  executeScriptAction: (id: string, args?: any) => Promise<any>;
   
   // 可读上下文
   readables: Record<string, CopilotReadable>;
@@ -170,5 +176,15 @@ export function useCopilotCoAgentStateRenders() {
     setCoAgentStateRender,
     removeCoAgentStateRender,
     getCoAgentStateRender,
+  };
+}
+
+export function useCopilotScriptActions() {
+  const { scriptActions, setScriptAction, removeScriptAction, executeScriptAction } = useCopilotContext();
+  return {
+    scriptActions,
+    setScriptAction,
+    removeScriptAction,
+    executeScriptAction,
   };
 } 

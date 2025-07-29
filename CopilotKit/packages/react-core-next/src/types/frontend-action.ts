@@ -172,6 +172,13 @@ export type CatchAllFrontendAction = {
   render: (props: CatchAllActionRenderProps<any>) => React.ReactElement;
 };
 
+export interface ScriptAction<T extends Parameter[] | [] = []> extends Action<T> {
+  script: string;
+  language?: "javascript" | "typescript" | "python" | "bash" | "shell";
+  executeOnClient?: boolean;
+  timeout?: number;
+}
+
 export type RenderFunctionStatus = ActionRenderProps<any>["status"];
 
 // 新的动作可用性枚举，不依赖 GraphQL
