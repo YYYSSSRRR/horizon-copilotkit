@@ -129,10 +129,7 @@ export class OpenInulaEventAdapter {
   private findOpenInulaNodeKey(element: Element): string | null {
     const keys = Object.keys(element);
     return keys.find(key => 
-      key.startsWith('__openinulaNode') || 
-      key.startsWith('__openinulaInstance') ||
-      key.startsWith('__openinulaProps') ||
-      key.startsWith('__inula')
+      key.startsWith('_inula_vNode_')
     ) || null;
   }
 
@@ -147,23 +144,18 @@ export class OpenInulaEventAdapter {
       return openinulaNode.props[handlerName];
     }
     
-    // 在 memoizedProps 中查找（如果存在）
-    if (openinulaNode.memoizedProps && openinulaNode.memoizedProps[handlerName]) {
-      return openinulaNode.memoizedProps[handlerName];
+    // 在 oldProps 中查找（如果存在）
+    if (openinulaNode.oldProps && openinulaNode.oldProps[handlerName]) {
+      return openinulaNode.oldProps[handlerName];
     }
-    
-    // 在 pendingProps 中查找（如果存在）
-    if (openinulaNode.pendingProps && openinulaNode.pendingProps[handlerName]) {
-      return openinulaNode.pendingProps[handlerName];
-    }
-    
+
     // 直接在 node 上查找
     if (openinulaNode[handlerName]) {
       return openinulaNode[handlerName];
     }
 
     // 查找其他可能的 props 对象
-    const propsObj = openinulaNode.props || openinulaNode.memoizedProps || openinulaNode.pendingProps;
+    const propsObj = openinulaNode.props || openinulaNode.oldProps;
     if (propsObj && propsObj[handlerName]) {
       return propsObj[handlerName];
     }
@@ -261,6 +253,48 @@ export class OpenInulaEventAdapter {
   }
 
   /**
+   * 触发 OpenInula click 事件
+   */
+  async triggerClickEvent(element: Element): Promise<OpenInulaEventTriggerResult> {
+    // 尝试触发 OpenInula 事件
+    const openinulaResult = await this.tryTriggerOpenInulaEvent(element, 'click');
+    if (openinulaResult.success) {
+      return openinulaResult;
+    }
+
+    // 回退到原生事件
+    return this.triggerNativeClickEvent(element);
+  }
+
+  /**
+   * 触发原生 click 事件（备用方案）
+   */
+  private triggerNativeClickEvent(element: Element): OpenInulaEventTriggerResult {
+    try {
+      const clickEvent = new Event('click', { 
+        bubbles: true, 
+        cancelable: true 
+      });
+
+      // 设置事件的 target 属性
+      Object.defineProperty(clickEvent, 'target', { 
+        value: element, 
+        enumerable: true 
+      });
+
+      element.dispatchEvent(clickEvent);
+      
+      this.logger.debug('原生 click 事件已触发');
+      return { success: true, method: 'native' };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.debug(`触发原生 click 事件失败: ${errorMessage}`);
+      return { success: false, method: 'native', error: errorMessage };
+    }
+  }
+
+  /**
    * 触发用户交互相关的辅助事件（focus、blur）
    */
   async triggerInteractionEvents(element: Element): Promise<void> {
@@ -322,4 +356,15 @@ export async function triggerOpenInulaInputEvent(
 ): Promise<OpenInulaEventTriggerResult> {
   const adapter = getOpenInulaAdapter(logger);
   return adapter.triggerInputEvent(element, value);
+}
+
+/**
+ * 便捷函数：触发 OpenInula click 事件
+ */
+export async function triggerOpenInulaClickEvent(
+  element: Element,
+  logger?: any
+): Promise<OpenInulaEventTriggerResult> {
+  const adapter = getOpenInulaAdapter(logger);
+  return adapter.triggerClickEvent(element);
 }

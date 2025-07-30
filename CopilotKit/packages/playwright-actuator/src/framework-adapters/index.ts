@@ -8,6 +8,7 @@ export {
   getReactAdapter,
   triggerReactChangeEvent,
   triggerReactInputEvent,
+  triggerReactClickEvent,
   type ReactSyntheticEvent,
   type ReactEventTriggerResult
 } from './react-adapter.js';
@@ -17,6 +18,7 @@ export {
   getOpenInulaAdapter,
   triggerOpenInulaChangeEvent,
   triggerOpenInulaInputEvent,
+  triggerOpenInulaClickEvent,
   type OpenInulaEvent,
   type OpenInulaEventTriggerResult
 } from './openinula-adapter.js';

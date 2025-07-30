@@ -257,6 +257,48 @@ export class ReactEventAdapter {
   }
 
   /**
+   * 触发 React click 事件
+   */
+  async triggerClickEvent(element: Element): Promise<ReactEventTriggerResult> {
+    // 尝试触发 React 事件
+    const reactResult = await this.tryTriggerReactEvent(element, 'click');
+    if (reactResult.success) {
+      return reactResult;
+    }
+
+    // 回退到原生事件
+    return this.triggerNativeClickEvent(element);
+  }
+
+  /**
+   * 触发原生 click 事件（备用方案）
+   */
+  private triggerNativeClickEvent(element: Element): ReactEventTriggerResult {
+    try {
+      const clickEvent = new Event('click', { 
+        bubbles: true, 
+        cancelable: true 
+      });
+
+      // 设置事件的 target 属性
+      Object.defineProperty(clickEvent, 'target', { 
+        value: element, 
+        enumerable: true 
+      });
+
+      element.dispatchEvent(clickEvent);
+      
+      this.logger.debug('原生 click 事件已触发');
+      return { success: true, method: 'native' };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.debug(`触发原生 click 事件失败: ${errorMessage}`);
+      return { success: false, method: 'native', error: errorMessage };
+    }
+  }
+
+  /**
    * 触发用户交互相关的辅助事件（focus、blur）
    */
   async triggerInteractionEvents(element: Element): Promise<void> {
@@ -318,4 +360,15 @@ export async function triggerReactInputEvent(
 ): Promise<ReactEventTriggerResult> {
   const adapter = getReactAdapter(logger);
   return adapter.triggerInputEvent(element, value);
+}
+
+/**
+ * 便捷函数：触发 React click 事件
+ */
+export async function triggerReactClickEvent(
+  element: Element,
+  logger?: any
+): Promise<ReactEventTriggerResult> {
+  const adapter = getReactAdapter(logger);
+  return adapter.triggerClickEvent(element);
 }

@@ -202,8 +202,26 @@ class LocatorAdapter {
     const element = await this.getElement();
     await this.page.scrollIntoViewIfNeeded(element);
     
-    this.eventSimulator.simulateClick(element, options);
-    this.logger.debug(`点击元素: ${this.selector}`);
+    // 检查框架组件类型并使用相应适配器
+    const reactAdapter = getReactAdapter(this.logger);
+    const openinulaAdapter = getOpenInulaAdapter(this.logger);
+    
+    const isReactComponent = reactAdapter.isReactComponent(element);
+    const isOpenInulaComponent = openinulaAdapter.isOpenInulaComponent(element);
+    
+    if (isReactComponent) {
+      // React 组件：使用 React 适配器
+      const clickResult = await reactAdapter.triggerClickEvent(element);
+      this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+    } else if (isOpenInulaComponent) {
+      // OpenInula 组件：使用 OpenInula 适配器
+      const clickResult = await openinulaAdapter.triggerClickEvent(element);
+      this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+    } else {
+      // 原生元素：使用原生事件模拟器
+      this.eventSimulator.simulateClick(element, options);
+      this.logger.debug(`点击元素: ${this.selector} (native)`);
+    }
   }
 
   /**
@@ -213,8 +231,29 @@ class LocatorAdapter {
     const element = await this.getElement();
     await this.page.scrollIntoViewIfNeeded(element);
     
-    this.eventSimulator.simulateDoubleClick(element);
-    this.logger.debug(`双击元素: ${this.selector}`);
+    // 检查框架组件类型并使用相应适配器
+    const reactAdapter = getReactAdapter(this.logger);
+    const openinulaAdapter = getOpenInulaAdapter(this.logger);
+    
+    const isReactComponent = reactAdapter.isReactComponent(element);
+    const isOpenInulaComponent = openinulaAdapter.isOpenInulaComponent(element);
+    
+    if (isReactComponent || isOpenInulaComponent) {
+      // 对于框架组件，双击就是触发两次点击事件
+      if (isReactComponent) {
+        await reactAdapter.triggerClickEvent(element);
+        await reactAdapter.triggerClickEvent(element);
+        this.logger.debug(`双击元素完成: ${this.selector} (react)`);
+      } else {
+        await openinulaAdapter.triggerClickEvent(element);
+        await openinulaAdapter.triggerClickEvent(element);
+        this.logger.debug(`双击元素完成: ${this.selector} (openinula)`);
+      }
+    } else {
+      // 原生元素：使用原生事件模拟器
+      this.eventSimulator.simulateDoubleClick(element);
+      this.logger.debug(`双击元素: ${this.selector} (native)`);
+    }
   }
 
   /**
@@ -283,8 +322,23 @@ class LocatorAdapter {
     const element = await this.getElement() as HTMLElement;
     await this.page.scrollIntoViewIfNeeded(element);
     
-    this.eventSimulator.simulateHover(element);
-    this.logger.debug(`悬停元素: ${this.selector}`);
+    // 检查框架组件类型并触发相应事件
+    const reactAdapter = getReactAdapter(this.logger);
+    const openinulaAdapter = getOpenInulaAdapter(this.logger);
+    
+    const isReactComponent = reactAdapter.isReactComponent(element);
+    const isOpenInulaComponent = openinulaAdapter.isOpenInulaComponent(element);
+    
+    if (isReactComponent || isOpenInulaComponent) {
+      // 对于框架组件，触发 mouseenter 和 mouseover 事件
+      element.dispatchEvent(new Event('mouseenter', { bubbles: true }));
+      element.dispatchEvent(new Event('mouseover', { bubbles: true }));
+      this.logger.debug(`悬停元素完成: ${this.selector} (${isReactComponent ? 'react' : 'openinula'})`);
+    } else {
+      // 原生元素：使用原生事件模拟器
+      this.eventSimulator.simulateHover(element);
+      this.logger.debug(`悬停元素: ${this.selector} (native)`);
+    }
   }
 
   /**
@@ -295,12 +349,18 @@ class LocatorAdapter {
     if (element.type === 'checkbox' || element.type === 'radio') {
       element.checked = true;
       
-      // 检查是否是 React 组件
+      // 检查框架组件类型并使用相应适配器
       const reactAdapter = getReactAdapter(this.logger);
+      const openinulaAdapter = getOpenInulaAdapter(this.logger);
+      
       const isReactComponent = reactAdapter.isReactComponent(element);
+      const isOpenInulaComponent = openinulaAdapter.isOpenInulaComponent(element);
       
       if (isReactComponent) {
         const changeResult = await reactAdapter.triggerChangeEvent(element);
+        this.logger.debug(`选择复选框: ${this.selector} (${changeResult.method})`);
+      } else if (isOpenInulaComponent) {
+        const changeResult = await openinulaAdapter.triggerChangeEvent(element);
         this.logger.debug(`选择复选框: ${this.selector} (${changeResult.method})`);
       } else {
         this.triggerNativeChangeEvent(element);
@@ -317,12 +377,18 @@ class LocatorAdapter {
     if (element.type === 'checkbox') {
       element.checked = false;
       
-      // 检查是否是 React 组件
+      // 检查框架组件类型并使用相应适配器
       const reactAdapter = getReactAdapter(this.logger);
+      const openinulaAdapter = getOpenInulaAdapter(this.logger);
+      
       const isReactComponent = reactAdapter.isReactComponent(element);
+      const isOpenInulaComponent = openinulaAdapter.isOpenInulaComponent(element);
       
       if (isReactComponent) {
         const changeResult = await reactAdapter.triggerChangeEvent(element);
+        this.logger.debug(`取消选择复选框: ${this.selector} (${changeResult.method})`);
+      } else if (isOpenInulaComponent) {
+        const changeResult = await openinulaAdapter.triggerChangeEvent(element);
         this.logger.debug(`取消选择复选框: ${this.selector} (${changeResult.method})`);
       } else {
         this.triggerNativeChangeEvent(element);
@@ -346,12 +412,18 @@ class LocatorAdapter {
         element.value = values;
       }
       
-      // 检查是否是 React 组件
+      // 检查框架组件类型并使用相应适配器
       const reactAdapter = getReactAdapter(this.logger);
+      const openinulaAdapter = getOpenInulaAdapter(this.logger);
+      
       const isReactComponent = reactAdapter.isReactComponent(element);
+      const isOpenInulaComponent = openinulaAdapter.isOpenInulaComponent(element);
       
       if (isReactComponent) {
         const changeResult = await reactAdapter.triggerChangeEvent(element);
+        this.logger.debug(`选择下拉选项: ${this.selector} = ${values} (${changeResult.method})`);
+      } else if (isOpenInulaComponent) {
+        const changeResult = await openinulaAdapter.triggerChangeEvent(element);
         this.logger.debug(`选择下拉选项: ${this.selector} = ${values} (${changeResult.method})`);
       } else {
         this.triggerNativeChangeEvent(element);
