@@ -7,6 +7,8 @@ import type {
   ElementWaitOptions,
   Logger 
 } from '../../types/index.js';
+import { getReactAdapter } from '../framework-adapters/react-adapter.js';
+import { getOpenInulaAdapter } from '../framework-adapters/openinula-adapter.js';
 
 interface FilterOptions {
   hasText?: string;
@@ -148,6 +150,49 @@ class LocatorAdapter {
     return this.filter({ hasText: text, exact: options.exact });
   }
 
+  // =============== 原生事件触发辅助方法 ===============
+  
+  /**
+   * 触发原生输入事件
+   */
+  private triggerNativeInputEvents(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+    // 触发 input 事件
+    const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+    Object.defineProperty(inputEvent, 'target', { value: element, enumerable: true });
+    element.dispatchEvent(inputEvent);
+    
+    // 触发 change 事件
+    const changeEvent = new Event('change', { bubbles: true, cancelable: true });
+    Object.defineProperty(changeEvent, 'target', { value: element, enumerable: true });
+    element.dispatchEvent(changeEvent);
+    
+    // 触发用户交互事件
+    this.triggerNativeInteractionEvents(element);
+  }
+  
+  /**
+   * 触发原生 change 事件
+   */
+  private triggerNativeChangeEvent(element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): void {
+    const changeEvent = new Event('change', { bubbles: true, cancelable: true });
+    Object.defineProperty(changeEvent, 'target', { value: element, enumerable: true });
+    element.dispatchEvent(changeEvent);
+  }
+  
+  /**
+   * 触发原生用户交互事件
+   */
+  private triggerNativeInteractionEvents(element: Element): void {
+    try {
+      element.dispatchEvent(new Event('focus', { bubbles: true }));
+      setTimeout(() => {
+        element.dispatchEvent(new Event('blur', { bubbles: true }));
+      }, 10);
+    } catch (error) {
+      // 忽略交互事件错误
+    }
+  }
+
   // =============== 核心操作方法 ===============
 
   /**
@@ -183,11 +228,32 @@ class LocatorAdapter {
     element.value = '';
     element.value = value;
     
-    // 触发相关事件
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
+    // 检查框架组件类型并使用相应适配器
+    const reactAdapter = getReactAdapter(this.logger);
+    const openinulaAdapter = getOpenInulaAdapter(this.logger);
     
-    this.logger.debug(`填充元素: ${this.selector} = "${value}"`);
+    const isReactComponent = reactAdapter.isReactComponent(element);
+    const isOpenInulaComponent = openinulaAdapter.isOpenInulaComponent(element);
+    
+    if (isReactComponent) {
+      // React 组件：使用 React 适配器
+      await reactAdapter.triggerInputEvent(element, value);
+      const changeResult = await reactAdapter.triggerChangeEvent(element, value);
+      await reactAdapter.triggerInteractionEvents(element);
+      
+      this.logger.debug(`填充元素完成: ${this.selector} = "${value}" (${changeResult.method})`);
+    } else if (isOpenInulaComponent) {
+      // OpenInula 组件：使用 OpenInula 适配器
+      await openinulaAdapter.triggerInputEvent(element, value);
+      const changeResult = await openinulaAdapter.triggerChangeEvent(element, value);
+      await openinulaAdapter.triggerInteractionEvents(element);
+      
+      this.logger.debug(`填充元素完成: ${this.selector} = "${value}" (${changeResult.method})`);
+    } else {
+      // 原生元素：直接触发原生事件
+      this.triggerNativeInputEvents(element, value);
+      this.logger.debug(`填充元素完成: ${this.selector} = "${value}" (native)`);
+    }
   }
 
   /**
@@ -228,8 +294,18 @@ class LocatorAdapter {
     const element = await this.getElement() as HTMLInputElement;
     if (element.type === 'checkbox' || element.type === 'radio') {
       element.checked = true;
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      this.logger.debug(`选择复选框: ${this.selector}`);
+      
+      // 检查是否是 React 组件
+      const reactAdapter = getReactAdapter(this.logger);
+      const isReactComponent = reactAdapter.isReactComponent(element);
+      
+      if (isReactComponent) {
+        const changeResult = await reactAdapter.triggerChangeEvent(element);
+        this.logger.debug(`选择复选框: ${this.selector} (${changeResult.method})`);
+      } else {
+        this.triggerNativeChangeEvent(element);
+        this.logger.debug(`选择复选框: ${this.selector} (native)`);
+      }
     }
   }
 
@@ -240,15 +316,25 @@ class LocatorAdapter {
     const element = await this.getElement() as HTMLInputElement;
     if (element.type === 'checkbox') {
       element.checked = false;
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      this.logger.debug(`取消选择复选框: ${this.selector}`);
+      
+      // 检查是否是 React 组件
+      const reactAdapter = getReactAdapter(this.logger);
+      const isReactComponent = reactAdapter.isReactComponent(element);
+      
+      if (isReactComponent) {
+        const changeResult = await reactAdapter.triggerChangeEvent(element);
+        this.logger.debug(`取消选择复选框: ${this.selector} (${changeResult.method})`);
+      } else {
+        this.triggerNativeChangeEvent(element);
+        this.logger.debug(`取消选择复选框: ${this.selector} (native)`);
+      }
     }
   }
 
   /**
    * 选择下拉选项
    */
-  async selectOption(values: string | string[], options: Record<string, any> = {}): Promise<void> {
+  async selectOption(values: string | string[]): Promise<void> {
     const element = await this.getElement() as HTMLSelectElement;
     if (element.tagName === 'SELECT') {
       if (Array.isArray(values)) {
@@ -259,8 +345,18 @@ class LocatorAdapter {
       } else {
         element.value = values;
       }
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      this.logger.debug(`选择下拉选项: ${this.selector} = ${values}`);
+      
+      // 检查是否是 React 组件
+      const reactAdapter = getReactAdapter(this.logger);
+      const isReactComponent = reactAdapter.isReactComponent(element);
+      
+      if (isReactComponent) {
+        const changeResult = await reactAdapter.triggerChangeEvent(element);
+        this.logger.debug(`选择下拉选项: ${this.selector} = ${values} (${changeResult.method})`);
+      } else {
+        this.triggerNativeChangeEvent(element);
+        this.logger.debug(`选择下拉选项: ${this.selector} = ${values} (native)`);
+      }
     }
   }
 

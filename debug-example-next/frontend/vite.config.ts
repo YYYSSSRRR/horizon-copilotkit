@@ -1,14 +1,18 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'path'
+import { fileURLToPath, URL } from 'url'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@copilotkit/react-core-next': path.resolve(__dirname, '../../CopilotKit/packages/react-core-next/src'),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@copilotkit/react-core-next': fileURLToPath(new URL('../../CopilotKit/packages/react-core-next/src', import.meta.url)),
+      '@copilotkit/playwright-actuator': fileURLToPath(new URL('../../CopilotKit/packages/playwright-actuator/src', import.meta.url)),
+      'react': 'openinula', // 新增
+      'react-dom': 'openinula', // 新增
+      'react-is': 'openinula', // 新增
     },
   },
   server: {

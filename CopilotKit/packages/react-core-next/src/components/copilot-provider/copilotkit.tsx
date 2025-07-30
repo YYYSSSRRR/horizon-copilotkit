@@ -215,8 +215,10 @@ export function CopilotKit({
     try {
       if (scriptAction.executeOnClient && typeof window !== 'undefined') {
         // 在客户端执行脚本
-        const func = new Function('args', scriptAction.script);
-        return func(args);
+        if (scriptAction.script) {
+          const func = new Function('args', scriptAction.script);
+          return func(args);
+        }
       } else if (scriptAction.handler) {
         // 使用自定义处理器
         return await scriptAction.handler(args);

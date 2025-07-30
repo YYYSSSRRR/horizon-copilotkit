@@ -102,6 +102,7 @@ export function useCopilotChat({
     runtimeClient,
     chatInstructions,
     actions,
+    scriptActions,
     agentSession,
     setAgentSession,
     forwardedParameters,
@@ -159,8 +160,9 @@ export function useCopilotChat({
   const { append, reload, stop, runChatCompletion } = useChat({
     ...options,
     actions: Object.values(actions),
+    scriptActions: Object.values(scriptActions),
     initialMessages: options.initialMessages || [],
-    onFunctionCall: createFunctionCallHandler(Object.values(actions)),
+    onFunctionCall: createFunctionCallHandler(Object.values(actions), Object.values(scriptActions)),
     messages,
     setMessages: setMessages as React.Dispatch<React.SetStateAction<Message[]>>,
     makeSystemMessageCallback,

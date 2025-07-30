@@ -29,5 +29,9 @@ declare global {
     PWEngine?: any;
     runPlaywrightScript?: any;
     loadPlaywrightScript?: any;
+    // 新增的全局实例
+    page?: any;
+    expect?: any;
+    test?: any;
   }
 }

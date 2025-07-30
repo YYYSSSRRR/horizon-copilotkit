@@ -19,6 +19,7 @@ import PlaywrightPageAdapter from './adapters/page-adapter.js';
 import PlaywrightExpectAdapter, { createExpect } from './adapters/expect-adapter.js';
 import PlaywrightRuntime from './runtime/playwright-runtime.js';
 import PlaywrightTestRunner from './runtime/test-runner.js';
+import * as FrameworkAdapters from './framework-adapters/index.js';
 
 // 确保所有依赖都已加载
 function ensureDependencies(): void {
@@ -221,6 +222,17 @@ declare global {
   const __VERSION__: string;
 }
 
+// 创建全局页面实例
+const page = new PlaywrightPageAdapter();
+
+// 创建全局 expect 实例
+const expect = createExpect();
+
+// 创建全局测试运行器实例
+const test = (name: string, testFn: (context: { page: PlaywrightPageAdapter }) => Promise<void>) => {
+  return testFn({ page });
+};
+
 // 全局导出（仅在浏览器环境）
 if (typeof window !== 'undefined') {
   window.PlaywrightExecutionEngine = PlaywrightExecutionEngine;
@@ -232,9 +244,15 @@ if (typeof window !== 'undefined') {
   window.runPlaywrightScript = PlaywrightExecutionEngine.run;
   window.loadPlaywrightScript = PlaywrightExecutionEngine.load;
   
+  // 导出全局实例到 window
+  window.page = page;
+  window.expect = expect;
+  window.test = test;
+  
   console.log('🎭 Playwright 执行引擎已加载完成');
   console.log('版本:', PlaywrightExecutionEngine.getVersion());
   console.log('使用方法: new PlaywrightExecutionEngine() 或 PlaywrightExecutionEngine.create()');
+  console.log('全局实例: page, expect, test 已可用');
 }
 
 // ES6 模块默认导出
@@ -250,5 +268,11 @@ export {
   PlaywrightExpectAdapter,
   createExpect,
   PlaywrightRuntime,
-  PlaywrightTestRunner
+  PlaywrightTestRunner,
+  // 导出框架适配器
+  FrameworkAdapters,
+  // 导出全局实例
+  page,
+  expect,
+  test
 };

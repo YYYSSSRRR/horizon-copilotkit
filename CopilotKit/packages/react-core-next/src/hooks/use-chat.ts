@@ -7,7 +7,7 @@ import {
   ResultMessage, 
   AgentStateMessage 
 } from "../client/message-types";
-import { FrontendAction } from "../types/frontend-action";
+import { FrontendAction, ScriptAction } from "../types/frontend-action";
 import { CoAgentStateRender } from "../types/coagent-action";
 import { CoagentState } from "../types/coagent-state";
 import { CopilotRuntimeClient } from "../client/copilot-runtime-client";
@@ -148,6 +148,11 @@ export type UseChatOptions = {
    * 发送到 API 的前端动作列表
    */
   actions: FrontendAction<any>[];
+
+  /**
+   * 发送到 API 的脚本动作列表
+   */
+  scriptActions?: ScriptAction<any>[];
 
   /**
    * CopilotKit API 配置
@@ -305,6 +310,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
     initialMessages,
     isLoading,
     actions,
+    scriptActions = [],
     onFunctionCall,
     onCoAgentStateRender,
     setCoagentStatesWithRef,
@@ -384,12 +390,22 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         // 准备请求数据
         const requestData = {
           messages: messagesWithContext,
-          actions: actions.map(action => ({
-            name: action.name,
-            description: action.description || "",
-            parameters: action.parameters || [],
-            available: "enabled" as const,
-          })),
+          actions: [
+            // 常规 actions
+            ...actions.map(action => ({
+              name: action.name,
+              description: action.description || "",
+              parameters: action.parameters || [],
+              available: "enabled" as const,
+            })),
+            // scriptActions 转换为 actions 格式
+            ...scriptActions.map(scriptAction => ({
+              name: scriptAction.name,
+              description: scriptAction.description || "",
+              parameters: scriptAction.parameters || [],
+              available: "enabled" as const,
+            }))
+          ],
           threadId: threadId,
           agentSession: agentSession ? {
             agentName: agentSession.agentName,
@@ -720,8 +736,10 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
             setMessages(finalMessages);
             
             // 查找对应的前端动作
-            const action = actions.find(
-              (action) => action.name === (message as ActionExecutionMessage).name,
+            const action = findAction(
+              (message as ActionExecutionMessage).name, 
+              actions, 
+              scriptActions
             );
             
             // 只有找到对应的前端动作才执行（react-core 的行为）
@@ -756,10 +774,13 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         
         // 检查是否需要后续请求（类似 react-core 行为）
         // 对于后端动作，我们也需要触发后续请求，因为后端可能返回需要处理的结果
-        const hasBackendActions = finalMessages.some((msg: Message) => 
-          msg.isActionExecutionMessage() && 
-          !actions.find(action => action.name === (msg as ActionExecutionMessage).name)
-        );
+        const hasBackendActions = finalMessages.some((msg: Message) => {
+          if (!msg.isActionExecutionMessage()) return false;
+          const actionMsg = msg as ActionExecutionMessage;
+          // 检查是否既不在 actions 中也不在 scriptActions 中（即为后端动作）
+          const foundAction = findAction(actionMsg.name, actions, scriptActions);
+          return !foundAction;
+        });
         
         if (
           !isFollowUp && // 只有非后续请求才能触发后续请求，避免死循环
@@ -897,11 +918,16 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
 /**
  * 创建函数调用处理器
  */
-export function createFunctionCallHandler(actions: FrontendAction<any>[]): FunctionCallHandler {
+export function createFunctionCallHandler(
+  actions: FrontendAction<any>[], 
+  scriptActions: ScriptAction<any>[] = []
+): FunctionCallHandler {
   return async (message: ActionExecutionMessage): Promise<ResultMessage | void> => {
-    const action = actions.find((a) => a.name === message.name);
+    // 使用 findAction 方法查找动作
+    const action = findAction(message.name, actions, scriptActions);
+    
     if (!action) {
-      // 如果找不到对应的前端动作，说明这是后端动作，直接返回 void 而不是抛出异常
+      // 如果在两个地方都找不到对应的动作，说明这是后端动作，直接返回 void 而不是抛出异常
       console.log(`Skipping backend action in function call handler: ${message.name}`);
       return;
     }
@@ -950,18 +976,43 @@ async function executeAction({
 }
 
 /**
+ * 根据动作名称在 actions 和 scriptActions 中查找动作
+ */
+export function findAction(
+  actionName: string,
+  actions: FrontendAction<any>[],
+  scriptActions?: ScriptAction<any>[]
+): FrontendAction<any> | ScriptAction<any> | undefined {
+  // 首先在常规 actions 中查找
+  let foundAction = actions.find(action => action.name === actionName);
+  
+  // 如果没找到，在 scriptActions 中查找
+  if (!foundAction && scriptActions) {
+    foundAction = scriptActions.find(action => action.name === actionName);
+  }
+  
+  return foundAction;
+}
+
+/**
  * 根据动作名称查找对应的前端动作
  */
 export function getPairedFeAction(
   actions: FrontendAction<any>[],
   message: ActionExecutionMessage | ResultMessage,
+  scriptActions?: ScriptAction<any>[]
 ) {
+  let actionName: string;
+  
   if (message.type === "action_execution") {
-    return actions.find(action => action.name === message.name);
+    actionName = message.name;
   } else if (message.type === "result") {
-    return actions.find(action => action.name === message.actionName);
+    actionName = message.actionName;
+  } else {
+    return undefined;
   }
-  return undefined;
+  
+  return findAction(actionName, actions, scriptActions);
 }
 
 /**

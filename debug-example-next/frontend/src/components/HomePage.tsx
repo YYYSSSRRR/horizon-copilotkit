@@ -1,11 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { 
   useCopilotChat, 
-  useCopilotAction, 
+  useCopilotAction,
+  useCopilotScriptAction, 
   useCopilotReadable,
   useToast,
   TextMessage 
 } from '@copilotkit/react-core-next'
+import { askLlmAction, fillFormAction } from '../../playwright-scripts/index.js'
+
 
 export function HomePage() {
   const [backendStatus, setBackendStatus] = useState<string>('检查中...')
@@ -13,8 +16,60 @@ export function HomePage() {
   const [calculation, setCalculation] = useState<string>('')
   const [userInfo, setUserInfo] = useState<string>('')
   const [systemStatus, setSystemStatus] = useState<string>('')
+  
+  // 表单状态
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    age: '',
+    gender: '',
+    country: '',
+    skills: [] as string[],
+    bio: '',
+    newsletter: false,
+    priority: 'medium',
+    startDate: '',
+    endDate: ''
+  })
 
   const { toast } = useToast()
+  
+  // 表单处理函数
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    toast(`表单已提交！姓名: ${formData.name}`, 'success')
+    console.log('表单数据:', formData)
+  }
+
+  const handleInputChange = (field: string, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleSkillToggle = (skill: string) => {
+    setFormData(prev => ({
+      ...prev,
+      skills: prev.skills.includes(skill)
+        ? prev.skills.filter(s => s !== skill)
+        : [...prev.skills, skill]
+    }))
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      email: '',
+      age: '',
+      gender: '',
+      country: '',
+      skills: [],
+      bio: '',
+      newsletter: false,
+      priority: 'medium',
+      startDate: '',
+      endDate: ''
+    })
+    toast('表单已重置', 'info')
+  }
   
   // 检查后端状态
   useEffect(() => {
@@ -172,7 +227,7 @@ export function HomePage() {
   // useCopilotAction(statusAction)
 
   // 注册前端 Action 来测试工具调用
-  useCopilotAction(useCallback({
+  const notificationAction = useMemo(() => ({
     name: "showNotification",
     description: "显示前端通知消息",
     parameters: [
@@ -193,7 +248,12 @@ export function HomePage() {
       alert(`${type.toUpperCase()}: ${message}`);
       return `已显示通知: ${message}`;
     },
-  }, []));
+  }), []);
+
+  useCopilotAction(notificationAction);
+
+  useCopilotScriptAction(askLlmAction);
+  useCopilotScriptAction(fillFormAction);
 
   // 使用CopilotChat
   const { 
@@ -236,9 +296,9 @@ export function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4">
+    <div className="min-h-screen bg-gray-50 p-2 sm:p-4">
       {/* 头部 */}
-      <header className="max-w-4xl mx-auto mb-8">
+      <header className="max-w-7xl mx-auto mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
           🚀 CopilotKit Debug Example Next
         </h1>
@@ -251,10 +311,21 @@ export function HomePage() {
         </div>
       </header>
 
-      <div className="max-w-4xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 lg:gap-6">
+        {/* 表单区域 */}
+        <div className="lg:col-span-4">
+          <UserInfoForm 
+            formData={formData}
+            onInputChange={handleInputChange}
+            onSkillToggle={handleSkillToggle}
+            onSubmit={handleFormSubmit}
+            onReset={resetForm}
+          />
+        </div>
+
         {/* 聊天区域 */}
-        <div className="lg:col-span-2">
-          <div className="bg-white rounded-lg shadow-lg h-96 flex flex-col">
+        <div className="lg:col-span-5">
+          <div className="bg-white rounded-lg shadow-lg h-[600px] flex flex-col">
             <div className="p-4 border-b">
               <h2 className="text-lg font-semibold">💬 AI 助手聊天</h2>
               <p className="text-sm text-gray-600">
@@ -320,7 +391,7 @@ export function HomePage() {
         </div>
 
         {/* 侧边栏 - 状态信息 */}
-        <div className="space-y-4">
+        <div className="lg:col-span-3 space-y-4">
           {/* 快速操作 */}
           <div className="bg-white rounded-lg shadow p-4">
             <h3 className="font-semibold mb-3">🎮 快速操作</h3>
@@ -446,5 +517,282 @@ function ChatInput({ onSendMessage, disabled }: { onSendMessage: (message: strin
         发送
       </button>
     </form>
+  )
+}
+
+// 用户信息表单组件
+function UserInfoForm({ 
+  formData, 
+  onInputChange, 
+  onSkillToggle, 
+  onSubmit, 
+  onReset 
+}: {
+  formData: any,
+  onInputChange: (field: string, value: any) => void,
+  onSkillToggle: (skill: string) => void,
+  onSubmit: (e: React.FormEvent) => void,
+  onReset: () => void
+}) {
+  const skillOptions = ['React', 'TypeScript', 'Node.js', 'Python', 'Java', 'Go'];
+  const countryOptions = ['中国', '美国', '日本', '德国', '法国', '英国'];
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg p-4 sm:p-6 h-fit">
+      <h2 className="text-lg font-semibold mb-4">📝 用户信息表单</h2>
+      <p className="text-sm text-gray-600 mb-4">
+        这个表单用于测试 ScriptAction 的界面操作功能
+      </p>
+      
+      <form onSubmit={onSubmit} className="space-y-4">
+        {/* 姓名和邮箱 - 并排布局 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+              姓名 *
+            </label>
+            <input
+              id="name"
+              name="name"
+              type="text"
+              value={formData.name}
+              onChange={(e) => onInputChange('name', e.target.value)}
+              placeholder="请输入您的姓名"
+              aria-label="姓名输入框"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              邮箱 *
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => onInputChange('email', e.target.value)}
+              placeholder="请输入您的邮箱"
+              aria-label="邮箱输入框"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+        </div>
+
+        {/* 年龄和国家 - 并排布局 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="age" className="block text-sm font-medium text-gray-700 mb-1">
+              年龄
+            </label>
+            <input
+              id="age"
+              name="age"
+              type="number"
+              min="1"
+              max="150"
+              value={formData.age}
+              onChange={(e) => onInputChange('age', e.target.value)}
+              placeholder="请输入您的年龄"
+              aria-label="年龄输入框"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">
+              国家
+            </label>
+            <select
+              id="country"
+              name="country"
+              value={formData.country}
+              onChange={(e) => onInputChange('country', e.target.value)}
+              aria-label="国家选择"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">请选择国家</option>
+              {countryOptions.map(country => (
+                <option key={country} value={country}>{country}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* 性别和优先级 - 并排布局 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">性别</label>
+            <div className="flex space-x-4">
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="gender"
+                  value="male"
+                  checked={formData.gender === 'male'}
+                  onChange={(e) => onInputChange('gender', e.target.value)}
+                  aria-label="男性"
+                  className="mr-2"
+                />
+                男
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="gender"
+                  value="female"
+                  checked={formData.gender === 'female'}
+                  onChange={(e) => onInputChange('gender', e.target.value)}
+                  aria-label="女性"
+                  className="mr-2"
+                />
+                女
+              </label>
+              <label className="flex items-center">
+                <input
+                  type="radio"
+                  name="gender"
+                  value="other"
+                  checked={formData.gender === 'other'}
+                  onChange={(e) => onInputChange('gender', e.target.value)}
+                  aria-label="其他"
+                  className="mr-2"
+                />
+                其他
+              </label>
+            </div>
+          </div>
+          <div>
+            <label htmlFor="priority" className="block text-sm font-medium text-gray-700 mb-1">
+              优先级
+            </label>
+            <select
+              id="priority"
+              name="priority"
+              value={formData.priority}
+              onChange={(e) => onInputChange('priority', e.target.value)}
+              aria-label="优先级选择"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+            </select>
+          </div>
+        </div>
+
+
+        {/* 技能多选框 */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">技能</label>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            {skillOptions.map(skill => (
+              <label key={skill} className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.skills.includes(skill)}
+                  onChange={() => onSkillToggle(skill)}
+                  aria-label={`技能: ${skill}`}
+                  className="mr-2"
+                />
+                {skill}
+              </label>
+            ))}
+          </div>
+        </div>
+
+
+        {/* 日期范围 */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">
+              开始日期
+            </label>
+            <input
+              id="startDate"
+              name="startDate"
+              type="date"
+              value={formData.startDate}
+              onChange={(e) => onInputChange('startDate', e.target.value)}
+              aria-label="开始日期"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-1">
+              结束日期
+            </label>
+            <input
+              id="endDate"
+              name="endDate"
+              type="date"
+              value={formData.endDate}
+              onChange={(e) => onInputChange('endDate', e.target.value)}
+              aria-label="结束日期"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {/* 个人简介文本区域 */}
+        <div>
+          <label htmlFor="bio" className="block text-sm font-medium text-gray-700 mb-1">
+            个人简介
+          </label>
+          <textarea
+            id="bio"
+            name="bio"
+            rows={3}
+            value={formData.bio}
+            onChange={(e) => onInputChange('bio', e.target.value)}
+            placeholder="请简单介绍一下自己..."
+            aria-label="个人简介"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {/* 通讯录订阅复选框 */}
+        <div>
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={formData.newsletter}
+              onChange={(e) => onInputChange('newsletter', e.target.checked)}
+              aria-label="订阅通讯录"
+              className="mr-2"
+            />
+            订阅通讯录
+          </label>
+        </div>
+
+        {/* 按钮组 */}
+        <div className="flex space-x-2 pt-4">
+          <button
+            type="submit"
+            aria-label="提交表单"
+            className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            提交
+          </button>
+          <button
+            type="button"
+            onClick={onReset}
+            aria-label="重置表单"
+            className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
+          >
+            重置
+          </button>
+        </div>
+      </form>
+
+      {/* 表单数据预览 */}
+      <div className="mt-6 p-4 bg-gray-50 rounded-md">
+        <h3 className="text-sm font-medium text-gray-700 mb-2">当前表单数据:</h3>
+        <pre className="text-xs text-gray-600 overflow-auto max-h-32">
+          {JSON.stringify(formData, null, 2)}
+        </pre>
+      </div>
+    </div>
   )
 } 

@@ -173,10 +173,8 @@ export type CatchAllFrontendAction = {
 };
 
 export interface ScriptAction<T extends Parameter[] | [] = []> extends Action<T> {
-  script: string;
-  language?: "javascript" | "typescript" | "python" | "bash" | "shell";
   executeOnClient?: boolean;
-  timeout?: number;
+  script?: string;
 }
 
 export type RenderFunctionStatus = ActionRenderProps<any>["status"];

@@ -3,6 +3,9 @@ export type { UseCopilotChatOptions } from "./use-copilot-chat";
 export type { UseCopilotChatReturn } from "./use-copilot-chat";
 
 export { useCopilotAction } from "./use-copilot-action";
+export { 
+  useCopilotScriptAction, 
+} from "./use-copilot-script-action";
 export { useCoAgentStateRender } from "./use-coagent-state-render";
 export { useMakeCopilotDocumentReadable } from "./use-make-copilot-document-readable";
 export { type UseChatHelpers } from "./use-chat";
