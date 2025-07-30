@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "copilotkit-runtime-python"
-version = "1.8.15-next.0"
+version = "1.8.15"
 description = "CopilotKit Python Runtime - The Python runtime for integrating powerful AI Copilots into any application"
 authors = ["CopilotKit Team <team@copilotkit.ai>"]
 license = "MIT"
