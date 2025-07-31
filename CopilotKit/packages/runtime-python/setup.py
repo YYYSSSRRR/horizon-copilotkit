@@ -11,7 +11,7 @@ with open(os.path.join(this_directory, "README.md"), encoding="utf-8") as f:
 
 setup(
     name="copilotkit-runtime-python",
-    version="1.8.15-next.0",
+    version="1.8.15",
     description="CopilotKit Python Runtime - The Python runtime for integrating powerful AI Copilots into any application",
     long_description=long_description,
     long_description_content_type="text/markdown",
