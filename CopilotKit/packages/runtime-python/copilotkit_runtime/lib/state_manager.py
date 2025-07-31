@@ -2,9 +2,9 @@
 
 import asyncio
 from typing import Any, Dict, List, Optional, Union
-from rx.subject import ReplaySubject, Subject
-from rx import operators as ops
-from rx.core import Observer, Observable
+from reactivex.subject import ReplaySubject, Subject
+from reactivex import operators as ops
+from reactivex.core import Observer, Observable
 import structlog
 
 from ..api.models.responses import (

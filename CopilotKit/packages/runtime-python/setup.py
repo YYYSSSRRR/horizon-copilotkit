@@ -20,20 +20,19 @@ setup(
     url="https://github.com/CopilotKit/CopilotKit",
     license="MIT",
     packages=find_packages(exclude=["tests*"]),
-    python_requires=">=3.8",
+    python_requires=">=3.8.1",
     install_requires=[
         "fastapi>=0.104.0",
         "uvicorn>=0.24.0",
         "pydantic>=2.5.0",
         "httpx>=0.25.0",
         "requests>=2.31.0",
-        "rx>=4.0.4",
+        "reactivex>=4.0.4",
         "sse-starlette>=2.1.0",
         "structlog>=23.2.0",
         "aiohttp>=3.9.0",
         "typing-extensions>=4.8.0",
         "jsonschema>=4.20.0",
-        "asyncio-stream>=0.6.0",
     ],
     extras_require={
         "dev": [

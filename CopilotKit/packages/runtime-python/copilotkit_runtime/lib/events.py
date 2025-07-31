@@ -12,11 +12,11 @@ import logging
 from typing import Any, Dict, List, Optional, Callable, Union, Awaitable, AsyncGenerator
 from uuid import uuid4
 
-import rx
-from rx import operators as ops
-from rx.subject.replaysubject import ReplaySubject
-from rx.subject.subject import Subject
-from rx.core.observable.observable import Observable
+import reactivex as rx
+from reactivex import operators as ops
+from reactivex.subject.replaysubject import ReplaySubject
+from reactivex.subject.subject import Subject
+from reactivex.core.observable.observable import Observable
 
 from .types.events import (
     RuntimeEvent,

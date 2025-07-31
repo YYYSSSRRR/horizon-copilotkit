@@ -7,9 +7,9 @@ from typing import Any, Dict, List, Optional, Callable, Union, Awaitable
 from pydantic import BaseModel, Field
 import structlog
 import httpx
-from rx import Observable
-from rx.subject import ReplaySubject
-import rx.operators as ops
+from reactivex import Observable
+from reactivex.subject import ReplaySubject
+import reactivex.operators as ops
 
 from ..logging import LoggingConfig
 from ...service_adapters import ServiceAdapter
@@ -903,8 +903,8 @@ class CopilotRuntime:
             
             # Stream events
             def stream_handler(event_stream_observable):
-                from rx import operators as ops
-                from rx.core import Observable
+                from reactivex import operators as ops
+                from reactivex.core import Observable
                 
                 if hasattr(stream, '__iter__'):
                     # Convert iterable to Observable
