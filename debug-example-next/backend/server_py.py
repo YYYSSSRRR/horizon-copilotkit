@@ -259,7 +259,7 @@ def main():
         
         # 启动服务器
         port = int(os.getenv("SERVER_PORT", "8005"))  # 支持环境变量配置端口
-        host = "0.0.0.0"
+        host = "localhost"
         
         logger.info(f"📡 服务器配置:")
         logger.info(f"   - 地址: {host}:{port}")

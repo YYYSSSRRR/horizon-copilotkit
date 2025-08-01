@@ -124,19 +124,26 @@ class DeepSeekAdapter(CopilotServiceAdapter, ServiceAdapter):
             if params.api_key == "test_key":
                 self.logger.warning("⚠️ Using test API key - DeepSeek API calls will fail!")
             
+            custom_http_client = httpx.AsyncClient(
+                verify=False,
+                timeout=60.0
+            )
+
             # Create OpenAI client for DeepSeek API
             try:
                 from openai import AsyncOpenAI
                 self._client = AsyncOpenAI(
                     api_key=params.api_key,
                     base_url=params.base_url,
-                    timeout=60.0
+                    timeout=60.0,
+                    http_client=custom_http_client
                 )
                 self.logger.info(f"🔗 Created OpenAI client for DeepSeek API: {params.base_url}")
             except ImportError:
                 # Fallback to HTTP client if openai package is not available
                 self._http_client = httpx.AsyncClient(
                     base_url=params.base_url,
+                    verify=False,
                     headers={
                         "Authorization": f"Bearer {params.api_key}",
                         "User-Agent": "CopilotKit-DeepSeek-Adapter",
