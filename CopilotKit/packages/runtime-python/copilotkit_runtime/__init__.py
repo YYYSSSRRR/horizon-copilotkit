@@ -5,7 +5,7 @@ The Python runtime for integrating powerful AI Copilots into any application.
 Easily implement custom AI Chatbots, AI Agents, AI Textareas, and more.
 """
 
-__version__ = "1.8.15-next.0"
+__version__ = "1.8.15"
 __author__ = "CopilotKit Team"
 __email__ = "team@copilotkit.ai"
 __license__ = "MIT"
