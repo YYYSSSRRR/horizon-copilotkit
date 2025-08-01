@@ -904,7 +904,7 @@ class CopilotRuntime:
             # Stream events
             def stream_handler(event_stream_observable):
                 from reactivex import operators as ops
-                from reactivex.core import Observable
+                from reactivex import Observable
                 
                 if hasattr(stream, '__iter__'):
                     # Convert iterable to Observable

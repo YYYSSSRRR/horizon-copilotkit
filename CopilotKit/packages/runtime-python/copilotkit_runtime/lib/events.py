@@ -14,9 +14,8 @@ from uuid import uuid4
 
 import reactivex as rx
 from reactivex import operators as ops
-from reactivex.subject.replaysubject import ReplaySubject
-from reactivex.subject.subject import Subject
-from reactivex.core.observable.observable import Observable
+from reactivex.subject import ReplaySubject, Subject
+from reactivex import Observable
 
 from .types.events import (
     RuntimeEvent,

@@ -4,7 +4,7 @@ import asyncio
 from typing import Any, Dict, List, Optional, Union
 from reactivex.subject import ReplaySubject, Subject
 from reactivex import operators as ops
-from reactivex.core import Observer, Observable
+from reactivex import Observer, Observable
 import structlog
 
 from ..api.models.responses import (

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, AsyncIterator, Union
 import structlog
 import httpx
-from reactivex.subject.replaysubject import ReplaySubject
+from reactivex.subject import ReplaySubject
 
 from ..models.requests import GenerateCopilotResponseInput
 from ..models.responses import (
