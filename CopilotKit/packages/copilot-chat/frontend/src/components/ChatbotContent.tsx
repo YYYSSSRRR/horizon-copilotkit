@@ -75,7 +75,7 @@ export function ChatbotContent() {
               return null;
             }
             
-            const textMessage = message;
+            const textMessage = message as TextMessage;
             return (
               <div
                 key={index}

@@ -13,6 +13,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
+    "jsxImportSource": "openinula",
 
     /* Linting */
     "strict": true,
@@ -24,7 +25,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@copilotkit/react-core-next": ["../../CopilotKit/packages/react-core-next/src"]
+      "@copilotkit/react-core-next": ["../../react-core-next/src"],
+      "@copilotkit/shared": ["../../shared/src"],
+      "@copilotkit/playwright-actuator": ["../../playwright-actuator/src"]
     }
   },
   "include": ["src"],
