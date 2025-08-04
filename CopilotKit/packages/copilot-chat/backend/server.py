@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 # 添加 runtime-python 到路径
 current_dir = Path(__file__).parent
-project_root = current_dir.parent.parent
+project_root = current_dir.parent.parent.parent.parent
 runtime_python_path = project_root / "CopilotKit" / "packages" / "runtime-python"
 sys.path.insert(0, str(runtime_python_path))
 
