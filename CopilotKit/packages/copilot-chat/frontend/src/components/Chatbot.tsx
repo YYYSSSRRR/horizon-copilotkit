@@ -4,7 +4,7 @@ import { ChatbotContent } from './ChatbotContent'
 // Chatbot 组件 - 包装 CopilotKit
 export function Chatbot(): any {
   return (
-    <CopilotKit runtimeUrl="/api/copilotkit">
+    <CopilotKit runtimeUrl="/api/copilotkit" showDevConsole={false}>
       <ChatbotContent />
     </CopilotKit>
   )
