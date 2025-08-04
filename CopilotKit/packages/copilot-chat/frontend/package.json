@@ -5,7 +5,7 @@
   "description": "CopilotKit Debug Example Next Frontend - 基于 react-core-next 的前端应用",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "type-check": "tsc --noEmit"

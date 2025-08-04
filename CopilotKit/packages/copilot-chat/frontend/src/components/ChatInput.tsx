@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 
 // 聊天输入组件
 export function ChatInput({ onSendMessage, disabled }: { onSendMessage: (message: string) => void, disabled: boolean }) {
   const [message, setMessage] = useState('')
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (message.trim() && !disabled) {
       onSendMessage(message)
