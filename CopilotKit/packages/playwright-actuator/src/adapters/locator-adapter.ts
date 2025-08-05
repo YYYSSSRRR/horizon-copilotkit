@@ -11,8 +11,8 @@ import { getReactAdapter } from '../framework-adapters/react-adapter.js';
 import { getOpenInulaAdapter } from '../framework-adapters/openinula-adapter.js';
 
 interface FilterOptions {
-  hasText?: string;
-  hasNotText?: string;
+  hasText?: string | RegExp;
+  hasNotText?: string | RegExp;
   exact?: boolean;
   position?: number | 'last';
 }
@@ -687,14 +687,20 @@ class LocatorAdapter {
     if (filter.hasText) {
       return elements.filter(element => {
         const text = element.textContent || (element as HTMLElement).innerText || '';
-        return filter.exact ? text === filter.hasText : text.includes(filter.hasText!);
+        if (filter.hasText instanceof RegExp) {
+          return filter.hasText.test(text);
+        }
+        return filter.exact ? text === filter.hasText : text.includes(filter.hasText);
       });
     }
     
     if (filter.hasNotText) {
       return elements.filter(element => {
         const text = element.textContent || (element as HTMLElement).innerText || '';
-        return !text.includes(filter.hasNotText!);
+        if (filter.hasNotText instanceof RegExp) {
+          return !filter.hasNotText.test(text);
+        }
+        return !text.includes(filter.hasNotText);
       });
     }
     
