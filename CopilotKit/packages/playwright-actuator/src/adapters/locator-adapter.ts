@@ -9,7 +9,17 @@ import type {
 } from '../../types/index.js';
 import { getReactAdapter } from '../framework-adapters/react-adapter.js';
 import { getOpenInulaAdapter } from '../framework-adapters/openinula-adapter.js';
-import { getRoleSelector, elementMatchesText, elementMatchesAccessibleName, type RoleOptions } from '../utils/role-selector-utils.js';
+import { 
+  getRoleSelector, 
+  elementMatchesText, 
+  elementMatchesAccessibleName,
+  buildGetByTextSelector,
+  buildGetByLabelSelector,
+  buildGetByPlaceholderSelector,
+  buildGetByTestIdSelector,
+  buildGetByTitleSelector,
+  type RoleOptions 
+} from '../utils/role-selector-utils.js';
 
 interface FilterOptions {
   hasText?: string | RegExp;
@@ -173,7 +183,77 @@ class LocatorAdapter {
    * 根据文本过滤
    */
   getByText(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
-    return this.filter({ hasText: text, exact: options.exact });
+    const { exact = false } = options;
+    const selector = buildGetByTextSelector(text, exact);
+    const combinedSelector = this.combineSelectorWithParent(selector);
+    const newLocator = new LocatorAdapter(combinedSelector, this.page);
+    newLocator.filters = [...this.filters];
+    return newLocator;
+  }
+
+  /**
+   * 根据标签定位
+   */
+  getByLabel(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
+    const { exact = false } = options;
+    
+    // 如果是空字符串，直接使用过滤器匹配没有 label 的元素
+    if (text === "") {
+      const formSelector = 'input, select, textarea';
+      const combinedSelector = this.combineSelectorWithParent(formSelector);
+      const newLocator = new LocatorAdapter(combinedSelector, this.page);
+      newLocator.filters = [...this.filters];
+      
+      // 添加过滤器：匹配没有任何 label 的元素
+      newLocator.filters.push({
+        hasAccessibleName: "",
+        exact: true
+      });
+      
+      return newLocator;
+    }
+    
+    // 使用共享的选择器生成器
+    const selector = buildGetByLabelSelector(text, exact);
+    const combinedSelector = this.combineSelectorWithParent(selector);
+    const newLocator = new LocatorAdapter(combinedSelector, this.page);
+    newLocator.filters = [...this.filters];
+    return newLocator;
+  }
+
+  /**
+   * 根据占位符定位
+   */
+  getByPlaceholder(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
+    const { exact = false } = options;
+    const selector = buildGetByPlaceholderSelector(text, exact);
+    const combinedSelector = this.combineSelectorWithParent(selector);
+    const newLocator = new LocatorAdapter(combinedSelector, this.page);
+    newLocator.filters = [...this.filters];
+    return newLocator;
+  }
+
+  /**
+   * 根据测试 ID 定位
+   */
+  getByTestId(testId: string): LocatorAdapter {
+    const selector = buildGetByTestIdSelector(testId);
+    const combinedSelector = this.combineSelectorWithParent(selector);
+    const newLocator = new LocatorAdapter(combinedSelector, this.page);
+    newLocator.filters = [...this.filters];
+    return newLocator;
+  }
+
+  /**
+   * 根据标题定位
+   */
+  getByTitle(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
+    const { exact = false } = options;
+    const selector = buildGetByTitleSelector(text, exact);
+    const combinedSelector = this.combineSelectorWithParent(selector);
+    const newLocator = new LocatorAdapter(combinedSelector, this.page);
+    newLocator.filters = [...this.filters];
+    return newLocator;
   }
 
   // =============== 原生事件触发辅助方法 ===============

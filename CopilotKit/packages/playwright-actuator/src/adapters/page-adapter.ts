@@ -8,7 +8,16 @@ import type {
   ViewportSize,
   Logger
 } from '../../types/index.js';
-import { getRoleSelector, buildRoleXPathWithName, type RoleOptions } from '../utils/role-selector-utils.js';
+import { 
+  getRoleSelector, 
+  buildRoleXPathWithName,
+  buildGetByTextSelector,
+  buildGetByLabelSelector, 
+  buildGetByPlaceholderSelector,
+  buildGetByTestIdSelector,
+  buildGetByTitleSelector,
+  type RoleOptions 
+} from '../utils/role-selector-utils.js';
 
 /**
  * Page 适配器 - 实现 Playwright Page API
@@ -256,15 +265,8 @@ class PageAdapter {
    */
   getByText(text: string, options: { exact?: boolean } = {}): any {
     const { exact = false } = options;
-    let xpath: string;
-    
-    if (exact) {
-      xpath = `//*[normalize-space(text())="${text}"]`;
-    } else {
-      xpath = `//*[contains(normalize-space(text()), "${text}")]`;
-    }
-    
-    return this.locator(`xpath=${xpath}`);
+    const selector = buildGetByTextSelector(text, exact);
+    return this.locator(selector);
   }
 
   /**
@@ -272,46 +274,8 @@ class PageAdapter {
    */
   getByLabel(text: string, options: { exact?: boolean } = {}): any {
     const { exact = false } = options;
-    
-    // 支持的表单元素类型
-    const formElements = ['input', 'select', 'textarea'];
-    
-    // 构建 XPath，支持多种表单元素类型和多种关联方式
-    let xpathParts: string[] = [];
-    
-    // 优先查找 aria-label 属性（最常用且性能最好）
-    if (exact) {
-      // 精确匹配 - 优先顺序：aria-label > for关联 > 嵌套 > aria-labelledby
-      formElements.forEach(elementType => {
-        xpathParts.push(`//${elementType}[@aria-label="${text}"]`);
-      });
-      formElements.forEach(elementType => {
-        xpathParts.push(`//${elementType}[@id = //label[normalize-space(text())="${text}"]/@for]`);
-      });
-      formElements.forEach(elementType => {
-        xpathParts.push(`//label[normalize-space(text())="${text}"]//${elementType}`);
-      });
-      formElements.forEach(elementType => {
-        xpathParts.push(`//${elementType}[@aria-labelledby = //label[normalize-space(text())="${text}"]/@id]`);
-      });
-    } else {
-      // 包含匹配 - 同样的优先顺序
-      formElements.forEach(elementType => {
-        xpathParts.push(`//${elementType}[contains(@aria-label, "${text}")]`);
-      });
-      formElements.forEach(elementType => {
-        xpathParts.push(`//${elementType}[@id = //label[contains(normalize-space(text()), "${text}")]/@for]`);
-      });
-      formElements.forEach(elementType => {
-        xpathParts.push(`//label[contains(normalize-space(text()), "${text}")]//${elementType}`);
-      });
-      formElements.forEach(elementType => {
-        xpathParts.push(`//${elementType}[@aria-labelledby = //label[contains(normalize-space(text()), "${text}")]/@id]`);
-      });
-    }
-    
-    const xpath = xpathParts.join(' | ');
-    return this.locator(`xpath=${xpath}`);
+    const selector = buildGetByLabelSelector(text, exact);
+    return this.locator(selector);
   }
 
   /**
@@ -319,10 +283,7 @@ class PageAdapter {
    */
   getByPlaceholder(text: string, options: { exact?: boolean } = {}): any {
     const { exact = false } = options;
-    const selector = exact 
-      ? `[placeholder="${text}"]`
-      : `[placeholder*="${text}"]`;
-    
+    const selector = buildGetByPlaceholderSelector(text, exact);
     return this.locator(selector);
   }
 
@@ -330,7 +291,8 @@ class PageAdapter {
    * 根据测试 ID 定位
    */
   getByTestId(testId: string): any {
-    return this.locator(`[data-testid="${testId}"]`);
+    const selector = buildGetByTestIdSelector(testId);
+    return this.locator(selector);
   }
 
   /**
@@ -338,10 +300,7 @@ class PageAdapter {
    */
   getByTitle(text: string, options: { exact?: boolean } = {}): any {
     const { exact = false } = options;
-    const selector = exact 
-      ? `[title="${text}"]`
-      : `[title*="${text}"]`;
-    
+    const selector = buildGetByTitleSelector(text, exact);
     return this.locator(selector);
   }
 

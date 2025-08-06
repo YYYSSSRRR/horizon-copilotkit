@@ -145,12 +145,97 @@ export function elementMatchesText(element: Element, pattern: string | RegExp, e
   return matchesText(text, pattern, exact);
 }
 
+// =============== 共享的 getBy* 方法选择器生成器 ===============
+
+/**
+ * 生成 getByText 的选择器
+ */
+export function buildGetByTextSelector(text: string, exact: boolean = false): string {
+  if (exact) {
+    return `xpath=//*[normalize-space(text())="${text}"]`;
+  } else {
+    return `xpath=//*[contains(normalize-space(text()), "${text}")]`;
+  }
+}
+
+/**
+ * 生成 getByLabel 的选择器
+ */
+export function buildGetByLabelSelector(text: string, exact: boolean = false): string {
+  // 支持的表单元素类型
+  const formElements = ['input', 'select', 'textarea'];
+  
+  // 构建 XPath，支持多种表单元素类型和多种关联方式
+  let xpathParts: string[] = [];
+  
+  if (exact) {
+    // 精确匹配 - 优先顺序：aria-label > for关联 > 嵌套 > aria-labelledby
+    formElements.forEach(elementType => {
+      xpathParts.push(`//${elementType}[@aria-label="${text}"]`);
+    });
+    formElements.forEach(elementType => {
+      xpathParts.push(`//${elementType}[@id = //label[normalize-space(text())="${text}"]/@for]`);
+    });
+    formElements.forEach(elementType => {
+      xpathParts.push(`//label[normalize-space(text())="${text}"]//${elementType}`);
+    });
+    formElements.forEach(elementType => {
+      xpathParts.push(`//${elementType}[@aria-labelledby = //label[normalize-space(text())="${text}"]/@id]`);
+    });
+  } else {
+    // 包含匹配 - 同样的优先顺序
+    formElements.forEach(elementType => {
+      xpathParts.push(`//${elementType}[contains(@aria-label, "${text}")]`);
+    });
+    formElements.forEach(elementType => {
+      xpathParts.push(`//${elementType}[@id = //label[contains(normalize-space(text()), "${text}")]/@for]`);
+    });
+    formElements.forEach(elementType => {
+      xpathParts.push(`//label[contains(normalize-space(text()), "${text}")]//${elementType}`);
+    });
+    formElements.forEach(elementType => {
+      xpathParts.push(`//${elementType}[@aria-labelledby = //label[contains(normalize-space(text()), "${text}")]/@id]`);
+    });
+  }
+  
+  return `xpath=${xpathParts.join(' | ')}`;
+}
+
+/**
+ * 生成 getByPlaceholder 的选择器
+ */
+export function buildGetByPlaceholderSelector(text: string, exact: boolean = false): string {
+  return exact 
+    ? `[placeholder="${text}"]`
+    : `[placeholder*="${text}"]`;
+}
+
+/**
+ * 生成 getByTestId 的选择器
+ */
+export function buildGetByTestIdSelector(testId: string): string {
+  return `[data-testid="${testId}"]`;
+}
+
+/**
+ * 生成 getByTitle 的选择器
+ */
+export function buildGetByTitleSelector(text: string, exact: boolean = false): string {
+  return exact 
+    ? `[title="${text}"]`
+    : `[title*="${text}"]`;
+}
+
 /**
  * 检查元素是否匹配指定的 accessible name
  * 按照 accessible name 的优先级顺序检查
  * 用于 getByRole 中的 name 选项
  */
 export function elementMatchesAccessibleName(element: Element, name: string | RegExp, exact: boolean = false): boolean {
+  // 特殊处理：如果要匹配空字符串，检查元素是否没有任何 accessible name
+  if (name === "" && exact) {
+    return !hasAnyAccessibleName(element);
+  }
   
   // 1. 优先检查 aria-label
   const ariaLabel = element.getAttribute('aria-label') || '';
@@ -210,6 +295,62 @@ export function elementMatchesAccessibleName(element: Element, name: string | Re
   // 7. 检查 title 属性（fallback）
   const title = element.getAttribute('title') || '';
   if (matchesText(title, name, exact)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * 检查元素是否有任何形式的 accessible name
+ */
+function hasAnyAccessibleName(element: Element): boolean {
+  // 1. 检查 aria-label
+  const ariaLabel = element.getAttribute('aria-label');
+  if (ariaLabel && ariaLabel.trim()) {
+    return true;
+  }
+  
+  // 2. 检查 aria-labelledby 引用的元素
+  const ariaLabelledBy = element.getAttribute('aria-labelledby');
+  if (ariaLabelledBy) {
+    const labelElement = document.getElementById(ariaLabelledBy);
+    if (labelElement && labelElement.textContent?.trim()) {
+      return true;
+    }
+  }
+  
+  // 3. 检查关联的 label（通过 for 属性）
+  const elementId = element.getAttribute('id');
+  if (elementId) {
+    const labelElement = document.querySelector(`label[for="${elementId}"]`);
+    if (labelElement && labelElement.textContent?.trim()) {
+      return true;
+    }
+  }
+  
+  // 4. 检查父级或祖先 label 元素
+  let parent = element.parentElement;
+  while (parent) {
+    if (parent.tagName.toLowerCase() === 'label') {
+      const labelText = parent.textContent?.trim() || '';
+      if (labelText) {
+        return true;
+      }
+      break; // 找到第一个 label 祖先就停止
+    }
+    parent = parent.parentElement;
+  }
+  
+  // 5. 检查 placeholder 属性
+  const placeholder = element.getAttribute('placeholder');
+  if (placeholder && placeholder.trim()) {
+    return true;
+  }
+  
+  // 6. 检查 title 属性
+  const title = element.getAttribute('title');
+  if (title && title.trim()) {
     return true;
   }
   
