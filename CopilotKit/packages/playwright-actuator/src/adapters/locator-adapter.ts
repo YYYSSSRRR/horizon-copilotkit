@@ -87,6 +87,55 @@ class LocatorAdapter {
   }
 
   /**
+   * 根据角色查找元素
+   */
+  getByRole(role: string, options: { name?: string | RegExp; exact?: boolean } = {}): LocatorAdapter {
+    let roleSelector = `[role="${role}"]`;
+    
+    // 构建更具体的选择器
+    const commonRoleSelectors: Record<string, string> = {
+      'textbox': 'input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="number"], textarea, [role="textbox"]',
+      'button': 'button, [role="button"], input[type="button"], input[type="submit"]',
+      'link': 'a, [role="link"]',
+      'checkbox': 'input[type="checkbox"], [role="checkbox"]',
+      'radio': 'input[type="radio"], [role="radio"]',
+      'combobox': 'select, [role="combobox"]',
+      'listbox': 'select[multiple], [role="listbox"]',
+      'option': 'option, [role="option"]',
+      'tab': '[role="tab"]',
+      'tabpanel': '[role="tabpanel"]',
+      'dialog': '[role="dialog"], dialog',
+      'heading': 'h1, h2, h3, h4, h5, h6, [role="heading"]',
+      'img': 'img, [role="img"]',
+      'list': 'ul, ol, [role="list"]',
+      'listitem': 'li, [role="listitem"]',
+      'table': 'table, [role="table"]',
+      'row': 'tr, [role="row"]',
+      'cell': 'td, [role="cell"]',
+      'columnheader': 'th, [role="columnheader"]',
+      'rowheader': 'th[scope="row"], [role="rowheader"]'
+    };
+
+    if (commonRoleSelectors[role]) {
+      roleSelector = commonRoleSelectors[role];
+    }
+
+    const combinedSelector = this.combineSelectorWithParent(roleSelector);
+    const newLocator = new LocatorAdapter(combinedSelector, this.page);
+    newLocator.filters = [...this.filters];
+    
+    // 如果指定了 name，添加名称过滤
+    if (options.name) {
+      newLocator.filters.push({
+        hasText: options.name,
+        exact: options.exact
+      });
+    }
+    
+    return newLocator;
+  }
+
+  /**
    * 将选择器与父选择器组合
    */
   private combineSelectorWithParent(childSelector: string): string {
@@ -690,7 +739,7 @@ class LocatorAdapter {
         if (filter.hasText instanceof RegExp) {
           return filter.hasText.test(text);
         }
-        return filter.exact ? text === filter.hasText : text.includes(filter.hasText);
+        return filter.exact ? text === filter.hasText : text.includes(filter.hasText as string);
       });
     }
     
@@ -700,7 +749,7 @@ class LocatorAdapter {
         if (filter.hasNotText instanceof RegExp) {
           return !filter.hasNotText.test(text);
         }
-        return !text.includes(filter.hasNotText);
+        return !text.includes(filter.hasNotText as string);
       });
     }
     
