@@ -711,11 +711,8 @@ class LocatorAdapter {
     
     if (filter.hasText) {
       return elements.filter(element => {
-        const text = element.textContent || (element as HTMLElement).innerText || '';
-        if (filter.hasText instanceof RegExp) {
-          return filter.hasText.test(text);
-        }
-        return filter.exact ? text === filter.hasText : text.includes(filter.hasText as string);
+        // 使用增强的 accessible name 匹配逻辑
+        return elementMatchesName(element, filter.hasText!, filter.exact);
       });
     }
     

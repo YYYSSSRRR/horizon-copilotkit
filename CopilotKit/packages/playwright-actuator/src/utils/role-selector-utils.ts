@@ -55,6 +55,7 @@ export function getRoleSelector(role: string, options: RoleOptions = {}): string
 
 /**
  * 构建带名称匹配的 XPath 表达式
+ * 支持所有 accessible name 的来源方式
  */
 export function buildRoleXPathWithName(role: string, name: string, options: RoleOptions = {}): string {
   const { exact = false } = options;
@@ -68,7 +69,12 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
     const trimmedPart = part.trim();
     let xpathPart = '';
     
-    if (trimmedPart.includes('[')) {
+    // 特殊处理复杂的 CSS 选择器
+    if (trimmedPart === 'input:not([type])') {
+      xpathPart = '//input[not(@type)]';
+    } else if (trimmedPart === 'input[type=""]') {
+      xpathPart = '//input[@type=""]';
+    } else if (trimmedPart.includes('[')) {
       // 处理带属性的元素，如 input[type="text"]
       const [tag, attrPart] = trimmedPart.split('[');
       const attr = attrPart.replace(/\]$/, '');
@@ -89,12 +95,42 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
       xpathPart = `//${trimmedPart}`;
     }
     
-    // 添加名称匹配条件
+    // 构建 accessible name 匹配条件（按优先级排序）
+    const nameConditions: string[] = [];
+    
     if (exact) {
-      xpathParts.push(`${xpathPart}[@aria-label="${name}"] | ${xpathPart}[normalize-space(text())="${name}"]`);
+      // 1. aria-label（最高优先级）
+      nameConditions.push(`@aria-label="${name}"`);
+      // 2. aria-labelledby 引用的元素文本
+      nameConditions.push(`@aria-labelledby = //label[normalize-space(text())="${name}"]/@id`);
+      nameConditions.push(`@aria-labelledby = //*[normalize-space(text())="${name}"]/@id`);
+      // 3. for 关联的 label 文本
+      nameConditions.push(`@id = //label[normalize-space(text())="${name}"]/@for`);
+      // 4. 父级 label 的文本内容
+      nameConditions.push(`parent::label[normalize-space(text())="${name}"]`);
+      nameConditions.push(`ancestor::label[normalize-space(text())="${name}"]`);
+      // 5. 元素自身的文本内容
+      nameConditions.push(`normalize-space(text())="${name}"`);
+      // 6. placeholder 作为 fallback
+      nameConditions.push(`@placeholder="${name}"`);
+      // 7. title 作为 fallback
+      nameConditions.push(`@title="${name}"`);
     } else {
-      xpathParts.push(`${xpathPart}[contains(@aria-label, "${name}")] | ${xpathPart}[contains(normalize-space(text()), "${name}")]`);
+      // 包含匹配
+      nameConditions.push(`contains(@aria-label, "${name}")`);
+      nameConditions.push(`@aria-labelledby = //label[contains(normalize-space(text()), "${name}")]/@id`);
+      nameConditions.push(`@aria-labelledby = //*[contains(normalize-space(text()), "${name}")]/@id`);
+      nameConditions.push(`@id = //label[contains(normalize-space(text()), "${name}")]/@for`);
+      nameConditions.push(`parent::label[contains(normalize-space(text()), "${name}")]`);
+      nameConditions.push(`ancestor::label[contains(normalize-space(text()), "${name}")]`);
+      nameConditions.push(`contains(normalize-space(text()), "${name}")`);
+      nameConditions.push(`contains(@placeholder, "${name}")`);
+      nameConditions.push(`contains(@title, "${name}")`);
     }
+    
+    // 组合所有条件
+    const combinedCondition = nameConditions.join(' or ');
+    xpathParts.push(`${xpathPart}[${combinedCondition}]`);
   });
   
   return xpathParts.join(' | ');
@@ -102,18 +138,87 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
 
 /**
  * 检查元素是否匹配指定名称
+ * 按照 accessible name 的优先级顺序检查
  */
 export function elementMatchesName(element: Element, name: string | RegExp, exact: boolean = false): boolean {
-  const ariaLabel = element.getAttribute('aria-label') || '';
-  const textContent = element.textContent?.trim() || '';
   
-  if (name instanceof RegExp) {
-    return name.test(ariaLabel) || name.test(textContent);
+  // 1. 优先检查 aria-label
+  const ariaLabel = element.getAttribute('aria-label') || '';
+  if (ariaLabel && matchesText(ariaLabel, name, exact)) {
+    return true;
+  }
+  
+  // 2. 检查 aria-labelledby 引用的元素
+  const ariaLabelledBy = element.getAttribute('aria-labelledby');
+  if (ariaLabelledBy) {
+    const labelElement = document.getElementById(ariaLabelledBy);
+    if (labelElement) {
+      const labelText = labelElement.textContent?.trim() || '';
+      if (matchesText(labelText, name, exact)) {
+        return true;
+      }
+    }
+  }
+  
+  // 3. 检查关联的 label（通过 for 属性）
+  const elementId = element.getAttribute('id');
+  if (elementId) {
+    const labelElement = document.querySelector(`label[for="${elementId}"]`);
+    if (labelElement) {
+      const labelText = labelElement.textContent?.trim() || '';
+      if (matchesText(labelText, name, exact)) {
+        return true;
+      }
+    }
+  }
+  
+  // 4. 检查父级或祖先 label 元素
+  let parent = element.parentElement;
+  while (parent) {
+    if (parent.tagName.toLowerCase() === 'label') {
+      const labelText = parent.textContent?.trim() || '';
+      if (matchesText(labelText, name, exact)) {
+        return true;
+      }
+      break; // 找到第一个 label 祖先就停止
+    }
+    parent = parent.parentElement;
+  }
+  
+  // 5. 检查元素自身的文本内容
+  const textContent = element.textContent?.trim() || '';
+  if (textContent && matchesText(textContent, name, exact)) {
+    return true;
+  }
+  
+  // 6. 检查 placeholder 属性（fallback）
+  const placeholder = element.getAttribute('placeholder') || '';
+  if (placeholder && matchesText(placeholder, name, exact)) {
+    return true;
+  }
+  
+  // 7. 检查 title 属性（fallback）
+  const title = element.getAttribute('title') || '';
+  if (title && matchesText(title, name, exact)) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * 文本匹配辅助函数
+ */
+function matchesText(text: string, pattern: string | RegExp, exact: boolean): boolean {
+  if (!text) return false;
+  
+  if (pattern instanceof RegExp) {
+    return pattern.test(text);
   }
   
   if (exact) {
-    return ariaLabel === name || textContent === name;
+    return text === pattern;
   }
   
-  return ariaLabel.includes(name) || textContent.includes(name);
+  return text.includes(pattern);
 }
