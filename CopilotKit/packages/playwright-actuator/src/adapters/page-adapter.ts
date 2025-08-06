@@ -8,6 +8,7 @@ import type {
   ViewportSize,
   Logger
 } from '../../types/index.js';
+import { getRoleSelector, buildRoleXPathWithName, type RoleOptions } from '../utils/role-selector-utils.js';
 
 /**
  * Page 适配器 - 实现 Playwright Page API
@@ -237,85 +238,16 @@ class PageAdapter {
    */
   getByRole(role: string, options: { name?: string; exact?: boolean; level?: number } = {}): any {
     const { name, exact = false, level } = options;
-    
-    if (level && role === 'heading') {
-      return this.locator(`h${level}[role="heading"], h${level}`);
-    }
-    
-    // 构建基础的角色选择器，包括隐式角色
-    let baseSelector = `[role="${role}"]`;
-    
-    // 添加隐式 ARIA 角色的元素
-    const implicitRoles: Record<string, string> = {
-      'button': 'button, input[type="button"], input[type="submit"], input[type="reset"]',
-      'link': 'a[href]',
-      'textbox': 'input[type="text"], input[type="email"], input[type="password"], input[type="search"], input[type="tel"], input[type="url"], input[type="date"], textarea',
-      'combobox': 'select',
-      'checkbox': 'input[type="checkbox"]',
-      'radio': 'input[type="radio"]',
-      'spinbutton': 'input[type="number"]',
-      'slider': 'input[type="range"]',
-      'searchbox': 'input[type="search"]',
-      'heading': 'h1, h2, h3, h4, h5, h6',
-      'img': 'img',
-      'list': 'ul, ol',
-      'listitem': 'li',
-      'table': 'table',
-      'row': 'tr',
-      'cell': 'td, th',
-      'columnheader': 'th',
-      'rowheader': 'th[scope="row"]'
-    };
-    
-    if (implicitRoles[role]) {
-      baseSelector = `[role="${role}"], ${implicitRoles[role]}`;
-    }
+    const roleOptions: RoleOptions = { exact, level };
     
     if (name) {
-      // 使用 XPath 处理复杂的文本匹配，包括隐式角色
-      let xpathParts = [`//*[@role="${role}"]`];
-      
-      // 添加隐式角色的 XPath
-      if (implicitRoles[role]) {
-        const elements = implicitRoles[role].split(', ');
-        elements.forEach(element => {
-          if (element.includes('[')) {
-            // 处理带属性的元素，如 input[type="text"]
-            const [tag, attrPart] = element.split('[');
-            // 移除右括号并解析属性
-            const attr = attrPart.replace(/\]$/, '');
-            
-            if (attr.includes('=')) {
-              // 有值的属性，如 type="button"
-              const [attrName, attrValue] = attr.split('=');
-              const cleanAttrName = attrName.trim();
-              const cleanAttrValue = attrValue.replace(/['"]/g, '').trim();
-              xpathParts.push(`//${tag}[@${cleanAttrName}="${cleanAttrValue}"]`);
-            } else {
-              // 仅存在性检查的属性
-              const cleanAttrName = attr.trim();
-              xpathParts.push(`//${tag}[@${cleanAttrName}]`);
-            }
-          } else {
-            // 简单标签名
-            xpathParts.push(`//${element}`);
-          }
-        });
-      }
-      
-      let xpath: string;
-      if (exact) {
-        xpath = xpathParts.map(part => 
-          `${part}[@aria-label="${name}"] | ${part}[normalize-space(text())="${name}"]`
-        ).join(' | ');
-      } else {
-        xpath = xpathParts.map(part => 
-          `${part}[contains(@aria-label, "${name}")] | ${part}[contains(normalize-space(text()), "${name}")]`
-        ).join(' | ');
-      }
+      // 使用工具函数构建带名称匹配的 XPath
+      const xpath = buildRoleXPathWithName(role, name, roleOptions);
       return this.locator(`xpath=${xpath}`);
     }
     
+    // 获取基础角色选择器
+    const baseSelector = getRoleSelector(role, roleOptions);
     return this.locator(baseSelector);
   }
 

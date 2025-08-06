@@ -9,6 +9,7 @@ import type {
 } from '../../types/index.js';
 import { getReactAdapter } from '../framework-adapters/react-adapter.js';
 import { getOpenInulaAdapter } from '../framework-adapters/openinula-adapter.js';
+import { getRoleSelector, elementMatchesName, type RoleOptions } from '../utils/role-selector-utils.js';
 
 interface FilterOptions {
   hasText?: string | RegExp;
@@ -90,45 +91,20 @@ class LocatorAdapter {
    * 根据角色查找元素
    */
   getByRole(role: string, options: { name?: string | RegExp; exact?: boolean } = {}): LocatorAdapter {
-    let roleSelector = `[role="${role}"]`;
+    const { name, exact = false } = options;
+    const roleOptions: RoleOptions = { exact };
     
-    // 构建更具体的选择器
-    const commonRoleSelectors: Record<string, string> = {
-      'textbox': 'input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="number"], textarea, [role="textbox"]',
-      'button': 'button, [role="button"], input[type="button"], input[type="submit"]',
-      'link': 'a, [role="link"]',
-      'checkbox': 'input[type="checkbox"], [role="checkbox"]',
-      'radio': 'input[type="radio"], [role="radio"]',
-      'combobox': 'select, [role="combobox"]',
-      'listbox': 'select[multiple], [role="listbox"]',
-      'option': 'option, [role="option"]',
-      'tab': '[role="tab"]',
-      'tabpanel': '[role="tabpanel"]',
-      'dialog': '[role="dialog"], dialog',
-      'heading': 'h1, h2, h3, h4, h5, h6, [role="heading"]',
-      'img': 'img, [role="img"]',
-      'list': 'ul, ol, [role="list"]',
-      'listitem': 'li, [role="listitem"]',
-      'table': 'table, [role="table"]',
-      'row': 'tr, [role="row"]',
-      'cell': 'td, [role="cell"]',
-      'columnheader': 'th, [role="columnheader"]',
-      'rowheader': 'th[scope="row"], [role="rowheader"]'
-    };
-
-    if (commonRoleSelectors[role]) {
-      roleSelector = commonRoleSelectors[role];
-    }
-
+    // 使用共享工具函数获取角色选择器
+    const roleSelector = getRoleSelector(role, roleOptions);
     const combinedSelector = this.combineSelectorWithParent(roleSelector);
     const newLocator = new LocatorAdapter(combinedSelector, this.page);
     newLocator.filters = [...this.filters];
     
     // 如果指定了 name，添加名称过滤
-    if (options.name) {
+    if (name) {
       newLocator.filters.push({
-        hasText: options.name,
-        exact: options.exact
+        hasText: name,
+        exact
       });
     }
     
