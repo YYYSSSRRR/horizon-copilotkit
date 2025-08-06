@@ -210,8 +210,6 @@ export function elementMatchesName(element: Element, name: string | RegExp, exac
  * 文本匹配辅助函数
  */
 function matchesText(text: string, pattern: string | RegExp, exact: boolean): boolean {
-  if (!text) return false;
-  
   if (pattern instanceof RegExp) {
     return pattern.test(text);
   }
