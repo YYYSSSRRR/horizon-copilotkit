@@ -137,10 +137,20 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
 }
 
 /**
- * 检查元素是否匹配指定名称
- * 按照 accessible name 的优先级顺序检查
+ * 检查元素的文本内容是否匹配指定模式
+ * 用于 filter.hasText，只匹配元素的文本内容，不检查 accessible name 相关属性
  */
-export function elementMatchesName(element: Element, name: string | RegExp, exact: boolean = false): boolean {
+export function elementMatchesText(element: Element, pattern: string | RegExp, exact: boolean = false): boolean {
+  const text = element.textContent || (element as HTMLElement).innerText || '';
+  return matchesText(text, pattern, exact);
+}
+
+/**
+ * 检查元素是否匹配指定的 accessible name
+ * 按照 accessible name 的优先级顺序检查
+ * 用于 getByRole 中的 name 选项
+ */
+export function elementMatchesAccessibleName(element: Element, name: string | RegExp, exact: boolean = false): boolean {
   
   // 1. 优先检查 aria-label
   const ariaLabel = element.getAttribute('aria-label') || '';

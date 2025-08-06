@@ -9,11 +9,12 @@ import type {
 } from '../../types/index.js';
 import { getReactAdapter } from '../framework-adapters/react-adapter.js';
 import { getOpenInulaAdapter } from '../framework-adapters/openinula-adapter.js';
-import { getRoleSelector, elementMatchesName, type RoleOptions } from '../utils/role-selector-utils.js';
+import { getRoleSelector, elementMatchesText, elementMatchesAccessibleName, type RoleOptions } from '../utils/role-selector-utils.js';
 
 interface FilterOptions {
   hasText?: string | RegExp;
   hasNotText?: string | RegExp;
+  hasAccessibleName?: string | RegExp;  // 新增：用于 accessible name 匹配
   exact?: boolean;
   position?: number | 'last';
 }
@@ -100,10 +101,10 @@ class LocatorAdapter {
     const newLocator = new LocatorAdapter(combinedSelector, this.page);
     newLocator.filters = [...this.filters];
     
-    // 如果指定了 name，添加名称过滤
+    // 如果指定了 name，添加 accessible name 过滤
     if (name) {
       newLocator.filters.push({
-        hasText: name,
+        hasAccessibleName: name,
         exact
       });
     }
@@ -711,8 +712,15 @@ class LocatorAdapter {
     
     if (filter.hasText) {
       return elements.filter(element => {
-        // 使用增强的 accessible name 匹配逻辑
-        return elementMatchesName(element, filter.hasText!, filter.exact);
+        // filter.hasText 只匹配元素的文本内容，不匹配 accessible name 相关属性
+        return elementMatchesText(element, filter.hasText!, filter.exact);
+      });
+    }
+    
+    if (filter.hasAccessibleName) {
+      return elements.filter(element => {
+        // filter.hasAccessibleName 匹配完整的 accessible name
+        return elementMatchesAccessibleName(element, filter.hasAccessibleName!, filter.exact);
       });
     }
     
