@@ -187,19 +187,19 @@ export function elementMatchesName(element: Element, name: string | RegExp, exac
   
   // 5. 检查元素自身的文本内容
   const textContent = element.textContent?.trim() || '';
-  if (textContent && matchesText(textContent, name, exact)) {
+  if (matchesText(textContent, name, exact)) {
     return true;
   }
   
   // 6. 检查 placeholder 属性（fallback）
   const placeholder = element.getAttribute('placeholder') || '';
-  if (placeholder && matchesText(placeholder, name, exact)) {
+  if (matchesText(placeholder, name, exact)) {
     return true;
   }
   
   // 7. 检查 title 属性（fallback）
   const title = element.getAttribute('title') || '';
-  if (title && matchesText(title, name, exact)) {
+  if (matchesText(title, name, exact)) {
     return true;
   }
   
