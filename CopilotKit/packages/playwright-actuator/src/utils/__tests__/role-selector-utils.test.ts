@@ -8,7 +8,8 @@ import {
   getRoleSelector,
   elementMatchesAccessibleName,
   buildGetByLabelSelector,
-  buildGetByTextSelector
+  buildGetByTextSelector,
+  elementMatchesText
 } from '../role-selector-utils.js';
 
 describe('role-selector-utils', () => {
@@ -283,6 +284,126 @@ describe('role-selector-utils', () => {
       expect(xpath).not.toMatch(/\/\/\[@/);
       // 应该包含有效的 //*[@ 语法
       expect(xpath).toMatch(/\/\/\*\[@/);
+    });
+  });
+
+  describe('Complex Text Matching (hasText behavior)', () => {
+    it('should match complex nested text like Playwright hasText filter', () => {
+      // 创建复杂的嵌套结构，模拟用户提供的示例
+      const conditionDiv = document.createElement('div');
+      conditionDiv.className = 'conditionRow dynamicRow';
+      conditionDiv.innerHTML = `
+        <label title="最近发生时间:" class="link_label">最近发生时间:</label>
+        <div class="condition_content">
+          <span class="timeLabel">从</span>
+          <input type="text">
+          <span class="timeLabel">到</span>
+          <input type="text">
+          <span class="timeLabel">最近</span>
+          <input type="text">
+          <label class="eui_label eui_radio_label">天</label>
+          <label class="eui_label eui_radio_label">小时</label>
+          <label class="eui_label eui_radio_label">分钟</label>
+        </div>
+      `;
+      
+      document.body.appendChild(conditionDiv);
+      
+      // 测试实际情况：元素包含这些文本，但可能有空格分隔
+      // Playwright 的 hasText 会匹配包含关系，所以我们应该能匹配各个部分
+      expect(elementMatchesText(conditionDiv, '最近发生时间')).toBe(true);
+      expect(elementMatchesText(conditionDiv, '从')).toBe(true);
+      expect(elementMatchesText(conditionDiv, '到')).toBe(true);
+      expect(elementMatchesText(conditionDiv, '最近')).toBe(true);
+      expect(elementMatchesText(conditionDiv, '天')).toBe(true);
+      expect(elementMatchesText(conditionDiv, '小时')).toBe(true);
+      expect(elementMatchesText(conditionDiv, '分钟')).toBe(true);
+      
+      // 测试更现实的组合匹配（考虑可能的空格）
+      expect(elementMatchesText(conditionDiv, '最近发生时间: 从')).toBe(true);
+      expect(elementMatchesText(conditionDiv, '从 到 最近')).toBe(true);
+      expect(elementMatchesText(conditionDiv, '天 小时 分钟')).toBe(true);
+      
+      // 测试不匹配的情况
+      expect(elementMatchesText(conditionDiv, '不存在的文本')).toBe(false);
+      
+      // 清理
+      conditionDiv.remove();
+    });
+
+    it('should handle text normalization correctly', () => {
+      const testDiv = document.createElement('div');
+      testDiv.innerHTML = `
+        <span>  文本1  </span>
+        <div>
+          文本2
+        </div>
+        <p>文本3</p>
+      `;
+      
+      document.body.appendChild(testDiv);
+      
+      // 应该能匹配规范化后的文本（空白字符被合并）
+      expect(elementMatchesText(testDiv, '文本1 文本2 文本3')).toBe(true);
+      expect(elementMatchesText(testDiv, '文本1  文本2  文本3')).toBe(true); // 多个空格也应该匹配
+      
+      // 清理
+      testDiv.remove();
+    });
+
+    it('should skip hidden elements in text extraction', () => {
+      const testDiv = document.createElement('div');
+      testDiv.innerHTML = `
+        <span>可见文本</span>
+        <span style="display: none;">隐藏文本</span>
+        <span style="visibility: hidden;">不可见文本</span>
+        <span>另一个可见文本</span>
+      `;
+      
+      document.body.appendChild(testDiv);
+      
+      // 应该只匹配可见文本
+      expect(elementMatchesText(testDiv, '可见文本 另一个可见文本')).toBe(true);
+      expect(elementMatchesText(testDiv, '隐藏文本')).toBe(false);
+      expect(elementMatchesText(testDiv, '不可见文本')).toBe(false);
+      
+      // 清理
+      testDiv.remove();
+    });
+
+    it('should match text with RegExp patterns', () => {
+      const testDiv = document.createElement('div');
+      testDiv.textContent = '测试文本 123 结束';
+      
+      document.body.appendChild(testDiv);
+      
+      // 正则表达式匹配
+      expect(elementMatchesText(testDiv, /测试.*结束/)).toBe(true);
+      expect(elementMatchesText(testDiv, /^\d+$/)).toBe(false);
+      expect(elementMatchesText(testDiv, /\d+/)).toBe(true);
+      
+      // 清理
+      testDiv.remove();
+    });
+
+    it('should handle exact vs contains matching', () => {
+      const testDiv = document.createElement('div');
+      testDiv.innerHTML = `<span>完整文本内容</span>`;
+      
+      document.body.appendChild(testDiv);
+      
+      // 包含匹配（默认）
+      expect(elementMatchesText(testDiv, '完整文本内容', false)).toBe(true);
+      expect(elementMatchesText(testDiv, '文本', false)).toBe(true);
+      expect(elementMatchesText(testDiv, '内容', false)).toBe(true);
+      
+      // 精确匹配
+      expect(elementMatchesText(testDiv, '完整文本内容', true)).toBe(true);
+      expect(elementMatchesText(testDiv, '文本', true)).toBe(false);
+      expect(elementMatchesText(testDiv, '内容', true)).toBe(false);
+      
+      // 清理
+      testDiv.remove();
     });
   });
 });

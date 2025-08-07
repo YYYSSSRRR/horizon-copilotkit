@@ -540,5 +540,60 @@ describe('LocatorAdapter Table Integration Tests', () => {
       expect(checkbox.className).toBe('eui-checkbox-pro-input');
       expect(checkbox.disabled).toBe(true);
     });
+
+    it('should support Playwright-style hasText filter with complex nested content', async () => {
+      // 这个测试模拟用户提供的复杂文本匹配场景
+      const containerHTML = `
+        <div id="conditionPanelContainer">
+          <div class="conditionRow dynamicRow" id="condition1">
+            <label title="创建时间:" class="link_label">创建时间:</label>
+            <span>一些其他内容</span>
+          </div>
+          <div class="conditionRow dynamicRow" id="condition2">
+            <label title="最近发生时间:" class="link_label">最近发生时间:</label>
+            <div class="condition_content">
+              <span class="timeLabel">从</span>
+              <input type="text">
+              <span class="timeLabel">到</span>
+              <input type="text">
+              <span class="timeLabel">最近</span>
+              <input type="text">
+              <label class="eui_label eui_radio_label">天</label>
+              <label class="eui_label eui_radio_label">小时</label>
+              <label class="eui_label eui_radio_label">分钟</label>
+            </div>
+          </div>
+          <div class="conditionRow dynamicRow" id="condition3">
+            <label title="状态:" class="link_label">状态:</label>
+            <select><option>选项1</option></select>
+          </div>
+        </div>
+      `;
+      
+      document.body.innerHTML = containerHTML;
+      
+      const pageLocator = new LocatorAdapter('*', mockPage);
+      
+      // 模拟 Playwright 的 hasText 过滤行为
+      const containerLocator = pageLocator.locator('#conditionPanelContainer div');
+      const filteredLocator = containerLocator.filter({ 
+        hasText: '最近发生时间: 从 到 最近 天 小时 分钟' 
+      });
+      
+      const targetElement = await filteredLocator.getElement();
+      expect(targetElement.id).toBe('condition2');
+      
+      // 验证能找到其中的输入元素
+      const inputLocator = filteredLocator.locator('input');
+      const inputs = await inputLocator.all();
+      expect(inputs.length).toBeGreaterThan(0);
+      
+      // 也应该能匹配部分文本
+      const partialFilterLocator = containerLocator.filter({ 
+        hasText: '最近发生时间' 
+      });
+      const partialElement = await partialFilterLocator.getElement();
+      expect(partialElement.id).toBe('condition2');
+    });
   });
 });

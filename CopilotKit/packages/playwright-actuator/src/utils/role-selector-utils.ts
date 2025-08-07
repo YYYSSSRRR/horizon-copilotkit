@@ -140,10 +140,55 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
 /**
  * 检查元素的文本内容是否匹配指定模式
  * 用于 filter.hasText，只匹配元素的文本内容，不检查 accessible name 相关属性
+ * 模拟 Playwright 的 hasText 行为：包含检查 + 文本规范化
  */
 export function elementMatchesText(element: Element, pattern: string | RegExp, exact: boolean = false): boolean {
-  const text = element.textContent || (element as HTMLElement).innerText || '';
-  return matchesText(text, pattern, exact);
+  // 获取元素的完整可见文本内容，模拟 Playwright 的行为
+  const text = getElementVisibleText(element);
+  
+  // 规范化文本：将多个空白字符合并为单个空格，并去除首尾空白
+  const normalizedText = text.replace(/\s+/g, ' ').trim();
+  
+  return matchesText(normalizedText, pattern, exact);
+}
+
+/**
+ * 获取元素的可见文本内容
+ * 递归遍历所有子节点，提取可见的文本内容，模拟 Playwright 的文本提取行为
+ */
+function getElementVisibleText(element: Element): string {
+  const textParts: string[] = [];
+  
+  // 递归函数来遍历所有子节点
+  function extractText(node: Node): void {
+    if (node.nodeType === Node.TEXT_NODE) {
+      // 文本节点：直接添加文本内容
+      const textContent = (node.textContent || '').trim();
+      if (textContent) {
+        textParts.push(textContent);
+      }
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as Element;
+      
+      // 检查元素是否可见
+      if (typeof window !== 'undefined' && window.getComputedStyle) {
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          return; // 跳过隐藏元素
+        }
+      }
+      
+      // 递归处理子节点
+      for (const childNode of Array.from(el.childNodes)) {
+        extractText(childNode);
+      }
+    }
+  }
+  
+  extractText(element);
+  
+  // 将所有文本片段用空格连接
+  return textParts.join(' ');
 }
 
 // =============== 共享的 getBy* 方法选择器生成器 ===============
@@ -440,9 +485,14 @@ function matchesText(text: string, pattern: string | RegExp, exact: boolean): bo
     return pattern.test(text);
   }
   
+  // 规范化模式字符串：将多个空白字符合并为单个空格
+  const normalizedPattern = typeof pattern === 'string' 
+    ? pattern.replace(/\s+/g, ' ').trim()
+    : pattern;
+  
   if (exact) {
-    return text === pattern;
+    return text === normalizedPattern;
   }
   
-  return text.includes(pattern);
+  return text.includes(normalizedPattern);
 }
