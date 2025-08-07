@@ -131,10 +131,14 @@ class LocatorAdapter {
       const childXpath = childSelector.substring(6);
       if (this.selector.startsWith('xpath=')) {
         const parentXpath = this.selector.substring(6);
-        return `xpath=${parentXpath}//${childXpath}`;
+        // 确保子 XPath 不会导致重复的 //
+        const cleanChildXpath = childXpath.replace(/^\/+/, '');
+        return `xpath=${parentXpath}//${cleanChildXpath}`;
       } else {
-        // 父选择器是 CSS，子选择器是 XPath - 需要转换
-        return `xpath=//*[${this.cssSelectorToXPath(this.selector)}]//${childXpath}`;
+        // 父选择器是 CSS，子选择器是 XPath - 转换父选择器为 XPath
+        const parentXpath = this.cssSelectorToXPath(this.selector);
+        const cleanChildXpath = childXpath.replace(/^\/+/, '');
+        return `xpath=(${parentXpath})//${cleanChildXpath}`;
       }
     }
     
@@ -142,7 +146,12 @@ class LocatorAdapter {
     if (this.selector.startsWith('xpath=')) {
       const parentXpath = this.selector.substring(6);
       const childXpath = this.cssSelectorToXPath(childSelector);
-      return `xpath=${parentXpath}//*[${childXpath}]`;
+      // 确保正确组合 XPath 表达式
+      if (childXpath.startsWith('//')) {
+        return `xpath=(${parentXpath})${childXpath}`;
+      } else {
+        return `xpath=(${parentXpath})//${childXpath.replace(/^\/+/, '')}`;
+      }
     }
     
     // 两个都是 CSS 选择器
@@ -150,33 +159,69 @@ class LocatorAdapter {
   }
 
   /**
-   * 将 CSS 选择器转换为 XPath 条件（简化版）
+   * 将 CSS 选择器转换为 XPath 表达式（改进版）
    */
   private cssSelectorToXPath(cssSelector: string): string {
-    // 简化的 CSS 到 XPath 转换
-    if (cssSelector.startsWith('#')) {
-      // ID 选择器
-      return `@id="${cssSelector.substring(1)}"`;
-    } else if (cssSelector.startsWith('.')) {
-      // 类选择器
-      return `contains(@class, "${cssSelector.substring(1)}")`;
-    } else if (cssSelector.startsWith('[') && cssSelector.endsWith(']')) {
-      // 属性选择器
-      const attrMatch = cssSelector.match(/\[([^=]+)="([^"]+)"\]/);
-      if (attrMatch) {
-        return `@${attrMatch[1]}="${attrMatch[2]}"`;
-      }
-      const attrExistsMatch = cssSelector.match(/\[([^=\]]+)\]/);
-      if (attrExistsMatch) {
-        return `@${attrExistsMatch[1]}`;
-      }
-    } else if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(cssSelector)) {
-      // 标签选择器
-      return `self::${cssSelector}`;
+    // 处理逗号分隔的多个选择器
+    if (cssSelector.includes(',')) {
+      const selectors = cssSelector.split(',').map(s => s.trim());
+      const xpathParts = selectors.map(sel => this.singleCssToXPath(sel));
+      return xpathParts.join(' | ');
     }
     
-    // 复杂选择器 - 暂时不支持完整转换，回退到组合 CSS
-    return `self::*`;
+    return this.singleCssToXPath(cssSelector);
+  }
+
+  /**
+   * 将单个 CSS 选择器转换为 XPath 表达式
+   */
+  private singleCssToXPath(cssSelector: string): string {
+    const trimmed = cssSelector.trim();
+    
+    if (trimmed.startsWith('#')) {
+      // ID 选择器: #id -> //*[@id="id"]
+      return `//*[@id="${trimmed.substring(1)}"]`;
+    } else if (trimmed.startsWith('.')) {
+      // 类选择器: .class -> //*[contains(@class, "class")]
+      return `//*[contains(@class, "${trimmed.substring(1)}")]`;
+    } else if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      // 属性选择器
+      const attrMatch = trimmed.match(/\[([^=]+)="([^"]+)"\]/);
+      if (attrMatch) {
+        return `//*[@${attrMatch[1]}="${attrMatch[2]}"]`;
+      }
+      const attrExistsMatch = trimmed.match(/\[([^=\]]+)\]/);
+      if (attrExistsMatch) {
+        return `//*[@${attrExistsMatch[1]}]`;
+      }
+    } else if (/^[a-zA-Z][a-zA-Z0-9-]*$/.test(trimmed)) {
+      // 标签选择器: div -> //div
+      return `//${trimmed}`;
+    } else if (trimmed === '*') {
+      // 通配符选择器: * -> //*
+      return `//*`;
+    } else if (trimmed.startsWith('*[') && trimmed.endsWith(']')) {
+      // 通配符属性选择器: *[attr="value"] -> //*[@attr="value"]
+      const attrPart = trimmed.substring(2, trimmed.length - 1);
+      const attrMatch = attrPart.match(/([^=]+)="([^"]+)"/);
+      if (attrMatch) {
+        return `//*[@${attrMatch[1]}="${attrMatch[2]}"]`;
+      }
+      const attrExistsMatch = attrPart.match(/^([^=\]]+)$/);
+      if (attrExistsMatch) {
+        return `//*[@${attrExistsMatch[1]}]`;
+      }
+    }
+    
+    // 复杂选择器 - 回退到通配符，但提供更好的处理
+    // 尝试提取标签名
+    const tagMatch = trimmed.match(/^([a-zA-Z][a-zA-Z0-9-]*)/);
+    if (tagMatch) {
+      return `//${tagMatch[1]}`;
+    }
+    
+    // 最后的回退 - 使用通配符
+    return `//*`;
   }
 
   /**
