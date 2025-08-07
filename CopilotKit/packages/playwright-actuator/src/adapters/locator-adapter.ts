@@ -42,6 +42,7 @@ class LocatorAdapter {
   private eventSimulator: any; // TODO: Type this properly
   private _element?: Element;
   private _parentContextLocator?: LocatorAdapter;
+  private _resolvedElements?: Element[]; // 缓存已解析的元素集合
 
   constructor(selector: string, page: any, options: LocatorOptions = {}) {
     this.selector = selector;
@@ -55,16 +56,69 @@ class LocatorAdapter {
     this.eventSimulator = page.eventSimulator;
   }
 
+  /**
+   * 基于已解析元素创建新的 locator（用于链式调用的立即过滤）
+   */
+  static fromElements(elements: Element[], page: any, selector: string = '*'): LocatorAdapter {
+    const locator = new LocatorAdapter(selector, page);
+    locator._resolvedElements = elements;
+    return locator;
+  }
+
+
+  // =============== 元素解析方法 ===============
+
+  /**
+   * 获取当前的元素集合
+   */
+  private getCurrentElements(): Element[] {
+    // 如果已经有解析的元素，直接返回
+    if (this._resolvedElements) {
+      return this._resolvedElements;
+    }
+    
+    // 否则查询并应用所有过滤器
+    const elements = this.queryElements(this.selector);
+    return this.applyFilters(elements);
+  }
 
   // =============== 链式过滤器方法 ===============
 
   /**
-   * 过滤 locator
+   * 过滤 locator - 立即应用过滤器（新的链式调用行为）
    */
   filter(options: FilterOptions): LocatorAdapter {
+    // 对于文本过滤器，使用立即过滤来确保正确的链式调用行为
+    if (options.hasText !== undefined || options.hasNotText !== undefined) {
+      // 获取当前元素集合
+      const currentElements = this.getCurrentElements();
+      
+      // 立即应用过滤器
+      const filteredElements = this.applyFilter(currentElements, options);
+      
+      // 基于过滤后的元素创建新的 locator
+      return LocatorAdapter.fromElements(filteredElements, this.page, this.selector);
+    }
+    
+    // 如果当前 locator 有已解析的元素，在这些元素上应用过滤器
+    if (this._resolvedElements) {
+      // 立即应用过滤器到已解析的元素
+      const filteredElements = this.applyFilter(this._resolvedElements, options);
+      
+      // 创建新的 locator 但保留一些过滤器（如果适用）
+      const newLocator = LocatorAdapter.fromElements(filteredElements, this.page, this.selector);
+      
+      // 对于非位置过滤器，将其添加到 filters 数组中
+      if (options.position === undefined) {
+        newLocator.filters = [options];
+      }
+      
+      return newLocator;
+    }
+    
+    // 对于位置过滤器，使用传统的延迟过滤（保持向后兼容性）
     const newLocator = new LocatorAdapter(this.selector, this.page);
     newLocator.filters = [...this.filters, options];
-    // 保持父上下文 locator 的引用
     newLocator._parentContextLocator = this._parentContextLocator;
     return newLocator;
   }
@@ -73,6 +127,11 @@ class LocatorAdapter {
    * 获取第一个元素
    */
   first(): LocatorAdapter {
+    // 如果有已解析的元素，立即返回第一个
+    if (this._resolvedElements) {
+      const firstElement = this._resolvedElements.length > 0 ? [this._resolvedElements[0]] : [];
+      return LocatorAdapter.fromElements(firstElement, this.page, this.selector);
+    }
     return this.nth(0);
   }
 
@@ -80,6 +139,11 @@ class LocatorAdapter {
    * 获取最后一个元素
    */
   last(): LocatorAdapter {
+    // 如果有已解析的元素，立即返回最后一个
+    if (this._resolvedElements) {
+      const lastElement = this._resolvedElements.length > 0 ? [this._resolvedElements[this._resolvedElements.length - 1]] : [];
+      return LocatorAdapter.fromElements(lastElement, this.page, this.selector);
+    }
     return this.filter({ position: 'last' });
   }
 
@@ -87,6 +151,11 @@ class LocatorAdapter {
    * 获取第 n 个元素
    */
   nth(n: number): LocatorAdapter {
+    // 如果有已解析的元素，立即返回第 n 个
+    if (this._resolvedElements) {
+      const nthElement = this._resolvedElements[n] ? [this._resolvedElements[n]] : [];
+      return LocatorAdapter.fromElements(nthElement, this.page, this.selector);
+    }
     return this.filter({ position: n });
   }
 
@@ -112,22 +181,41 @@ class LocatorAdapter {
     // 使用共享工具函数获取角色选择器
     const roleSelector = getRoleSelector(role, roleOptions);
     
-    // 关键修复：只有当前 locator 有内容相关的过滤器时，才使用父上下文方式
-    // 这样可以确保过滤器只应用到父元素，而不是子元素
-    const hasContentFilters = this.filters.some(filter => 
-      filter.hasText !== undefined || filter.hasNotText !== undefined
-    );
-    
-    let newLocator: LocatorAdapter;
-    if (hasContentFilters) {
-      // 有内容过滤器时，使用父上下文方式
-      newLocator = new LocatorAdapter(roleSelector, this.page);
-      newLocator._parentContextLocator = this;
-    } else {
-      // 没有内容过滤器时，使用传统的选择器组合方式
-      const combinedSelector = this.combineSelectorWithParent(roleSelector);
-      newLocator = new LocatorAdapter(combinedSelector, this.page);
+    // 如果当前 locator 有已解析的元素（来自立即过滤），在其中查找
+    if (this._resolvedElements) {
+      const foundElements: Element[] = [];
+      
+      for (const parentElement of this._resolvedElements) {
+        let childElements: Element[] = [];
+        
+        if (roleSelector.startsWith('xpath=')) {
+          const xpath = roleSelector.substring(6);
+          const result = document.evaluate(xpath, parentElement, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          for (let i = 0; i < result.snapshotLength; i++) {
+            const element = result.snapshotItem(i);
+            if (element) childElements.push(element as Element);
+          }
+        } else {
+          childElements = Array.from(parentElement.querySelectorAll(roleSelector));
+        }
+        
+        foundElements.push(...childElements);
+      }
+      
+      // 如果指定了 name，应用 accessible name 过滤
+      let finalElements = foundElements;
+      if (name) {
+        finalElements = foundElements.filter(element => 
+          elementMatchesAccessibleName(element, name, exact)
+        );
+      }
+      
+      return LocatorAdapter.fromElements(finalElements, this.page, roleSelector);
     }
+    
+    // 否则使用传统的选择器组合方式
+    const combinedSelector = this.combineSelectorWithParent(roleSelector);
+    const newLocator = new LocatorAdapter(combinedSelector, this.page);
     
     // 如果指定了 name，添加 accessible name 过滤
     if (name) {
@@ -287,23 +375,31 @@ class LocatorAdapter {
    */
   getByText(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
     const { exact = false } = options;
-    const selector = buildGetByTextSelector(text, exact);
     
-    // getByText 检查是否有内容过滤器
-    const hasContentFilters = this.filters.some(filter => 
-      filter.hasText !== undefined || filter.hasNotText !== undefined
-    );
-    
-    let newLocator: LocatorAdapter;
-    if (hasContentFilters) {
-      newLocator = new LocatorAdapter(selector, this.page);
-      newLocator._parentContextLocator = this;
-    } else {
-      const combinedSelector = this.combineSelectorWithParent(selector);
-      newLocator = new LocatorAdapter(combinedSelector, this.page);
+    // 如果当前 locator 有已解析的元素（来自立即过滤），在其中查找
+    if (this._resolvedElements) {
+      const foundElements: Element[] = [];
+      
+      for (const parentElement of this._resolvedElements) {
+        // 使用 XPath 查找包含指定文本的子元素
+        const xpathExpression = exact 
+          ? `//*[normalize-space(text())="${text}"]`
+          : `//*[contains(normalize-space(text()), "${text}")]`;
+          
+        const result = document.evaluate(xpathExpression, parentElement, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+        for (let i = 0; i < result.snapshotLength; i++) {
+          const element = result.snapshotItem(i);
+          if (element) foundElements.push(element as Element);
+        }
+      }
+      
+      return LocatorAdapter.fromElements(foundElements, this.page, '*');
     }
     
-    return newLocator;
+    // 否则使用传统的选择器组合方式
+    const selector = buildGetByTextSelector(text, exact);
+    const combinedSelector = this.combineSelectorWithParent(selector);
+    return new LocatorAdapter(combinedSelector, this.page);
   }
 
   /**
@@ -920,18 +1016,16 @@ class LocatorAdapter {
    * 获取匹配元素的数量
    */
   async count(): Promise<number> {
-    const elements = this.queryElements(this.selector);
-    return this.applyFilters(elements).length;
+    return this.getCurrentElements().length;
   }
 
   /**
    * 获取所有匹配的 locator
    */
   async all(): Promise<LocatorAdapter[]> {
-    const elements = this.queryElements(this.selector);
-    const filteredElements = this.applyFilters(elements);
+    const elements = this.getCurrentElements();
     
-    return filteredElements.map(element => {
+    return elements.map(element => {
       const locator = new LocatorAdapter(this.buildUniqueSelector(element), this.page);
       locator._element = element;
       return locator;
@@ -946,6 +1040,15 @@ class LocatorAdapter {
       return this._element;
     }
 
+    // 如果有已解析的元素（立即过滤的结果），直接使用
+    if (this._resolvedElements) {
+      if (this._resolvedElements.length === 0) {
+        throw new Error(`过滤后找不到元素: ${this.selector}`);
+      }
+      return this._resolvedElements[0];
+    }
+
+    // 否则使用传统的查询和过滤
     const elements = this.queryElements(this.selector);
     if (elements.length === 0) {
       throw new Error(`找不到元素: ${this.selector}`);

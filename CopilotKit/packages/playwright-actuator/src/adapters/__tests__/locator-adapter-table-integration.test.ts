@@ -658,5 +658,49 @@ describe('LocatorAdapter Table Integration Tests', () => {
       }
       expect(parent?.id).toBe('condition2');
     });
+
+    it('should demonstrate immediate filtering at each step', async () => {
+      // 这个测试验证每一步都立即过滤，而不是延迟过滤
+      const containerHTML = `
+        <div id="conditionPanelContainer">
+          <div class="conditionRow" id="condition1">
+            <label>创建时间:</label>
+            <input type="text" placeholder="创建输入框">
+          </div>
+          <div class="conditionRow" id="condition2">
+            <label>最近发生时间:</label>
+            <input type="text" placeholder="开始时间">
+            <input type="text" placeholder="结束时间">
+          </div>
+        </div>
+      `;
+      
+      document.body.innerHTML = containerHTML;
+      
+      const pageLocator = new LocatorAdapter('*', mockPage);
+      
+      // 第一步：获取所有 div
+      const allDivs = pageLocator.locator('#conditionPanelContainer div');
+      const allDivsCount = await allDivs.count();
+      expect(allDivsCount).toBe(2); // 应该有 2 个 div
+      
+      // 第二步：过滤包含特定文本的 div
+      const filteredDivs = allDivs.filter({ hasText: '最近发生时间' });
+      const filteredDivsCount = await filteredDivs.count();
+      expect(filteredDivsCount).toBe(1); // 过滤后应该只有 1 个 div
+      
+      // 第三步：在过滤后的 div 中查找 textbox
+      const textboxes = filteredDivs.getByRole('textbox');
+      const textboxesCount = await textboxes.count();
+      expect(textboxesCount).toBe(2); // condition2 中有 2 个输入框
+      
+      // 第四步：获取第一个 textbox
+      const firstTextbox = textboxes.first();
+      const firstTextboxCount = await firstTextbox.count();
+      expect(firstTextboxCount).toBe(1); // 应该只有 1 个元素
+      
+      const element = await firstTextbox.getElement() as HTMLInputElement;
+      expect(element.placeholder).toBe('开始时间');
+    });
   });
 });

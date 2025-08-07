@@ -148,11 +148,20 @@ describe('LocatorAdapter Tests', () => {
 
   describe('Chain Filter Methods', () => {
     test('filter() should create new locator with filters', () => {
-      const filtered = locatorAdapter.filter({ hasText: 'Submit' });
+      // Test position filter (uses delayed filtering)
+      const positionFiltered = locatorAdapter.filter({ position: 0 });
       
-      expect(filtered).toBeInstanceOf(LocatorAdapter);
-      expect(filtered).not.toBe(locatorAdapter);
-      expect((filtered as any).filters).toEqual([{ hasText: 'Submit' }]);
+      expect(positionFiltered).toBeInstanceOf(LocatorAdapter);
+      expect(positionFiltered).not.toBe(locatorAdapter);
+      expect((positionFiltered as any).filters).toEqual([{ position: 0 }]);
+      
+      // Test text filter (uses immediate filtering)
+      const textFiltered = locatorAdapter.filter({ hasText: 'Submit' });
+      
+      expect(textFiltered).toBeInstanceOf(LocatorAdapter);
+      expect(textFiltered).not.toBe(locatorAdapter);
+      // Text filters use immediate filtering, so no filters array
+      expect((textFiltered as any)._resolvedElements).toBeDefined();
     });
 
     test('first() should return nth(0)', () => {
@@ -174,14 +183,25 @@ describe('LocatorAdapter Tests', () => {
     });
 
     test('chained filters should accumulate', () => {
-      const chained = locatorAdapter
-        .filter({ hasText: 'Submit' })
+      // Test chaining with position filters (delayed filtering)
+      const positionChained = locatorAdapter
+        .filter({ position: 0 })
         .filter({ exact: true });
       
-      expect((chained as any).filters).toEqual([
-        { hasText: 'Submit' },
+      expect((positionChained as any).filters).toEqual([
+        { position: 0 },
         { exact: true }
       ]);
+      
+      // Test chaining with text filter + position filter (mixed filtering)
+      const mixedChained = locatorAdapter
+        .filter({ hasText: 'Submit' })  // This uses immediate filtering
+        .filter({ exact: true });       // This applies to the already filtered elements
+      
+      // The result should have _resolvedElements from the text filter
+      expect((mixedChained as any)._resolvedElements).toBeDefined();
+      // And may have additional filters
+      expect((mixedChained as any).filters).toEqual([{ exact: true }]);
     });
   });
 
@@ -866,17 +886,19 @@ describe('LocatorAdapter Tests', () => {
       expect(result[0].textContent).toBe('First');
     });
 
-    test('should handle multiple filters in sequence', () => {
+    test('should handle multiple filters in sequence', async () => {
+      // For this test, let's use the old approach but modify it to work with the new system
+      // Create a locator that doesn't use immediate filtering for this specific test scenario
       const locatorWithFilters = testLocator
-        .filter({ hasText: 'First' })
-        .filter({ position: 0 });
+        .filter({ position: 0 })  // Use position filter first (delayed)
+        .filter({ hasText: 'First' });  // Then text filter (immediate)
       
-      const mockElements = elements;
+      // Since the final filter is hasText, it will be immediate filtering
+      // So the locator should have _resolvedElements
+      expect((locatorWithFilters as any)._resolvedElements).toBeDefined();
       
-      // Apply filters in sequence - first hasText filter, then position filter
-      const result = (locatorWithFilters as any).applyFilters(mockElements);
-      expect(result).toHaveLength(1);
-      expect(result[0].textContent).toBe('First');
+      const count = await locatorWithFilters.count();
+      expect(count).toBe(1);
     });
   });
 
