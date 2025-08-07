@@ -297,7 +297,7 @@ describe('LocatorAdapter Tests', () => {
     test('should combine XPath selectors correctly', () => {
       const xpathParent = new LocatorAdapter('xpath=//div[@class="parent"]', mockPage);
       const result = (xpathParent as any).combineSelectorWithParent('xpath=//span');
-      expect(result).toBe('xpath=//div[@class="parent"]//span');
+      expect(result).toBe('xpath=(//div[@class="parent"])//span');
     });
 
     test('should convert CSS parent to XPath when child is XPath', () => {

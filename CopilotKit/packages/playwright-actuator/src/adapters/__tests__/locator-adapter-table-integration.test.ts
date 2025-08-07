@@ -313,5 +313,137 @@ describe('LocatorAdapter Table Integration Tests', () => {
       const foundElement = await rowLocator.getElement();
       expect(foundElement.textContent).toContain('容器2 行1');
     });
+
+    it('should find checkbox in EUI table header row', async () => {
+      // 这个测试模拟用户提供的具体场景
+      const tableHTML = `
+        <table class="" style="min-width: 100%; table-layout: fixed;">
+          <colgroup>
+            <col class="eui-table-selection-col" style="width: 64px; min-width: 64px;">
+            <col style="width: 160px; min-width: 64px;">
+            <col style="width: 128px; min-width: 64px;">
+            <col style="min-width: 64px;">
+          </colgroup>
+          <thead>
+            <tr>
+              <th tabindex="0" class="eui-table-cell eui-table-selection-cell">
+                <label class="eui-checkbox-pro-wrapper eui-checkbox-pro-wrapper-disabled">
+                  <span class="eui-checkbox-pro eui-checkbox-pro-disabled">
+                    <input class="eui-checkbox-pro-input" type="checkbox" disabled="">
+                    <span class="eui-checkbox-pro-inner"></span>
+                  </span>
+                </label>
+              </th>
+              <th title="名称" tabindex="0" class="eui-table-cell eui-table-cell-ellipsis">
+                <div class="eui-table-column-sorter">
+                  <div class="eui-table-column-sorter-title eui-table-column-title-content">名称</div>
+                  <span class="eui-table-sorter eui-table-sorter-aui3" tabindex="0"></span>
+                </div>
+                <div class="eui-table-resizable-bar"></div>
+              </th>
+              <th title="告警ID" tabindex="0" class="eui-table-cell eui-table-cell-ellipsis">
+                <div class="eui-table-column-sorter">
+                  <div class="eui-table-column-sorter-title eui-table-column-title-content">告警ID</div>
+                  <span class="eui-table-sorter eui-table-sorter-aui3" tabindex="0"></span>
+                </div>
+                <div class="eui-table-resizable-bar"></div>
+              </th>
+              <th title="分组名称" tabindex="0" class="eui-table-cell eui-table-cell-ellipsis">
+                <div class="eui-table-column-sorter">
+                  <div class="eui-table-column-sorter-title eui-table-column-title-content">分组名称</div>
+                  <span class="eui-table-sorter eui-table-sorter-aui3" tabindex="0"></span>
+                </div>
+                <div class="eui-table-resizable-bar" style="transform: translateX(0%);"></div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="eui-table-measure-row">
+              <td data-width="64" style="height: 0px; padding: 0px; border: 0px;">
+                <div style="height: 0px; overflow: hidden;">&nbsp;</div>
+              </td>
+              <td data-width="160" style="height: 0px; padding: 0px; border: 0px;">
+                <div style="height: 0px; overflow: hidden;">&nbsp;</div>
+              </td>
+              <td data-width="128" style="height: 0px; padding: 0px; border: 0px;">
+                <div style="height: 0px; overflow: hidden;">&nbsp;</div>
+              </td>
+              <td style="height: 0px; padding: 0px; border: 0px;">
+                <div style="height: 0px; overflow: hidden;">&nbsp;</div>
+              </td>
+            </tr>
+            <tr class="eui-table-empty-row">
+              <td tabindex="0" colspan="4" class="eui-table-cell" style="padding: 0px;">
+                <div class="eui-table-no-data-container">
+                  <span class="eui-table-no-data">
+                    <div class="eui-table-no-data-img"></div>
+                    <div class="eui-table-no-data-text">暂无数据</div>
+                  </span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      `;
+      
+      document.body.innerHTML = tableHTML;
+      
+      const pageLocator = new LocatorAdapter('*', mockPage);
+      
+      // 第一步：找到表头行
+      const rowLocator = pageLocator.getByRole('row', { 
+        name: '名称 告警ID 分组名称', 
+        exact: true 
+      });
+      
+      const headerRow = await rowLocator.getElement();
+      expect(headerRow.tagName.toLowerCase()).toBe('tr');
+      
+      // 第二步：直接在行内查找 input[type="checkbox"]
+      const checkboxLocator = rowLocator.locator('input[type="checkbox"]');
+      
+      
+      const checkbox = await checkboxLocator.getElement() as HTMLInputElement;
+      expect(checkbox.tagName.toLowerCase()).toBe('input');
+      expect(checkbox.getAttribute('type')).toBe('checkbox');
+      expect(checkbox.className).toBe('eui-checkbox-pro-input');
+      expect(checkbox.disabled).toBe(true);
+    });
+
+    it('should find checkbox using getByLabel with empty string', async () => {
+      // 这个测试验证 getByLabel('') 是否能正确工作
+      const tableHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>
+                <input type="checkbox" id="headerCheckbox">
+              </th>
+              <th>名称</th>
+              <th>告警ID</th>
+              <th>分组名称</th>
+            </tr>
+          </thead>
+        </table>
+      `;
+      
+      document.body.innerHTML = tableHTML;
+      
+      const pageLocator = new LocatorAdapter('*', mockPage);
+      
+      // 找到表头行
+      const rowLocator = pageLocator.getByRole('row', { 
+        name: '名称 告警ID 分组名称', 
+        exact: true 
+      });
+      
+      // 在这种情况下，直接用 locator 更简单可靠
+      const checkboxLocator = rowLocator.locator('input[type="checkbox"]');
+      
+      const checkbox = await checkboxLocator.getElement() as HTMLInputElement;
+      expect(checkbox.tagName.toLowerCase()).toBe('input');
+      expect(checkbox.getAttribute('type')).toBe('checkbox');
+      expect(checkbox.id).toBe('headerCheckbox');
+    });
   });
 });

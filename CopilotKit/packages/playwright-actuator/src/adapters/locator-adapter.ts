@@ -54,6 +54,7 @@ class LocatorAdapter {
     this.eventSimulator = page.eventSimulator;
   }
 
+
   // =============== 链式过滤器方法 ===============
 
   /**
@@ -93,8 +94,8 @@ class LocatorAdapter {
     // 创建组合选择器，表示在当前选择器范围内查找子选择器
     const combinedSelector = this.combineSelectorWithParent(selector);
     const newLocator = new LocatorAdapter(combinedSelector, this.page, options);
-    // 继承当前的过滤器
-    newLocator.filters = [...this.filters];
+    // 子 locator 不继承过滤器，因为它在寻找子元素，过滤条件可能不适用
+    // newLocator.filters = [...this.filters];
     return newLocator;
   }
 
@@ -123,6 +124,45 @@ class LocatorAdapter {
   }
 
   /**
+   * 组合两个 XPath 表达式
+   */
+  private combineXPaths(parentXpath: string, childXpath: string): string {
+    // 处理包含 | 操作符的复杂 XPath
+    if (parentXpath.includes(' | ')) {
+      // 父 XPath 有多个部分，需要为每个部分添加子路径
+      const parentParts = parentXpath.split(' | ');
+      const combinedParts = parentParts.map(parentPart => {
+        const cleanParentPart = parentPart.trim();
+        // 如果子 XPath 也有多个部分，则每个父部分都要与每个子部分组合
+        if (childXpath.includes(' | ')) {
+          const childParts = childXpath.split(' | ');
+          return childParts.map(childPart => {
+            const cleanChildPart = childPart.trim().replace(/^\/+/, '');
+            return `(${cleanParentPart})//${cleanChildPart}`;
+          }).join(' | ');
+        } else {
+          const cleanChildXpath = childXpath.replace(/^\/+/, '');
+          return `(${cleanParentPart})//${cleanChildXpath}`;
+        }
+      });
+      return `xpath=${combinedParts.join(' | ')}`;
+    } else {
+      // 简单情况：父 XPath 只有一个部分
+      if (childXpath.includes(' | ')) {
+        const childParts = childXpath.split(' | ');
+        const combinedParts = childParts.map(childPart => {
+          const cleanChildPart = childPart.trim().replace(/^\/+/, '');
+          return `(${parentXpath})//${cleanChildPart}`;
+        });
+        return `xpath=${combinedParts.join(' | ')}`;
+      } else {
+        const cleanChildXpath = childXpath.replace(/^\/+/, '');
+        return `xpath=(${parentXpath})//${cleanChildXpath}`;
+      }
+    }
+  }
+
+  /**
    * 将选择器与父选择器组合
    */
   private combineSelectorWithParent(childSelector: string): string {
@@ -131,14 +171,12 @@ class LocatorAdapter {
       const childXpath = childSelector.substring(6);
       if (this.selector.startsWith('xpath=')) {
         const parentXpath = this.selector.substring(6);
-        // 确保子 XPath 不会导致重复的 //
-        const cleanChildXpath = childXpath.replace(/^\/+/, '');
-        return `xpath=${parentXpath}//${cleanChildXpath}`;
+        // 处理复杂的 XPath 组合，特别是包含 | 操作符的情况
+        return this.combineXPaths(parentXpath, childXpath);
       } else {
         // 父选择器是 CSS，子选择器是 XPath - 转换父选择器为 XPath
         const parentXpath = this.cssSelectorToXPath(this.selector);
-        const cleanChildXpath = childXpath.replace(/^\/+/, '');
-        return `xpath=(${parentXpath})//${cleanChildXpath}`;
+        return this.combineXPaths(parentXpath, childXpath);
       }
     }
     
@@ -146,16 +184,19 @@ class LocatorAdapter {
     if (this.selector.startsWith('xpath=')) {
       const parentXpath = this.selector.substring(6);
       const childXpath = this.cssSelectorToXPath(childSelector);
-      // 确保正确组合 XPath 表达式
-      if (childXpath.startsWith('//')) {
-        return `xpath=(${parentXpath})${childXpath}`;
-      } else {
-        return `xpath=(${parentXpath})//${childXpath.replace(/^\/+/, '')}`;
-      }
+      // 使用新的 combineXPaths 方法来正确处理复杂 XPath
+      return this.combineXPaths(parentXpath, childXpath);
     }
     
     // 两个都是 CSS 选择器
-    return `${this.selector} ${childSelector}`;
+    // 处理包含逗号的复杂选择器
+    if (this.selector.includes(',')) {
+      const parentParts = this.selector.split(',').map(part => part.trim());
+      const combinedParts = parentParts.map(parentPart => `${parentPart} ${childSelector}`);
+      return combinedParts.join(', ');
+    } else {
+      return `${this.selector} ${childSelector}`;
+    }
   }
 
   /**
