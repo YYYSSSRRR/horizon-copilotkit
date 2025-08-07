@@ -595,5 +595,68 @@ describe('LocatorAdapter Table Integration Tests', () => {
       const partialElement = await partialFilterLocator.getElement();
       expect(partialElement.id).toBe('condition2');
     });
+
+    it('should apply hasText filter to correct elements in chain: filter then getByRole', async () => {
+      // 这个测试专门验证用户报告的问题：
+      // page.locator('#conditionPanelContainer div').filter({ hasText: '最近发生时间:从到最近天小时分钟' }).getByRole('textbox').first().click()
+      // filter({ hasText: '...' }) 应该应用到 div 元素，而不是 textbox 元素
+      
+      const containerHTML = `
+        <div id="conditionPanelContainer">
+          <div class="conditionRow dynamicRow" id="condition1">
+            <label title="创建时间:" class="link_label">创建时间:</label>
+            <input type="text" placeholder="创建时间输入框">
+          </div>
+          <div class="conditionRow dynamicRow" id="condition2">
+            <label title="最近发生时间:" class="link_label">最近发生时间:</label>
+            <div class="condition_content">
+              <span class="timeLabel">从</span>
+              <input type="text" placeholder="开始时间">
+              <span class="timeLabel">到</span>
+              <input type="text" placeholder="结束时间">
+              <span class="timeLabel">最近</span>
+              <input type="text" placeholder="最近时间">
+              <label class="eui_label eui_radio_label">天</label>
+              <label class="eui_label eui_radio_label">小时</label>
+              <label class="eui_label eui_radio_label">分钟</label>
+            </div>
+          </div>
+          <div class="conditionRow dynamicRow" id="condition3">
+            <label title="状态:" class="link_label">状态:</label>
+            <input type="text" placeholder="状态输入框">
+          </div>
+        </div>
+      `;
+      
+      document.body.innerHTML = containerHTML;
+      
+      const pageLocator = new LocatorAdapter('*', mockPage);
+      
+      // 模拟用户的实际用法
+      const divLocator = pageLocator.locator('#conditionPanelContainer div');
+      const filteredDivLocator = divLocator.filter({ 
+        hasText: '最近发生时间' 
+      });
+      const textboxLocator = filteredDivLocator.getByRole('textbox');
+      
+      // 首先验证过滤后的 div 是正确的（应该是 condition2）
+      const filteredDiv = await filteredDivLocator.getElement();
+      expect(filteredDiv.id).toBe('condition2');
+      
+      // 然后验证在这个过滤后的 div 内能找到 textbox
+      const textboxes = await textboxLocator.all();
+      expect(textboxes.length).toBe(3); // condition2 中有3个输入框
+      
+      // 验证这些 textbox 确实属于正确的父 div
+      const firstTextbox = await textboxLocator.first().getElement() as HTMLInputElement;
+      expect(firstTextbox.placeholder).toBe('开始时间');
+      
+      // 关键测试：验证第一个 textbox 的父容器是 condition2
+      let parent = firstTextbox.parentElement;
+      while (parent && parent.id !== 'condition2') {
+        parent = parent.parentElement;
+      }
+      expect(parent?.id).toBe('condition2');
+    });
   });
 });

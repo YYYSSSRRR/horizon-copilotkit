@@ -41,6 +41,7 @@ class LocatorAdapter {
   private waitManager: any; // TODO: Type this properly
   private eventSimulator: any; // TODO: Type this properly
   private _element?: Element;
+  private _parentContextLocator?: LocatorAdapter;
 
   constructor(selector: string, page: any, options: LocatorOptions = {}) {
     this.selector = selector;
@@ -63,6 +64,8 @@ class LocatorAdapter {
   filter(options: FilterOptions): LocatorAdapter {
     const newLocator = new LocatorAdapter(this.selector, this.page);
     newLocator.filters = [...this.filters, options];
+    // 保持父上下文 locator 的引用
+    newLocator._parentContextLocator = this._parentContextLocator;
     return newLocator;
   }
 
@@ -108,9 +111,23 @@ class LocatorAdapter {
     
     // 使用共享工具函数获取角色选择器
     const roleSelector = getRoleSelector(role, roleOptions);
-    const combinedSelector = this.combineSelectorWithParent(roleSelector);
-    const newLocator = new LocatorAdapter(combinedSelector, this.page);
-    newLocator.filters = [...this.filters];
+    
+    // 关键修复：只有当前 locator 有内容相关的过滤器时，才使用父上下文方式
+    // 这样可以确保过滤器只应用到父元素，而不是子元素
+    const hasContentFilters = this.filters.some(filter => 
+      filter.hasText !== undefined || filter.hasNotText !== undefined
+    );
+    
+    let newLocator: LocatorAdapter;
+    if (hasContentFilters) {
+      // 有内容过滤器时，使用父上下文方式
+      newLocator = new LocatorAdapter(roleSelector, this.page);
+      newLocator._parentContextLocator = this;
+    } else {
+      // 没有内容过滤器时，使用传统的选择器组合方式
+      const combinedSelector = this.combineSelectorWithParent(roleSelector);
+      newLocator = new LocatorAdapter(combinedSelector, this.page);
+    }
     
     // 如果指定了 name，添加 accessible name 过滤
     if (name) {
@@ -271,9 +288,21 @@ class LocatorAdapter {
   getByText(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
     const { exact = false } = options;
     const selector = buildGetByTextSelector(text, exact);
-    const combinedSelector = this.combineSelectorWithParent(selector);
-    const newLocator = new LocatorAdapter(combinedSelector, this.page);
-    newLocator.filters = [...this.filters];
+    
+    // getByText 检查是否有内容过滤器
+    const hasContentFilters = this.filters.some(filter => 
+      filter.hasText !== undefined || filter.hasNotText !== undefined
+    );
+    
+    let newLocator: LocatorAdapter;
+    if (hasContentFilters) {
+      newLocator = new LocatorAdapter(selector, this.page);
+      newLocator._parentContextLocator = this;
+    } else {
+      const combinedSelector = this.combineSelectorWithParent(selector);
+      newLocator = new LocatorAdapter(combinedSelector, this.page);
+    }
+    
     return newLocator;
   }
 
@@ -283,12 +312,22 @@ class LocatorAdapter {
   getByLabel(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
     const { exact = false } = options;
     
+    const hasContentFilters = this.filters.some(filter => 
+      filter.hasText !== undefined || filter.hasNotText !== undefined
+    );
+    
     // 如果是空字符串，直接使用过滤器匹配没有 label 的元素
     if (text === "") {
       const formSelector = 'input, select, textarea';
-      const combinedSelector = this.combineSelectorWithParent(formSelector);
-      const newLocator = new LocatorAdapter(combinedSelector, this.page);
-      newLocator.filters = [...this.filters];
+      let newLocator: LocatorAdapter;
+      
+      if (hasContentFilters) {
+        newLocator = new LocatorAdapter(formSelector, this.page);
+        newLocator._parentContextLocator = this;
+      } else {
+        const combinedSelector = this.combineSelectorWithParent(formSelector);
+        newLocator = new LocatorAdapter(combinedSelector, this.page);
+      }
       
       // 添加过滤器：匹配没有任何 label 的元素
       newLocator.filters.push({
@@ -301,9 +340,16 @@ class LocatorAdapter {
     
     // 使用共享的选择器生成器
     const selector = buildGetByLabelSelector(text, exact);
-    const combinedSelector = this.combineSelectorWithParent(selector);
-    const newLocator = new LocatorAdapter(combinedSelector, this.page);
-    newLocator.filters = [...this.filters];
+    let newLocator: LocatorAdapter;
+    
+    if (hasContentFilters) {
+      newLocator = new LocatorAdapter(selector, this.page);
+      newLocator._parentContextLocator = this;
+    } else {
+      const combinedSelector = this.combineSelectorWithParent(selector);
+      newLocator = new LocatorAdapter(combinedSelector, this.page);
+    }
+    
     return newLocator;
   }
 
@@ -313,9 +359,20 @@ class LocatorAdapter {
   getByPlaceholder(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
     const { exact = false } = options;
     const selector = buildGetByPlaceholderSelector(text, exact);
-    const combinedSelector = this.combineSelectorWithParent(selector);
-    const newLocator = new LocatorAdapter(combinedSelector, this.page);
-    newLocator.filters = [...this.filters];
+    
+    const hasContentFilters = this.filters.some(filter => 
+      filter.hasText !== undefined || filter.hasNotText !== undefined
+    );
+    
+    let newLocator: LocatorAdapter;
+    if (hasContentFilters) {
+      newLocator = new LocatorAdapter(selector, this.page);
+      newLocator._parentContextLocator = this;
+    } else {
+      const combinedSelector = this.combineSelectorWithParent(selector);
+      newLocator = new LocatorAdapter(combinedSelector, this.page);
+    }
+    
     return newLocator;
   }
 
@@ -324,9 +381,20 @@ class LocatorAdapter {
    */
   getByTestId(testId: string): LocatorAdapter {
     const selector = buildGetByTestIdSelector(testId);
-    const combinedSelector = this.combineSelectorWithParent(selector);
-    const newLocator = new LocatorAdapter(combinedSelector, this.page);
-    newLocator.filters = [...this.filters];
+    
+    const hasContentFilters = this.filters.some(filter => 
+      filter.hasText !== undefined || filter.hasNotText !== undefined
+    );
+    
+    let newLocator: LocatorAdapter;
+    if (hasContentFilters) {
+      newLocator = new LocatorAdapter(selector, this.page);
+      newLocator._parentContextLocator = this;
+    } else {
+      const combinedSelector = this.combineSelectorWithParent(selector);
+      newLocator = new LocatorAdapter(combinedSelector, this.page);
+    }
+    
     return newLocator;
   }
 
@@ -336,9 +404,20 @@ class LocatorAdapter {
   getByTitle(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
     const { exact = false } = options;
     const selector = buildGetByTitleSelector(text, exact);
-    const combinedSelector = this.combineSelectorWithParent(selector);
-    const newLocator = new LocatorAdapter(combinedSelector, this.page);
-    newLocator.filters = [...this.filters];
+    
+    const hasContentFilters = this.filters.some(filter => 
+      filter.hasText !== undefined || filter.hasNotText !== undefined
+    );
+    
+    let newLocator: LocatorAdapter;
+    if (hasContentFilters) {
+      newLocator = new LocatorAdapter(selector, this.page);
+      newLocator._parentContextLocator = this;
+    } else {
+      const combinedSelector = this.combineSelectorWithParent(selector);
+      newLocator = new LocatorAdapter(combinedSelector, this.page);
+    }
+    
     return newLocator;
   }
 
@@ -794,6 +873,35 @@ class LocatorAdapter {
    * 查询所有匹配的元素
    */
   private queryElements(selector: string): Element[] {
+    // 如果有父上下文 locator，在父上下文中查找
+    if (this._parentContextLocator) {
+      const parentElements = this._parentContextLocator.queryElements(this._parentContextLocator.selector);
+      const filteredParentElements = this._parentContextLocator.applyFilters(parentElements);
+      
+      const allResults: Element[] = [];
+      
+      // 在每个过滤后的父元素中查找子元素
+      for (const parentElement of filteredParentElements) {
+        let childElements: Element[] = [];
+        
+        if (selector.startsWith('xpath=')) {
+          const xpath = selector.substring(6);
+          const result = document.evaluate(xpath, parentElement, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          for (let i = 0; i < result.snapshotLength; i++) {
+            const element = result.snapshotItem(i);
+            if (element) childElements.push(element as Element);
+          }
+        } else {
+          childElements = Array.from(parentElement.querySelectorAll(selector));
+        }
+        
+        allResults.push(...childElements);
+      }
+      
+      return allResults;
+    }
+    
+    // 正常的全局查询
     if (selector.startsWith('xpath=')) {
       const xpath = selector.substring(6);
       const result = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
