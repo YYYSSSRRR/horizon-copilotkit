@@ -405,5 +405,22 @@ describe('role-selector-utils', () => {
       // 清理
       testDiv.remove();
     });
+
+    it('should handle flexible space matching', () => {
+      // 测试灵活的空格匹配功能
+      const testDiv = document.createElement('div');
+      testDiv.innerHTML = '最近发生事件：从 到 最近 天 小时 分钟';
+      document.body.appendChild(testDiv);
+      
+      // 测试各种空格匹配情况
+      expect(elementMatchesText(testDiv, '最近发生事件：从到最近天小时分钟')).toBe(true); // 无空格匹配有空格
+      expect(elementMatchesText(testDiv, '最近发生事件：从 到 最近 天 小时 分钟')).toBe(true); // 完全匹配
+      expect(elementMatchesText(testDiv, '从 到')).toBe(true); // 部分匹配有空格
+      expect(elementMatchesText(testDiv, '从到')).toBe(true); // 部分匹配无空格
+      expect(elementMatchesText(testDiv, '发生事件：从到最近')).toBe(true); // 跨空格匹配
+      
+      // 清理
+      testDiv.remove();
+    });
   });
 });

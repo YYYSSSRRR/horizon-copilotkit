@@ -146,10 +146,8 @@ export function elementMatchesText(element: Element, pattern: string | RegExp, e
   // 获取元素的完整可见文本内容，模拟 Playwright 的行为
   const text = getElementVisibleText(element);
   
-  // 规范化文本：将多个空白字符合并为单个空格，并去除首尾空白
-  const normalizedText = text.replace(/\s+/g, ' ').trim();
-  
-  return matchesText(normalizedText, pattern, exact);
+  // 直接传递原始文本给 matchesText，让它负责规范化
+  return matchesText(text, pattern, exact);
 }
 
 /**
@@ -162,8 +160,8 @@ function getElementVisibleText(element: Element): string {
   // 递归函数来遍历所有子节点
   function extractText(node: Node): void {
     if (node.nodeType === Node.TEXT_NODE) {
-      // 文本节点：直接添加文本内容
-      const textContent = (node.textContent || '').trim();
+      // 文本节点：直接添加文本内容（不 trim，保持原始空白字符）
+      const textContent = node.textContent || '';
       if (textContent) {
         textParts.push(textContent);
       }
@@ -187,8 +185,8 @@ function getElementVisibleText(element: Element): string {
   
   extractText(element);
   
-  // 将所有文本片段用空格连接
-  return textParts.join(' ');
+  // 直接连接所有文本片段，不添加额外空格，保持原始结构
+  return textParts.join('');
 }
 
 // =============== 共享的 getBy* 方法选择器生成器 ===============
@@ -485,14 +483,25 @@ function matchesText(text: string, pattern: string | RegExp, exact: boolean): bo
     return pattern.test(text);
   }
   
-  // 规范化模式字符串：将多个空白字符合并为单个空格
+  // 规范化文本和模式：将多个空白字符合并为单个空格
+  const normalizedText = text.replace(/\s+/g, ' ').trim();
   const normalizedPattern = typeof pattern === 'string' 
     ? pattern.replace(/\s+/g, ' ').trim()
     : pattern;
   
   if (exact) {
-    return text === normalizedPattern;
+    return normalizedText === normalizedPattern;
   }
   
-  return text.includes(normalizedPattern);
+  // 对于包含匹配，我们需要更灵活的空格处理
+  // 如果直接匹配失败，尝试移除所有空格再匹配
+  if (normalizedText.includes(normalizedPattern)) {
+    return true;
+  }
+  
+  // 如果标准匹配失败，尝试忽略所有空格的匹配
+  const textWithoutSpaces = normalizedText.replace(/\s/g, '');
+  const patternWithoutSpaces = normalizedPattern.replace(/\s/g, '');
+  
+  return textWithoutSpaces.includes(patternWithoutSpaces);
 }
