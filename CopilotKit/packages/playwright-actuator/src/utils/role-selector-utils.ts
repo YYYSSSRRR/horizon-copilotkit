@@ -75,20 +75,21 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
     } else if (trimmedPart === 'input[type=""]') {
       xpathPart = '//input[@type=""]';
     } else if (trimmedPart.includes('[')) {
-      // 处理带属性的元素，如 input[type="text"]
+      // 处理带属性的元素，如 input[type="text"] 或纯属性选择器 [role="row"]
       const [tag, attrPart] = trimmedPart.split('[');
       const attr = attrPart.replace(/\]$/, '');
+      const elementTag = tag || '*'; // 如果没有标签名，使用通配符
       
       if (attr.includes('=')) {
         // 有值的属性，如 type="button"
         const [attrName, attrValue] = attr.split('=');
         const cleanAttrName = attrName.trim();
         const cleanAttrValue = attrValue.replace(/['"]/g, '').trim();
-        xpathPart = `//${tag}[@${cleanAttrName}="${cleanAttrValue}"]`;
+        xpathPart = `//${elementTag}[@${cleanAttrName}="${cleanAttrValue}"]`;
       } else {
         // 仅存在性检查的属性
         const cleanAttrName = attr.trim();
-        xpathPart = `//${tag}[@${cleanAttrName}]`;
+        xpathPart = `//${elementTag}[@${cleanAttrName}]`;
       }
     } else {
       // 简单标签名
