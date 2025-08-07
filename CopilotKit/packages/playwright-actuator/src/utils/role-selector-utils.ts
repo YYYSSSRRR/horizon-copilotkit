@@ -281,25 +281,99 @@ export function elementMatchesAccessibleName(element: Element, name: string | Re
     parent = parent.parentElement;
   }
   
-  // 5. 检查元素自身的文本内容
+  // 5. 特殊处理：表格行的 accessible name
+  if (element.tagName.toLowerCase() === 'tr' || element.getAttribute('role') === 'row') {
+    const rowAccessibleName = getRowAccessibleName(element);
+    if (rowAccessibleName && matchesText(rowAccessibleName, name, exact)) {
+      return true;
+    }
+  }
+  
+  // 6. 检查元素自身的文本内容
   const textContent = element.textContent?.trim() || '';
   if (matchesText(textContent, name, exact)) {
     return true;
   }
   
-  // 6. 检查 placeholder 属性（fallback）
+  // 7. 检查 placeholder 属性（fallback）
   const placeholder = element.getAttribute('placeholder') || '';
   if (matchesText(placeholder, name, exact)) {
     return true;
   }
   
-  // 7. 检查 title 属性（fallback）
+  // 8. 检查 title 属性（fallback）
   const title = element.getAttribute('title') || '';
   if (matchesText(title, name, exact)) {
     return true;
   }
   
   return false;
+}
+
+/**
+ * 获取表格行的 accessible name
+ * 根据 WAI-ARIA 规范，表格行的 accessible name 是所有单元格文本的组合
+ */
+function getRowAccessibleName(element: Element): string {
+  // 获取所有单元格 (th 和 td)
+  const cells = element.querySelectorAll('th, td, [role="cell"], [role="columnheader"], [role="rowheader"]');
+  const cellTexts: string[] = [];
+  
+  cells.forEach(cell => {
+    // 对于每个单元格，获取其可见文本内容
+    // 优先使用 aria-label，然后是文本内容
+    let cellText = '';
+    
+    const ariaLabel = cell.getAttribute('aria-label');
+    if (ariaLabel?.trim()) {
+      cellText = ariaLabel.trim();
+    } else {
+      // 获取单元格的文本内容，但排除隐藏元素
+      cellText = getCellVisibleText(cell);
+    }
+    
+    if (cellText) {
+      cellTexts.push(cellText);
+    }
+  });
+  
+  return cellTexts.join(' ').trim();
+}
+
+/**
+ * 获取单元格的可见文本内容
+ */
+function getCellVisibleText(cell: Element): string {
+  // 递归获取所有可见的文本节点
+  const getVisibleTextRecursive = (node: Node): string => {
+    let text = '';
+    
+    if (node.nodeType === Node.TEXT_NODE) {
+      return (node.textContent || '').trim();
+    }
+    
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = node as Element;
+      const style = window.getComputedStyle(element);
+      
+      // 跳过隐藏元素
+      if (style.display === 'none' || style.visibility === 'hidden') {
+        return '';
+      }
+      
+      // 递归处理子节点
+      for (const childNode of Array.from(element.childNodes)) {
+        text += getVisibleTextRecursive(childNode) + ' ';
+      }
+    }
+    
+    return text.trim();
+  };
+  
+  const visibleText = getVisibleTextRecursive(cell);
+  
+  // 如果没有找到可见文本，回退到 textContent
+  return visibleText || (cell.textContent?.trim() || '');
 }
 
 /**
