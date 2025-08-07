@@ -111,7 +111,7 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
       nameConditions.push(`parent::label[normalize-space(text())="${name}"]`);
       nameConditions.push(`ancestor::label[normalize-space(text())="${name}"]`);
       // 5. 元素自身的文本内容
-      nameConditions.push(`normalize-space(text())="${name}"`);
+      nameConditions.push(`normalize-space(.)="${name}"`);
       // 6. placeholder 作为 fallback
       nameConditions.push(`@placeholder="${name}"`);
       // 7. title 作为 fallback
@@ -124,7 +124,7 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
       nameConditions.push(`@id = //label[contains(normalize-space(text()), "${name}")]/@for`);
       nameConditions.push(`parent::label[contains(normalize-space(text()), "${name}")]`);
       nameConditions.push(`ancestor::label[contains(normalize-space(text()), "${name}")]`);
-      nameConditions.push(`contains(normalize-space(text()), "${name}")`);
+      nameConditions.push(`contains(normalize-space(.), "${name}")`);
       nameConditions.push(`contains(@placeholder, "${name}")`);
       nameConditions.push(`contains(@title, "${name}")`);
     }
