@@ -10,7 +10,6 @@ import type {
 } from '../../types/index.js';
 import { 
   getRoleSelector, 
-  buildRoleXPathWithName,
   buildGetByTextSelector,
   buildGetByLabelSelector, 
   buildGetByPlaceholderSelector,
@@ -250,9 +249,13 @@ class PageAdapter {
     const roleOptions: RoleOptions = { exact, level };
     
     if (name) {
-      // 使用工具函数构建带名称匹配的 XPath
-      const xpath = buildRoleXPathWithName(role, name, roleOptions);
-      return this.locator(`xpath=${xpath}`);
+      // 获取基础角色选择器，然后使用过滤器进行accessible name匹配
+      // 这样可以复用LocatorAdapter中已经完善的elementMatchesAccessibleName逻辑
+      const baseSelector = getRoleSelector(role, roleOptions);
+      return this.locator(baseSelector).filter({
+        hasAccessibleName: name,
+        exact: exact
+      });
     }
     
     // 获取基础角色选择器
