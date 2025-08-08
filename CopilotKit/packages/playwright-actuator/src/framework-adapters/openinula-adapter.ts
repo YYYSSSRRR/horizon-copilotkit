@@ -99,21 +99,17 @@ export class OpenInulaEventAdapter {
 
       // 查找事件处理器
       const eventHandler = this.findEventHandler(openinulaNode, eventType);
-      if (!eventHandler) {
-        return { 
-          success: false, 
-          method: 'openinula', 
-          error: `OpenInula ${eventType} handler not found` 
-        };
+
+      if (eventHandler instanceof Function) {
+        // 创建事件对象
+        const event = this.createOpenInulaEvent(element, eventType);
+              
+        // 调用 OpenInula 事件处理器
+        await eventHandler(event);
+
+        this.logger.debug(`OpenInula ${eventType} 事件已触发`);
       }
-
-      // 创建事件对象
-      const event = this.createOpenInulaEvent(element, eventType);
       
-      // 调用 OpenInula 事件处理器
-      await eventHandler(event);
-
-      this.logger.debug(`OpenInula ${eventType} 事件已触发`);
       return { success: true, method: 'openinula' };
 
     } catch (error) {
