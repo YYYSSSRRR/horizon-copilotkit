@@ -684,8 +684,9 @@ class LocatorAdapter {
   /**
    * 悬停
    */
-  async hover(): Promise<void> {
-    const element = await this.getElement() as HTMLElement;
+  async hover(options: { timeout?: number } = {}): Promise<void> {
+    // 等待元素可见
+    const element = await this.waitFor({ state: 'visible', timeout: options.timeout || 30000 }) as HTMLElement;
     await this.page.scrollIntoViewIfNeeded(element);
     
     // 检查框架组件类型并触发相应事件
@@ -710,8 +711,13 @@ class LocatorAdapter {
   /**
    * 选择复选框
    */
-  async check(): Promise<void> {
-    const element = await this.getElement() as HTMLInputElement;
+  async check(options: { timeout?: number } = {}): Promise<void> {
+    // 等待元素可见并可点击
+    const element = await this.waitFor({ state: 'visible', timeout: options.timeout || 30000 }) as HTMLInputElement;
+    await this.waitForClickable(element, options.timeout || 30000);
+    
+    await this.page.scrollIntoViewIfNeeded(element);
+    
     if (element.type === 'checkbox' || element.type === 'radio') {
       element.checked = true;
       
@@ -738,8 +744,13 @@ class LocatorAdapter {
   /**
    * 取消选择复选框
    */
-  async uncheck(): Promise<void> {
-    const element = await this.getElement() as HTMLInputElement;
+  async uncheck(options: { timeout?: number } = {}): Promise<void> {
+    // 等待元素可见并可点击
+    const element = await this.waitFor({ state: 'visible', timeout: options.timeout || 30000 }) as HTMLInputElement;
+    await this.waitForClickable(element, options.timeout || 30000);
+    
+    await this.page.scrollIntoViewIfNeeded(element);
+    
     if (element.type === 'checkbox') {
       element.checked = false;
       
@@ -766,8 +777,13 @@ class LocatorAdapter {
   /**
    * 选择下拉选项
    */
-  async selectOption(values: string | string[]): Promise<void> {
-    const element = await this.getElement() as HTMLSelectElement;
+  async selectOption(values: string | string[], options: { timeout?: number } = {}): Promise<void> {
+    // 等待元素可见并可点击
+    const element = await this.waitFor({ state: 'visible', timeout: options.timeout || 30000 }) as HTMLSelectElement;
+    await this.waitForClickable(element, options.timeout || 30000);
+    
+    await this.page.scrollIntoViewIfNeeded(element);
+    
     if (element.tagName === 'SELECT') {
       if (Array.isArray(values)) {
         // 多选

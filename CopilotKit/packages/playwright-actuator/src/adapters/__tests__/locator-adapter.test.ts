@@ -436,6 +436,9 @@ describe('LocatorAdapter Tests', () => {
     });
 
     test('hover() should handle native element', async () => {
+      // Mock waitFor to return the element
+      jest.spyOn(locatorAdapter, 'waitFor').mockResolvedValue(mockElement);
+      
       await locatorAdapter.hover();
 
       expect(mockPage.scrollIntoViewIfNeeded).toHaveBeenCalledWith(mockElement);
@@ -445,7 +448,9 @@ describe('LocatorAdapter Tests', () => {
 
     test('check() should handle checkbox', async () => {
       const checkboxElement = document.getElementById('test-checkbox') as HTMLInputElement;
-      jest.spyOn(locatorAdapter as any, 'getElement').mockResolvedValue(checkboxElement);
+      // Mock waitFor and waitForClickable to return the element
+      jest.spyOn(locatorAdapter, 'waitFor').mockResolvedValue(checkboxElement);
+      jest.spyOn(locatorAdapter as any, 'waitForClickable').mockResolvedValue(undefined);
 
       await locatorAdapter.check();
 
@@ -456,7 +461,9 @@ describe('LocatorAdapter Tests', () => {
     test('uncheck() should handle checkbox', async () => {
       const checkboxElement = document.getElementById('test-checkbox') as HTMLInputElement;
       checkboxElement.checked = true;
-      jest.spyOn(locatorAdapter as any, 'getElement').mockResolvedValue(checkboxElement);
+      // Mock waitFor and waitForClickable to return the element
+      jest.spyOn(locatorAdapter, 'waitFor').mockResolvedValue(checkboxElement);
+      jest.spyOn(locatorAdapter as any, 'waitForClickable').mockResolvedValue(undefined);
 
       await locatorAdapter.uncheck();
 
@@ -466,7 +473,9 @@ describe('LocatorAdapter Tests', () => {
 
     test('selectOption() should handle single value selection', async () => {
       const selectElement = document.getElementById('test-select') as HTMLSelectElement;
-      jest.spyOn(locatorAdapter as any, 'getElement').mockResolvedValue(selectElement);
+      // Mock waitFor and waitForClickable to return the element
+      jest.spyOn(locatorAdapter, 'waitFor').mockResolvedValue(selectElement);
+      jest.spyOn(locatorAdapter as any, 'waitForClickable').mockResolvedValue(undefined);
 
       await locatorAdapter.selectOption('option2');
 
@@ -477,7 +486,9 @@ describe('LocatorAdapter Tests', () => {
     test('selectOption() should handle multiple value selection', async () => {
       const selectElement = document.getElementById('test-select') as HTMLSelectElement;
       selectElement.multiple = true;
-      jest.spyOn(locatorAdapter as any, 'getElement').mockResolvedValue(selectElement);
+      // Mock waitFor and waitForClickable to return the element
+      jest.spyOn(locatorAdapter, 'waitFor').mockResolvedValue(selectElement);
+      jest.spyOn(locatorAdapter as any, 'waitForClickable').mockResolvedValue(undefined);
 
       await locatorAdapter.selectOption(['option1', 'option2']);
 
