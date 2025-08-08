@@ -160,24 +160,34 @@ class LocatorAdapter {
       }
     }
 
+    let result: Element[];
     switch (strategy.type) {
       case 'selector':
-        return this.queryElementsBySelector(strategy.selector!, parentElements);
+        result = this.queryElementsBySelector(strategy.selector!, parentElements);
+        break;
       case 'role':
-        return this.queryElementsByRole(strategy.role!, strategy.roleOptions || {}, parentElements);
+        result = this.queryElementsByRole(strategy.role!, strategy.roleOptions || {}, parentElements);
+        break;
       case 'text':
-        return this.queryElementsByText(strategy.text!, strategy.textOptions || {}, parentElements);
+        result = this.queryElementsByText(strategy.text!, strategy.textOptions || {}, parentElements);
+        break;
       case 'label':
-        return this.queryElementsByLabel(strategy.labelText!, strategy.labelOptions || {}, parentElements);
+        result = this.queryElementsByLabel(strategy.labelText!, strategy.labelOptions || {}, parentElements);
+        break;
       case 'placeholder':
-        return this.queryElementsByPlaceholder(strategy.placeholder!, strategy.placeholderOptions || {}, parentElements);
+        result = this.queryElementsByPlaceholder(strategy.placeholder!, strategy.placeholderOptions || {}, parentElements);
+        break;
       case 'testid':
-        return this.queryElementsByTestId(strategy.testId!, parentElements);
+        result = this.queryElementsByTestId(strategy.testId!, parentElements);
+        break;
       case 'title':
-        return this.queryElementsByTitle(strategy.title!, strategy.titleOptions || {}, parentElements);
+        result = this.queryElementsByTitle(strategy.title!, strategy.titleOptions || {}, parentElements);
+        break;
       default:
-        return [];
+        result = [];
     }
+    
+    return result;
   }
 
   // =============== 链式过滤器方法 ===============
@@ -225,8 +235,8 @@ class LocatorAdapter {
     };
     
     const newLocator = new LocatorAdapter(childStrategy, this.page, options);
-    // 继承父级的过滤器
-    newLocator.filters = [...this.filters];
+    // 不继承父级的过滤器！过滤器是针对特定元素类型的，不适用于子元素
+    // newLocator.filters = [...this.filters];
     return newLocator;
   }
 
@@ -354,37 +364,37 @@ class LocatorAdapter {
     const trimmed = cssSelector.trim();
     
     if (trimmed.startsWith('#')) {
-      // ID 选择器: #id -> //*[@id="id"]
-      return `//*[@id="${trimmed.substring(1)}"]`;
+      // ID 选择器: #id -> .//*[@id="id"]
+      return `.//*[@id="${trimmed.substring(1)}"]`;
     } else if (trimmed.startsWith('.')) {
-      // 类选择器: .class -> //*[contains(@class, "class")]
-      return `//*[contains(@class, "${trimmed.substring(1)}")]`;
+      // 类选择器: .class -> .//*[contains(@class, "class")]
+      return `.//*[contains(@class, "${trimmed.substring(1)}")]`;
     } else if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       // 属性选择器
       const attrMatch = trimmed.match(/\[([^=]+)="([^"]+)"\]/);
       if (attrMatch) {
-        return `//*[@${attrMatch[1]}="${attrMatch[2]}"]`;
+        return `.//*[@${attrMatch[1]}="${attrMatch[2]}"]`;
       }
       const attrExistsMatch = trimmed.match(/\[([^=\]]+)\]/);
       if (attrExistsMatch) {
-        return `//*[@${attrExistsMatch[1]}]`;
+        return `.//*[@${attrExistsMatch[1]}]`;
       }
     } else if (/^[a-zA-Z][a-zA-Z0-9-]*$/.test(trimmed)) {
-      // 标签选择器: div -> //div
-      return `//${trimmed}`;
+      // 标签选择器: div -> .//div
+      return `.//${trimmed}`;
     } else if (trimmed === '*') {
-      // 通配符选择器: * -> //*
-      return `//*`;
+      // 通配符选择器: * -> .//*
+      return `.//*`;
     } else if (trimmed.startsWith('*[') && trimmed.endsWith(']')) {
       // 通配符属性选择器: *[attr="value"] -> //*[@attr="value"]
       const attrPart = trimmed.substring(2, trimmed.length - 1);
       const attrMatch = attrPart.match(/([^=]+)="([^"]+)"/);
       if (attrMatch) {
-        return `//*[@${attrMatch[1]}="${attrMatch[2]}"]`;
+        return `.//*[@${attrMatch[1]}="${attrMatch[2]}"]`;
       }
       const attrExistsMatch = attrPart.match(/^([^=\]]+)$/);
       if (attrExistsMatch) {
-        return `//*[@${attrExistsMatch[1]}]`;
+        return `.//*[@${attrExistsMatch[1]}]`;
       }
     }
     
@@ -392,11 +402,11 @@ class LocatorAdapter {
     // 尝试提取标签名
     const tagMatch = trimmed.match(/^([a-zA-Z][a-zA-Z0-9-]*)/);
     if (tagMatch) {
-      return `//${tagMatch[1]}`;
+      return `.//${tagMatch[1]}`;
     }
     
-    // 最后的回退 - 使用通配符
-    return `//*`;
+    // 最后的回退 - 使用相对通配符
+    return `.//*`;
   }
 
   /**

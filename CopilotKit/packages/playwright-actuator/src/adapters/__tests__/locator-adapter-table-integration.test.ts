@@ -332,7 +332,7 @@ describe('LocatorAdapter Table Integration Tests', () => {
       expect(foundElement.textContent).toContain('容器2 行1');
     });
 
-    it.skip('should find checkbox in EUI table header row', async () => {
+    it('should find checkbox in EUI table header row', async () => {
       // 这个测试模拟用户提供的具体场景
       const tableHTML = `
         <table class="" style="min-width: 100%; table-layout: fixed;">
@@ -420,7 +420,6 @@ describe('LocatorAdapter Table Integration Tests', () => {
       // 第二步：直接在行内查找 input[type="checkbox"]
       const checkboxLocator = rowLocator.locator('input[type="checkbox"]');
       
-      
       const checkbox = await checkboxLocator.getElement() as HTMLInputElement;
       expect(checkbox.tagName.toLowerCase()).toBe('input');
       expect(checkbox.getAttribute('type')).toBe('checkbox');
@@ -428,7 +427,7 @@ describe('LocatorAdapter Table Integration Tests', () => {
       expect(checkbox.disabled).toBe(true);
     });
 
-    it.skip('should find checkbox using getByLabel with empty string', async () => {
+    it('should find checkbox using getByLabel with empty string', async () => {
       // 这个测试验证 getByLabel('') 是否能正确工作
       const tableHTML = `
         <table>
@@ -464,7 +463,7 @@ describe('LocatorAdapter Table Integration Tests', () => {
       expect(checkbox.id).toBe('headerCheckbox');
     });
 
-    it.skip('should find exact EUI table header row with complex structure', async () => {
+    it('should find exact EUI table header row with complex structure', async () => {
       // 这个测试使用用户提供的真实 HTML 结构
       const euiTableHTML = `
         <table class="" style="min-width: 100%; table-layout: fixed;">

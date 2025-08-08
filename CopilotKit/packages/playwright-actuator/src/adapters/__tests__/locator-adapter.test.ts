@@ -275,37 +275,37 @@ describe('LocatorAdapter Tests', () => {
   describe('CSS to XPath Conversion', () => {
     test('should convert ID selector to XPath', () => {
       const result = (locatorAdapter as any).cssSelectorToXPath('#test-id');
-      expect(result).toBe('//*[@id="test-id"]');
+      expect(result).toBe('.//*[@id="test-id"]');
     });
 
     test('should convert class selector to XPath', () => {
       const result = (locatorAdapter as any).cssSelectorToXPath('.test-class');
-      expect(result).toBe('//*[contains(@class, "test-class")]');
+      expect(result).toBe('.//*[contains(@class, "test-class")]');
     });
 
     test('should convert attribute selector with value to XPath', () => {
       const result = (locatorAdapter as any).cssSelectorToXPath('[data-testid="test"]');
-      expect(result).toBe('//*[@data-testid="test"]');
+      expect(result).toBe('.//*[@data-testid="test"]');
     });
 
     test('should convert attribute existence selector to XPath', () => {
       const result = (locatorAdapter as any).cssSelectorToXPath('[disabled]');
-      expect(result).toBe('//*[@disabled]');
+      expect(result).toBe('.//*[@disabled]');
     });
 
     test('should convert tag selector to XPath', () => {
       const result = (locatorAdapter as any).cssSelectorToXPath('button');
-      expect(result).toBe('//button');
+      expect(result).toBe('.//button');
     });
 
     test('should handle comma-separated selectors', () => {
       const result = (locatorAdapter as any).cssSelectorToXPath('input, select, textarea');
-      expect(result).toBe('//input | //select | //textarea');
+      expect(result).toBe('.//input | .//select | .//textarea');
     });
 
     test('should extract tag for complex selectors', () => {
       const result = (locatorAdapter as any).cssSelectorToXPath('div.class > p:first-child');
-      expect(result).toBe('//div');
+      expect(result).toBe('.//div');
     });
   });
 
@@ -329,13 +329,13 @@ describe('LocatorAdapter Tests', () => {
 
     test('should convert CSS parent to XPath when child is XPath', () => {
       const result = (parentLocator as any).combineSelectorWithParent('xpath=//span');
-      expect(result).toBe('xpath=(//*[contains(@class, "parent")])//span');
+      expect(result).toBe('xpath=(.//*[contains(@class, "parent")])//span');
     });
 
     test('should convert XPath parent when child is CSS', () => {
       const xpathParent = new LocatorAdapter('xpath=//div', mockPage);
       const result = (xpathParent as any).combineSelectorWithParent('.child');
-      expect(result).toBe('xpath=(//div)//*[contains(@class, "child")]');
+      expect(result).toBe('xpath=(//div)//.//*[contains(@class, \"child\")]');
     });
   });
 
@@ -986,10 +986,10 @@ describe('LocatorAdapter Tests', () => {
       
       // Test various CSS selectors that might cause XPath conversion issues
       const testCases = [
-        { selector: 'input, select, textarea', expected: '//input | //select | //textarea' },
-        { selector: 'tr, [role="row"]', expected: '//tr | //*[@role="row"]' },
-        { selector: 'div.complex-class > span:first-child', expected: '//div' },
-        { selector: '*[data-testid="test"]', expected: '//*[@data-testid="test"]' }
+        { selector: 'input, select, textarea', expected: './/input | .//select | .//textarea' },
+        { selector: 'tr, [role="row"]', expected: './/tr | .//*[@role="row"]' },
+        { selector: 'div.complex-class > span:first-child', expected: './/div' },
+        { selector: '*[data-testid="test"]', expected: './/*[@data-testid="test"]' }
       ];
       
       testCases.forEach(({ selector, expected }) => {

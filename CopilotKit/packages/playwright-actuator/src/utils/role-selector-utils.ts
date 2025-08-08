@@ -71,9 +71,9 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
     
     // 特殊处理复杂的 CSS 选择器
     if (trimmedPart === 'input:not([type])') {
-      xpathPart = '//input[not(@type)]';
+      xpathPart = './/input[not(@type)]';
     } else if (trimmedPart === 'input[type=""]') {
-      xpathPart = '//input[@type=""]';
+      xpathPart = './/input[@type=""]';
     } else if (trimmedPart.includes('[')) {
       // 处理带属性的元素，如 input[type="text"] 或纯属性选择器 [role="row"]
       const [tag, attrPart] = trimmedPart.split('[');
@@ -85,15 +85,15 @@ export function buildRoleXPathWithName(role: string, name: string, options: Role
         const [attrName, attrValue] = attr.split('=');
         const cleanAttrName = attrName.trim();
         const cleanAttrValue = attrValue.replace(/['"]/g, '').trim();
-        xpathPart = `//${elementTag}[@${cleanAttrName}="${cleanAttrValue}"]`;
+        xpathPart = `.//${elementTag}[@${cleanAttrName}="${cleanAttrValue}"]`;
       } else {
         // 仅存在性检查的属性
         const cleanAttrName = attr.trim();
-        xpathPart = `//${elementTag}[@${cleanAttrName}]`;
+        xpathPart = `.//${elementTag}[@${cleanAttrName}]`;
       }
     } else {
       // 简单标签名
-      xpathPart = `//${trimmedPart}`;
+      xpathPart = `.//${trimmedPart}`;
     }
     
     // 构建 accessible name 匹配条件（按优先级排序）
@@ -196,9 +196,9 @@ function getElementVisibleText(element: Element): string {
  */
 export function buildGetByTextSelector(text: string, exact: boolean = false): string {
   if (exact) {
-    return `xpath=//*[normalize-space(text())="${text}"]`;
+    return `xpath=.//*[normalize-space(text())="${text}"]`;
   } else {
-    return `xpath=//*[contains(normalize-space(text()), "${text}")]`;
+    return `xpath=.//*[contains(normalize-space(text()), "${text}")]`;
   }
 }
 
@@ -215,30 +215,32 @@ export function buildGetByLabelSelector(text: string, exact: boolean = false): s
   if (exact) {
     // 精确匹配 - 优先顺序：aria-label > for关联 > 嵌套 > aria-labelledby
     formElements.forEach(elementType => {
-      xpathParts.push(`//${elementType}[@aria-label="${text}"]`);
+      xpathParts.push(`.//${elementType}[@aria-label="${text}"]`);
     });
     formElements.forEach(elementType => {
-      xpathParts.push(`//${elementType}[@id = //label[normalize-space(text())="${text}"]/@for]`);
+      // Note: for 关联的情况下，我们需要在整个文档中查找label，所以这里仍然使用//
+      xpathParts.push(`.//${elementType}[@id = //label[normalize-space(text())="${text}"]/@for]`);
     });
     formElements.forEach(elementType => {
-      xpathParts.push(`//label[normalize-space(text())="${text}"]//${elementType}`);
+      xpathParts.push(`.//label[normalize-space(text())="${text}"]//${elementType}`);
     });
     formElements.forEach(elementType => {
-      xpathParts.push(`//${elementType}[@aria-labelledby = //label[normalize-space(text())="${text}"]/@id]`);
+      // aria-labelledby 也需要在整个文档中查找引用的元素
+      xpathParts.push(`.//${elementType}[@aria-labelledby = //label[normalize-space(text())="${text}"]/@id]`);
     });
   } else {
     // 包含匹配 - 同样的优先顺序
     formElements.forEach(elementType => {
-      xpathParts.push(`//${elementType}[contains(@aria-label, "${text}")]`);
+      xpathParts.push(`.//${elementType}[contains(@aria-label, "${text}")]`);
     });
     formElements.forEach(elementType => {
-      xpathParts.push(`//${elementType}[@id = //label[contains(normalize-space(text()), "${text}")]/@for]`);
+      xpathParts.push(`.//${elementType}[@id = //label[contains(normalize-space(text()), "${text}")]/@for]`);
     });
     formElements.forEach(elementType => {
-      xpathParts.push(`//label[contains(normalize-space(text()), "${text}")]//${elementType}`);
+      xpathParts.push(`.//label[contains(normalize-space(text()), "${text}")]//${elementType}`);
     });
     formElements.forEach(elementType => {
-      xpathParts.push(`//${elementType}[@aria-labelledby = //label[contains(normalize-space(text()), "${text}")]/@id]`);
+      xpathParts.push(`.//${elementType}[@aria-labelledby = //label[contains(normalize-space(text()), "${text}")]/@id]`);
     });
   }
   
