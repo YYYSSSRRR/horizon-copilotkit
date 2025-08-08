@@ -1176,8 +1176,9 @@ class LocatorAdapter {
 
     // 检查是否被禁用
     if (element instanceof HTMLElement && (
-        element.hasAttribute('disabled') || 
-        element.hasAttribute('readonly')
+        element.hasAttribute('disabled') 
+        // 暂时不支持 readonly 属性
+        // element.hasAttribute('readonly')
     )) {
       return false;
     }
