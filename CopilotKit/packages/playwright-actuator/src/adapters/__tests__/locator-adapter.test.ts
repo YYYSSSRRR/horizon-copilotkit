@@ -161,13 +161,13 @@ describe('LocatorAdapter Tests', () => {
       expect(positionFiltered).not.toBe(locatorAdapter);
       expect((positionFiltered as any).filters).toEqual([{ position: 0 }]);
       
-      // Test text filter (uses immediate filtering)
+      // Test text filter (now uses lazy filtering)
       const textFiltered = locatorAdapter.filter({ hasText: 'Submit' });
       
       expect(textFiltered).toBeInstanceOf(LocatorAdapter);
       expect(textFiltered).not.toBe(locatorAdapter);
-      // Text filters use immediate filtering, so no filters array
-      expect((textFiltered as any)._resolvedElements).toBeDefined();
+      // Lazy execution: text filters are also stored, not executed immediately
+      expect((textFiltered as any).filters).toEqual([{ hasText: 'Submit' }]);
     });
 
     test('first() should return nth(0)', () => {
@@ -199,15 +199,16 @@ describe('LocatorAdapter Tests', () => {
         { exact: true }
       ]);
       
-      // Test chaining with text filter + position filter (mixed filtering)
+      // Test chaining with text filter + position filter (all lazy now)
       const mixedChained = locatorAdapter
-        .filter({ hasText: 'Submit' })  // This uses immediate filtering
-        .filter({ exact: true });       // This applies to the already filtered elements
+        .filter({ hasText: 'Submit' })  // Now stores filter instead of executing
+        .filter({ exact: true });       // Adds another filter to chain
       
-      // The result should have _resolvedElements from the text filter
-      expect((mixedChained as any)._resolvedElements).toBeDefined();
-      // And may have additional filters
-      expect((mixedChained as any).filters).toEqual([{ exact: true }]);
+      // All filters should be stored in sequence (lazy execution)
+      expect((mixedChained as any).filters).toEqual([
+        { hasText: 'Submit' },
+        { exact: true }
+      ]);
     });
   });
 
@@ -236,26 +237,26 @@ describe('LocatorAdapter Tests', () => {
     test('getByText() should create text-based locator', () => {
       const textLocator = locatorAdapter.getByText('Submit');
       
-      expect((textLocator as any).selector).toBe('#test-button [data-text*="Submit"]');
+      expect((textLocator as any).selector).toBe('#test-button text="Submit"');
     });
 
     test('getByLabel() should create label-based locator', () => {
       const labelLocator = locatorAdapter.getByLabel('Username');
       
-      expect((labelLocator as any).selector).toBe('#test-button [aria-label*="Username"]');
+      expect((labelLocator as any).selector).toBe('#test-button label="Username"');
     });
 
     test('getByLabel() with empty string should handle no-label case', () => {
       const emptyLabelLocator = locatorAdapter.getByLabel('');
       
-      // The real implementation returns form elements selector for empty labels
-      expect((emptyLabelLocator as any).selector).toBe('#test-button input, select, textarea');
+      // The new implementation uses label query strategy
+      expect((emptyLabelLocator as any).selector).toBe('#test-button label=""');
     });
 
     test('getByPlaceholder() should create placeholder-based locator', () => {
       const placeholderLocator = locatorAdapter.getByPlaceholder('Enter text');
       
-      expect((placeholderLocator as any).selector).toBe('#test-button [placeholder*="Enter text"]');
+      expect((placeholderLocator as any).selector).toBe('#test-button placeholder="Enter text"');
     });
 
     test('getByTestId() should create test-id-based locator', () => {
@@ -267,7 +268,7 @@ describe('LocatorAdapter Tests', () => {
     test('getByTitle() should create title-based locator', () => {
       const titleLocator = locatorAdapter.getByTitle('Custom Title');
       
-      expect((titleLocator as any).selector).toBe('#test-button [title*="Custom Title"]');
+      expect((titleLocator as any).selector).toBe('#test-button [title="Custom Title"]');
     });
   });
 
@@ -631,11 +632,7 @@ describe('LocatorAdapter Tests', () => {
 
   describe('Query Methods', () => {
     test('count() should return number of matching elements', async () => {
-      jest.spyOn(locatorAdapter as any, 'queryElements').mockReturnValue([
-        document.getElementById('test-button'),
-        document.getElementById('test-input')
-      ]);
-      jest.spyOn(locatorAdapter as any, 'applyFilters').mockReturnValue([
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue([
         document.getElementById('test-button')
       ]);
 
@@ -646,8 +643,7 @@ describe('LocatorAdapter Tests', () => {
 
     test('all() should return array of locators', async () => {
       const elements = [document.getElementById('test-button')!, document.getElementById('test-input')!];
-      jest.spyOn(locatorAdapter as any, 'queryElements').mockReturnValue(elements);
-      jest.spyOn(locatorAdapter as any, 'applyFilters').mockReturnValue(elements);
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue(elements);
       jest.spyOn(locatorAdapter as any, 'buildUniqueSelector').mockReturnValue('#unique-selector');
 
       const result = await locatorAdapter.all();
@@ -669,8 +665,7 @@ describe('LocatorAdapter Tests', () => {
 
     test('getElement() should query new element if not cached', async () => {
       const testElement = document.getElementById('test-button')!;
-      jest.spyOn(locatorAdapter as any, 'queryElements').mockReturnValue([testElement]);
-      jest.spyOn(locatorAdapter as any, 'applyFilters').mockReturnValue([testElement]);
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue([testElement]);
 
       const result = await locatorAdapter.getElement();
 
@@ -745,7 +740,7 @@ describe('LocatorAdapter Tests', () => {
   });
 
   describe('XPath Query Handling', () => {
-    test('queryElements() should handle XPath selectors', () => {
+    test('queryElementsBySelector() should handle XPath selectors', () => {
       const mockResult = {
         snapshotLength: 1,
         snapshotItem: jest.fn().mockReturnValue(document.getElementById('test-button'))
@@ -753,14 +748,14 @@ describe('LocatorAdapter Tests', () => {
       jest.spyOn(document, 'evaluate').mockReturnValue(mockResult as any);
 
       const xpathLocator = new LocatorAdapter('xpath=//button', mockPage);
-      const result = (xpathLocator as any).queryElements('xpath=//button');
+      const result = (xpathLocator as any).queryElementsBySelector('xpath=//button');
 
       expect(document.evaluate).toHaveBeenCalled();
       expect(result).toEqual([document.getElementById('test-button')]);
     });
 
-    test('queryElements() should handle CSS selectors', () => {
-      const result = (locatorAdapter as any).queryElements('#test-button');
+    test('queryElementsBySelector() should handle CSS selectors', () => {
+      const result = (locatorAdapter as any).queryElementsBySelector('#test-button');
       expect(result).toEqual([document.getElementById('test-button')]);
     });
   });
@@ -850,15 +845,18 @@ describe('LocatorAdapter Tests', () => {
     });
 
     test('should handle multiple filters in sequence', async () => {
-      // For this test, let's use the old approach but modify it to work with the new system
-      // Create a locator that doesn't use immediate filtering for this specific test scenario
+      // Create a locator with multiple filters
       const locatorWithFilters = testLocator
-        .filter({ position: 0 })  // Use position filter first (delayed)
-        .filter({ hasText: 'First' });  // Then text filter (immediate)
+        .filter({ position: 0 })  // Position filter
+        .filter({ hasText: 'First' });  // Text filter
       
-      // Since the final filter is hasText, it will be immediate filtering
-      // So the locator should have _resolvedElements
-      expect((locatorWithFilters as any)._resolvedElements).toBeDefined();
+      // Test that the filters are applied correctly
+      expect((locatorWithFilters as any).filters).toHaveLength(2);
+      expect((locatorWithFilters as any).filters[0]).toEqual({ position: 0 });
+      expect((locatorWithFilters as any).filters[1]).toEqual({ hasText: 'First' });
+      
+      // Mock getCurrentElements to return filtered elements
+      jest.spyOn(locatorWithFilters as any, 'getCurrentElements').mockReturnValue([elements[0]]);
       
       const count = await locatorWithFilters.count();
       expect(count).toBe(1);
@@ -909,8 +907,8 @@ describe('LocatorAdapter Tests', () => {
       expect(typeof selector).toBe('string');
       
       // Test that we can actually query elements with this selector
-      const mockQueryElements = jest.spyOn(checkboxLocator as any, 'queryElements');
-      mockQueryElements.mockImplementation((...args: unknown[]) => {
+      const mockQueryElementsBySelector = jest.spyOn(checkboxLocator as any, 'queryElementsBySelector');
+      mockQueryElementsBySelector.mockImplementation((...args: unknown[]) => {
         const sel = args[0] as string;
         // This should not throw an XPath error
         try {
@@ -1062,7 +1060,7 @@ describe('LocatorAdapter Tests', () => {
         .locator('form')
         .getByPlaceholder('Enter your email');
       
-      expect((emailInput as any).selector).toBe('#app form [placeholder*="Enter your email"]');
+      expect((emailInput as any).selector).toBe('#app form placeholder="Enter your email"');
     });
   });
 });

@@ -29,22 +29,86 @@ interface FilterOptions {
   position?: number | 'last';
 }
 
+// 查询策略接口
+interface QueryStrategy {
+  type: 'selector' | 'role' | 'text' | 'label' | 'placeholder' | 'testid' | 'title';
+  selector?: string;
+  role?: string;
+  roleOptions?: { name?: string | RegExp; exact?: boolean };
+  text?: string;
+  textOptions?: { exact?: boolean };
+  labelText?: string;
+  labelOptions?: { exact?: boolean };
+  placeholder?: string;
+  placeholderOptions?: { exact?: boolean };
+  testId?: string;
+  title?: string;
+  titleOptions?: { exact?: boolean };
+  parentStrategy?: QueryStrategy;
+}
+
 /**
- * Locator 适配器 - 实现 Playwright Locator API
+ * Locator 适配器 - 实现 Playwright Locator API with Lazy Execution
  */
 class LocatorAdapter {
-  private selector: string;
   private page: any; // TODO: Type this properly
   private options: LocatorOptions;
   private filters: FilterOptions[];
   private logger: Logger;
   private eventSimulator: any; // TODO: Type this properly
   private _element?: Element;
-  private _parentContextLocator?: LocatorAdapter;
-  private _resolvedElements?: Element[]; // 缓存已解析的元素集合
+  private _queryStrategy: QueryStrategy; // 查询策略，延迟执行
+  private _resolvedElements?: Element[]; // 缓存已解析的元素集合，仅在需要时计算
 
-  constructor(selector: string, page: any, options: LocatorOptions = {}) {
-    this.selector = selector;
+  // 为了向后兼容，提供 selector getter
+  private get selector(): string {
+    return this.getSelectorFromStrategy(this._queryStrategy);
+  }
+
+  /**
+   * 从查询策略生成选择器字符串（用于日志和错误信息）
+   */
+  private getSelectorFromStrategy(strategy: QueryStrategy): string {
+    if (strategy.parentStrategy) {
+      const parentSelector = this.getSelectorFromStrategy(strategy.parentStrategy);
+      const childSelector = this.getStrategySelectorPart(strategy);
+      return `${parentSelector} ${childSelector}`;
+    }
+    return this.getStrategySelectorPart(strategy);
+  }
+
+  private getStrategySelectorPart(strategy: QueryStrategy): string {
+    switch (strategy.type) {
+      case 'selector':
+        return strategy.selector || '*';
+      case 'role':
+        return `[role="${strategy.role}"]`;
+      case 'text':
+        return `text="${strategy.text}"`;
+      case 'label':
+        return `label="${strategy.labelText}"`;
+      case 'placeholder':
+        return `placeholder="${strategy.placeholder}"`;
+      case 'testid':
+        return `[data-testid="${strategy.testId}"]`;
+      case 'title':
+        return `[title="${strategy.title}"]`;
+      default:
+        return '*';
+    }
+  }
+
+  constructor(queryStrategy: QueryStrategy | string, page: any, options: LocatorOptions = {}) {
+    // 兼容旧的构造函数调用方式
+    if (typeof queryStrategy === 'string') {
+      this._queryStrategy = {
+        type: 'selector',
+        selector: queryStrategy
+      };
+    } else {
+      this._queryStrategy = queryStrategy;
+    }
+    
     this.page = page;
     this.options = options;
     this.filters = [];
@@ -55,10 +119,10 @@ class LocatorAdapter {
   }
 
   /**
-   * 基于已解析元素创建新的 locator（用于链式调用的立即过滤）
+   * 基于已解析元素创建新的 locator（保留用于内部使用）
    */
-  static fromElements(elements: Element[], page: any, selector: string = '*'): LocatorAdapter {
-    const locator = new LocatorAdapter(selector, page);
+  static fromElements(elements: Element[], page: any, queryStrategy: QueryStrategy): LocatorAdapter {
+    const locator = new LocatorAdapter(queryStrategy, page);
     locator._resolvedElements = elements;
     return locator;
   }
@@ -67,7 +131,7 @@ class LocatorAdapter {
   // =============== 元素解析方法 ===============
 
   /**
-   * 获取当前的元素集合
+   * 获取当前的元素集合（延迟执行）
    */
   private getCurrentElements(): Element[] {
     // 如果已经有解析的元素，直接返回
@@ -75,49 +139,56 @@ class LocatorAdapter {
       return this._resolvedElements;
     }
     
-    // 否则查询并应用所有过滤器
-    const elements = this.queryElements(this.selector);
+    // 执行查询策略
+    const elements = this.executeQueryStrategy(this._queryStrategy);
+    
+    // 应用所有过滤器
     return this.applyFilters(elements);
+  }
+
+  /**
+   * 执行查询策略（递归处理父策略）
+   */
+  private executeQueryStrategy(strategy: QueryStrategy): Element[] {
+    // 如果有父策略，先执行父策略
+    let parentElements: Element[] | undefined;
+    if (strategy.parentStrategy) {
+      parentElements = this.executeQueryStrategy(strategy.parentStrategy);
+      // 如果父查询没有结果，直接返回空数组
+      if (parentElements.length === 0) {
+        return [];
+      }
+    }
+
+    switch (strategy.type) {
+      case 'selector':
+        return this.queryElementsBySelector(strategy.selector!, parentElements);
+      case 'role':
+        return this.queryElementsByRole(strategy.role!, strategy.roleOptions || {}, parentElements);
+      case 'text':
+        return this.queryElementsByText(strategy.text!, strategy.textOptions || {}, parentElements);
+      case 'label':
+        return this.queryElementsByLabel(strategy.labelText!, strategy.labelOptions || {}, parentElements);
+      case 'placeholder':
+        return this.queryElementsByPlaceholder(strategy.placeholder!, strategy.placeholderOptions || {}, parentElements);
+      case 'testid':
+        return this.queryElementsByTestId(strategy.testId!, parentElements);
+      case 'title':
+        return this.queryElementsByTitle(strategy.title!, strategy.titleOptions || {}, parentElements);
+      default:
+        return [];
+    }
   }
 
   // =============== 链式过滤器方法 ===============
 
   /**
-   * 过滤 locator - 立即应用过滤器（新的链式调用行为）
+   * 过滤 locator - 延迟执行（符合 Playwright 行为）
    */
   filter(options: FilterOptions): LocatorAdapter {
-    // 对于文本过滤器，使用立即过滤来确保正确的链式调用行为
-    if (options.hasText !== undefined || options.hasNotText !== undefined) {
-      // 获取当前元素集合
-      const currentElements = this.getCurrentElements();
-      
-      // 立即应用过滤器
-      const filteredElements = this.applyFilter(currentElements, options);
-      
-      // 基于过滤后的元素创建新的 locator
-      return LocatorAdapter.fromElements(filteredElements, this.page, this.selector);
-    }
-    
-    // 如果当前 locator 有已解析的元素，在这些元素上应用过滤器
-    if (this._resolvedElements) {
-      // 立即应用过滤器到已解析的元素
-      const filteredElements = this.applyFilter(this._resolvedElements, options);
-      
-      // 创建新的 locator 但保留一些过滤器（如果适用）
-      const newLocator = LocatorAdapter.fromElements(filteredElements, this.page, this.selector);
-      
-      // 对于非位置过滤器，将其添加到 filters 数组中
-      if (options.position === undefined) {
-        newLocator.filters = [options];
-      }
-      
-      return newLocator;
-    }
-    
-    // 对于位置过滤器，使用传统的延迟过滤（保持向后兼容性）
-    const newLocator = new LocatorAdapter(this.selector, this.page);
+    // 创建新的 locator，继承当前查询策略，添加过滤器
+    const newLocator = new LocatorAdapter(this._queryStrategy, this.page);
     newLocator.filters = [...this.filters, options];
-    newLocator._parentContextLocator = this._parentContextLocator;
     return newLocator;
   }
 
@@ -125,11 +196,6 @@ class LocatorAdapter {
    * 获取第一个元素
    */
   first(): LocatorAdapter {
-    // 如果有已解析的元素，立即返回第一个
-    if (this._resolvedElements) {
-      const firstElement = this._resolvedElements.length > 0 ? [this._resolvedElements[0]] : [];
-      return LocatorAdapter.fromElements(firstElement, this.page, this.selector);
-    }
     return this.nth(0);
   }
 
@@ -137,11 +203,6 @@ class LocatorAdapter {
    * 获取最后一个元素
    */
   last(): LocatorAdapter {
-    // 如果有已解析的元素，立即返回最后一个
-    if (this._resolvedElements) {
-      const lastElement = this._resolvedElements.length > 0 ? [this._resolvedElements[this._resolvedElements.length - 1]] : [];
-      return LocatorAdapter.fromElements(lastElement, this.page, this.selector);
-    }
     return this.filter({ position: 'last' });
   }
 
@@ -149,11 +210,6 @@ class LocatorAdapter {
    * 获取第 n 个元素
    */
   nth(n: number): LocatorAdapter {
-    // 如果有已解析的元素，立即返回第 n 个
-    if (this._resolvedElements) {
-      const nthElement = this._resolvedElements[n] ? [this._resolvedElements[n]] : [];
-      return LocatorAdapter.fromElements(nthElement, this.page, this.selector);
-    }
     return this.filter({ position: n });
   }
 
@@ -161,11 +217,16 @@ class LocatorAdapter {
    * 创建子 Locator (在当前 Locator 范围内查找)
    */
   locator(selector: string, options: LocatorOptions = {}): LocatorAdapter {
-    // 创建组合选择器，表示在当前选择器范围内查找子选择器
-    const combinedSelector = this.combineSelectorWithParent(selector);
-    const newLocator = new LocatorAdapter(combinedSelector, this.page, options);
-    // 子 locator 不继承过滤器，因为它在寻找子元素，过滤条件可能不适用
-    // newLocator.filters = [...this.filters];
+    // 创建子查询策略
+    const childStrategy: QueryStrategy = {
+      type: 'selector',
+      selector: selector,
+      parentStrategy: this._queryStrategy
+    };
+    
+    const newLocator = new LocatorAdapter(childStrategy, this.page, options);
+    // 继承父级的过滤器
+    newLocator.filters = [...this.filters];
     return newLocator;
   }
 
@@ -174,46 +235,16 @@ class LocatorAdapter {
    */
   getByRole(role: string, options: { name?: string | RegExp; exact?: boolean } = {}): LocatorAdapter {
     const { name, exact = false } = options;
-    const roleOptions: RoleOptions = { exact };
     
-    // 使用共享工具函数获取角色选择器
-    const roleSelector = getRoleSelector(role, roleOptions);
+    // 创建角色查询策略
+    const roleStrategy: QueryStrategy = {
+      type: 'role',
+      role: role,
+      roleOptions: { name, exact },
+      parentStrategy: this._queryStrategy
+    };
     
-    // 如果当前 locator 有已解析的元素（来自立即过滤），在其中查找
-    if (this._resolvedElements) {
-      const foundElements: Element[] = [];
-      
-      for (const parentElement of this._resolvedElements) {
-        let childElements: Element[] = [];
-        
-        if (roleSelector.startsWith('xpath=')) {
-          const xpath = roleSelector.substring(6);
-          const result = document.evaluate(xpath, parentElement, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-          for (let i = 0; i < result.snapshotLength; i++) {
-            const element = result.snapshotItem(i);
-            if (element) childElements.push(element as Element);
-          }
-        } else {
-          childElements = Array.from(parentElement.querySelectorAll(roleSelector));
-        }
-        
-        foundElements.push(...childElements);
-      }
-      
-      // 如果指定了 name，应用 accessible name 过滤
-      let finalElements = foundElements;
-      if (name) {
-        finalElements = foundElements.filter(element => 
-          elementMatchesAccessibleName(element, name, exact)
-        );
-      }
-      
-      return LocatorAdapter.fromElements(finalElements, this.page, roleSelector);
-    }
-    
-    // 否则使用传统的选择器组合方式
-    const combinedSelector = this.combineSelectorWithParent(roleSelector);
-    const newLocator = new LocatorAdapter(combinedSelector, this.page);
+    const newLocator = new LocatorAdapter(roleStrategy, this.page);
     
     // 如果指定了 name，添加 accessible name 过滤
     if (name) {
@@ -374,30 +405,15 @@ class LocatorAdapter {
   getByText(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
     const { exact = false } = options;
     
-    // 如果当前 locator 有已解析的元素（来自立即过滤），在其中查找
-    if (this._resolvedElements) {
-      const foundElements: Element[] = [];
-      
-      for (const parentElement of this._resolvedElements) {
-        // 使用 XPath 查找包含指定文本的子元素
-        const xpathExpression = exact 
-          ? `//*[normalize-space(text())="${text}"]`
-          : `//*[contains(normalize-space(text()), "${text}")]`;
-          
-        const result = document.evaluate(xpathExpression, parentElement, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
-        for (let i = 0; i < result.snapshotLength; i++) {
-          const element = result.snapshotItem(i);
-          if (element) foundElements.push(element as Element);
-        }
-      }
-      
-      return LocatorAdapter.fromElements(foundElements, this.page, '*');
-    }
+    // 创建文本查询策略
+    const textStrategy: QueryStrategy = {
+      type: 'text',
+      text: text,
+      textOptions: { exact },
+      parentStrategy: this._queryStrategy
+    };
     
-    // 否则使用传统的选择器组合方式
-    const selector = buildGetByTextSelector(text, exact);
-    const combinedSelector = this.combineSelectorWithParent(selector);
-    return new LocatorAdapter(combinedSelector, this.page);
+    return new LocatorAdapter(textStrategy, this.page);
   }
 
   /**
@@ -406,42 +422,22 @@ class LocatorAdapter {
   getByLabel(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
     const { exact = false } = options;
     
-    const hasContentFilters = this.filters.some(filter => 
-      filter.hasText !== undefined || filter.hasNotText !== undefined
-    );
+    // 创建标签查询策略
+    const labelStrategy: QueryStrategy = {
+      type: 'label',
+      labelText: text,
+      labelOptions: { exact },
+      parentStrategy: this._queryStrategy
+    };
     
-    // 如果是空字符串，直接使用过滤器匹配没有 label 的元素
+    const newLocator = new LocatorAdapter(labelStrategy, this.page);
+    
+    // 如果是空字符串，添加过滤器匹配没有任何 label 的元素
     if (text === "") {
-      const formSelector = 'input, select, textarea';
-      let newLocator: LocatorAdapter;
-      
-      if (hasContentFilters) {
-        newLocator = new LocatorAdapter(formSelector, this.page);
-        newLocator._parentContextLocator = this;
-      } else {
-        const combinedSelector = this.combineSelectorWithParent(formSelector);
-        newLocator = new LocatorAdapter(combinedSelector, this.page);
-      }
-      
-      // 添加过滤器：匹配没有任何 label 的元素
       newLocator.filters.push({
         hasAccessibleName: "",
         exact: true
       });
-      
-      return newLocator;
-    }
-    
-    // 使用共享的选择器生成器
-    const selector = buildGetByLabelSelector(text, exact);
-    let newLocator: LocatorAdapter;
-    
-    if (hasContentFilters) {
-      newLocator = new LocatorAdapter(selector, this.page);
-      newLocator._parentContextLocator = this;
-    } else {
-      const combinedSelector = this.combineSelectorWithParent(selector);
-      newLocator = new LocatorAdapter(combinedSelector, this.page);
     }
     
     return newLocator;
@@ -452,44 +448,30 @@ class LocatorAdapter {
    */
   getByPlaceholder(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
     const { exact = false } = options;
-    const selector = buildGetByPlaceholderSelector(text, exact);
     
-    const hasContentFilters = this.filters.some(filter => 
-      filter.hasText !== undefined || filter.hasNotText !== undefined
-    );
+    // 创建占位符查询策略
+    const placeholderStrategy: QueryStrategy = {
+      type: 'placeholder',
+      placeholder: text,
+      placeholderOptions: { exact },
+      parentStrategy: this._queryStrategy
+    };
     
-    let newLocator: LocatorAdapter;
-    if (hasContentFilters) {
-      newLocator = new LocatorAdapter(selector, this.page);
-      newLocator._parentContextLocator = this;
-    } else {
-      const combinedSelector = this.combineSelectorWithParent(selector);
-      newLocator = new LocatorAdapter(combinedSelector, this.page);
-    }
-    
-    return newLocator;
+    return new LocatorAdapter(placeholderStrategy, this.page);
   }
 
   /**
    * 根据测试 ID 定位
    */
   getByTestId(testId: string): LocatorAdapter {
-    const selector = buildGetByTestIdSelector(testId);
+    // 创建测试ID查询策略
+    const testIdStrategy: QueryStrategy = {
+      type: 'testid',
+      testId: testId,
+      parentStrategy: this._queryStrategy
+    };
     
-    const hasContentFilters = this.filters.some(filter => 
-      filter.hasText !== undefined || filter.hasNotText !== undefined
-    );
-    
-    let newLocator: LocatorAdapter;
-    if (hasContentFilters) {
-      newLocator = new LocatorAdapter(selector, this.page);
-      newLocator._parentContextLocator = this;
-    } else {
-      const combinedSelector = this.combineSelectorWithParent(selector);
-      newLocator = new LocatorAdapter(combinedSelector, this.page);
-    }
-    
-    return newLocator;
+    return new LocatorAdapter(testIdStrategy, this.page);
   }
 
   /**
@@ -497,22 +479,16 @@ class LocatorAdapter {
    */
   getByTitle(text: string, options: { exact?: boolean } = {}): LocatorAdapter {
     const { exact = false } = options;
-    const selector = buildGetByTitleSelector(text, exact);
     
-    const hasContentFilters = this.filters.some(filter => 
-      filter.hasText !== undefined || filter.hasNotText !== undefined
-    );
+    // 创建标题查询策略
+    const titleStrategy: QueryStrategy = {
+      type: 'title',
+      title: text,
+      titleOptions: { exact },
+      parentStrategy: this._queryStrategy
+    };
     
-    let newLocator: LocatorAdapter;
-    if (hasContentFilters) {
-      newLocator = new LocatorAdapter(selector, this.page);
-      newLocator._parentContextLocator = this;
-    } else {
-      const combinedSelector = this.combineSelectorWithParent(selector);
-      newLocator = new LocatorAdapter(combinedSelector, this.page);
-    }
-    
-    return newLocator;
+    return new LocatorAdapter(titleStrategy, this.page);
   }
 
   // =============== 原生事件触发辅助方法 ===============
@@ -914,18 +890,14 @@ class LocatorAdapter {
   // =============== 查询方法 ===============
 
   /**
-   * 查询所有匹配的元素
+   * 根据选择器查询元素
    */
-  private queryElements(selector: string): Element[] {
-    // 如果有父上下文 locator，在父上下文中查找
-    if (this._parentContextLocator) {
-      const parentElements = this._parentContextLocator.queryElements(this._parentContextLocator.selector);
-      const filteredParentElements = this._parentContextLocator.applyFilters(parentElements);
-      
+  private queryElementsBySelector(selector: string, parentElements?: Element[]): Element[] {
+    if (parentElements && parentElements.length > 0) {
       const allResults: Element[] = [];
       
-      // 在每个过滤后的父元素中查找子元素
-      for (const parentElement of filteredParentElements) {
+      // 在每个父元素中查找子元素
+      for (const parentElement of parentElements) {
         let childElements: Element[] = [];
         
         if (selector.startsWith('xpath=')) {
@@ -945,7 +917,7 @@ class LocatorAdapter {
       return allResults;
     }
     
-    // 正常的全局查询
+    // 全局查询 - 如果没有父元素或父元素为空数组
     if (selector.startsWith('xpath=')) {
       const xpath = selector.substring(6);
       const result = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
@@ -958,6 +930,73 @@ class LocatorAdapter {
     } else {
       return Array.from(document.querySelectorAll(selector));
     }
+  }
+
+  /**
+   * 根据角色查询元素
+   */
+  private queryElementsByRole(role: string, options: { name?: string | RegExp; exact?: boolean } = {}, parentElements?: Element[]): Element[] {
+    const { name, exact = false } = options;
+    const roleOptions: RoleOptions = { exact };
+    
+    // 使用共享工具函数获取角色选择器
+    const roleSelector = getRoleSelector(role, roleOptions);
+    
+    // 查询角色元素
+    const elements = this.queryElementsBySelector(roleSelector, parentElements);
+    
+    // 如果指定了 name，应用 accessible name 过滤
+    if (name) {
+      return elements.filter(element => 
+        elementMatchesAccessibleName(element, name, exact)
+      );
+    }
+    
+    return elements;
+  }
+
+  /**
+   * 根据文本查询元素
+   */
+  private queryElementsByText(text: string, options: { exact?: boolean } = {}, parentElements?: Element[]): Element[] {
+    const { exact = false } = options;
+    const selector = buildGetByTextSelector(text, exact);
+    return this.queryElementsBySelector(selector, parentElements);
+  }
+
+  /**
+   * 根据标签查询元素
+   */
+  private queryElementsByLabel(labelText: string, options: { exact?: boolean } = {}, parentElements?: Element[]): Element[] {
+    const { exact = false } = options;
+    const selector = buildGetByLabelSelector(labelText, exact);
+    return this.queryElementsBySelector(selector, parentElements);
+  }
+
+  /**
+   * 根据占位符查询元素
+   */
+  private queryElementsByPlaceholder(placeholder: string, options: { exact?: boolean } = {}, parentElements?: Element[]): Element[] {
+    const { exact = false } = options;
+    const selector = buildGetByPlaceholderSelector(placeholder, exact);
+    return this.queryElementsBySelector(selector, parentElements);
+  }
+
+  /**
+   * 根据测试ID查询元素
+   */
+  private queryElementsByTestId(testId: string, parentElements?: Element[]): Element[] {
+    const selector = buildGetByTestIdSelector(testId);
+    return this.queryElementsBySelector(selector, parentElements);
+  }
+
+  /**
+   * 根据标题查询元素
+   */
+  private queryElementsByTitle(title: string, options: { exact?: boolean } = {}, parentElements?: Element[]): Element[] {
+    const { exact = false } = options;
+    const selector = buildGetByTitleSelector(title, exact);
+    return this.queryElementsBySelector(selector, parentElements);
   }
 
   /**
@@ -974,7 +1013,8 @@ class LocatorAdapter {
     const elements = this.getCurrentElements();
     
     return elements.map(element => {
-      const locator = new LocatorAdapter(this.buildUniqueSelector(element), this.page);
+      const strategy: QueryStrategy = { type: 'selector', selector: this.buildUniqueSelector(element) };
+      const locator = new LocatorAdapter(strategy, this.page);
       locator._element = element;
       return locator;
     });
@@ -1045,8 +1085,7 @@ class LocatorAdapter {
     
     // 检查基本可见性属性
     if (style.display === 'none' || 
-        style.visibility === 'hidden' || 
-        style.opacity === '0') {
+        style.visibility === 'hidden') {
       return false;
     }
 
@@ -1158,26 +1197,12 @@ class LocatorAdapter {
       return this._element;
     }
 
-    // 如果有已解析的元素（立即过滤的结果），直接使用
-    if (this._resolvedElements) {
-      if (this._resolvedElements.length === 0) {
-        throw new Error(`过滤后找不到元素: ${this.selector}`);
-      }
-      return this._resolvedElements[0];
-    }
-
-    // 否则使用传统的查询和过滤
-    const elements = this.queryElements(this.selector);
+    const elements = this.getCurrentElements();
     if (elements.length === 0) {
       throw new Error(`找不到元素: ${this.selector}`);
     }
 
-    const filteredElements = this.applyFilters(elements);
-    if (filteredElements.length === 0) {
-      throw new Error(`过滤后找不到元素: ${this.selector}`);
-    }
-
-    return filteredElements[0];
+    return elements[0];
   }
 
   /**
