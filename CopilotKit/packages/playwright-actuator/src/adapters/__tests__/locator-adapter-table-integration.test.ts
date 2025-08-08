@@ -61,6 +61,20 @@ describe('LocatorAdapter Table Integration Tests', () => {
         error: jest.fn()
       };
     };
+
+    // Mock auto-wait methods globally for all LocatorAdapter instances
+    jest.spyOn(LocatorAdapter.prototype, 'waitFor').mockImplementation(async function(this: any) {
+      // Return the first element found via getCurrentElements
+      const elements = this.getCurrentElements();
+      if (elements.length === 0) {
+        throw new Error(`等待超时 (30000ms): ${this.selector}, 状态: visible`);
+      }
+      return elements[0];
+    });
+    
+    jest.spyOn(LocatorAdapter.prototype as any, 'waitForClickable').mockResolvedValue(undefined);
+    jest.spyOn(LocatorAdapter.prototype as any, 'waitForEditable').mockResolvedValue(undefined);
+    jest.spyOn(LocatorAdapter.prototype as any, 'isElementVisible').mockReturnValue(true);
   });
 
   afterEach(() => {
@@ -282,7 +296,7 @@ describe('LocatorAdapter Table Integration Tests', () => {
         exact: true 
       });
       
-      await expect(rowLocator.getElement()).rejects.toThrow('找不到元素');
+      await expect(rowLocator.getElement()).rejects.toThrow('等待超时');
     });
   });
 

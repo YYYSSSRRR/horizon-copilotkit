@@ -38,7 +38,6 @@ class LocatorAdapter {
   private options: LocatorOptions;
   private filters: FilterOptions[];
   private logger: Logger;
-  private waitManager: any; // TODO: Type this properly
   private eventSimulator: any; // TODO: Type this properly
   private _element?: Element;
   private _parentContextLocator?: LocatorAdapter;
@@ -52,7 +51,6 @@ class LocatorAdapter {
     this.logger = (typeof window !== 'undefined' && window.PlaywrightLogger) 
       ? new window.PlaywrightLogger() 
       : console as unknown as Logger;
-    this.waitManager = page.waitManager;
     this.eventSimulator = page.eventSimulator;
   }
 
@@ -566,7 +564,12 @@ class LocatorAdapter {
    * 点击元素
    */
   async click(options: ClickOptions = {}): Promise<void> {
-    const element = await this.getElement();
+    // 等待元素可见
+    const element = await this.waitFor({ state: 'visible', timeout: options.timeout || 30000 });
+    
+    // 等待元素可点击
+    await this.waitForClickable(element, options.timeout || 30000);
+    
     await this.page.scrollIntoViewIfNeeded(element);
     
     // 检查框架组件类型并使用相应适配器
@@ -595,7 +598,12 @@ class LocatorAdapter {
    * 双击元素
    */
   async dblclick(options: ClickOptions = {}): Promise<void> {
-    const element = await this.getElement();
+    // 等待元素可见
+    const element = await this.waitFor({ state: 'visible', timeout: options.timeout || 30000 });
+    
+    // 等待元素可点击
+    await this.waitForClickable(element, options.timeout || 30000);
+    
     await this.page.scrollIntoViewIfNeeded(element);
     
     // 检查框架组件类型并使用相应适配器
@@ -627,7 +635,12 @@ class LocatorAdapter {
    * 填充表单
    */
   async fill(value: string, options: FillOptions = {}): Promise<void> {
-    const element = await this.getElement() as HTMLInputElement | HTMLTextAreaElement;
+    // 等待元素可见
+    const element = await this.waitFor({ state: 'visible', timeout: options.timeout || 30000 }) as HTMLInputElement | HTMLTextAreaElement;
+    
+    // 等待元素可编辑
+    await this.waitForEditable(element, options.timeout || 30000);
+    
     await this.page.scrollIntoViewIfNeeded(element);
     
     // 清空并填充
@@ -897,71 +910,6 @@ class LocatorAdapter {
     return element.value || '';
   }
 
-  // =============== 等待方法 ===============
-
-  /**
-   * 等待元素状态
-   */
-  async waitFor(options: ElementWaitOptions = {}): Promise<void> {
-    const { state = 'visible', timeout = 30000 } = options;
-    
-    switch (state) {
-      case 'visible':
-        return this.waitForVisible(timeout);
-      case 'hidden':
-        return this.waitForHidden(timeout);
-      case 'attached':
-        return this.waitForAttached(timeout);
-      case 'detached':
-        return this.waitForDetached(timeout);
-      default:
-        throw new Error(`未知的等待状态: ${state}`);
-    }
-  }
-
-  /**
-   * 等待可见
-   */
-  private async waitForVisible(timeout: number): Promise<void> {
-    return this.waitManager.waitForCondition(
-      () => this.isVisible(),
-      timeout,
-      `元素 "${this.selector}" 等待可见超时`
-    );
-  }
-
-  /**
-   * 等待隐藏
-   */
-  private async waitForHidden(timeout: number): Promise<void> {
-    return this.waitManager.waitForCondition(
-      () => this.isHidden(),
-      timeout,
-      `元素 "${this.selector}" 等待隐藏超时`
-    );
-  }
-
-  /**
-   * 等待附加到DOM
-   */
-  private async waitForAttached(timeout: number): Promise<void> {
-    return this.waitManager.waitForCondition(
-      async () => (await this.count()) > 0,
-      timeout,
-      `元素 "${this.selector}" 等待附加到DOM超时`
-    );
-  }
-
-  /**
-   * 等待从DOM分离
-   */
-  private async waitForDetached(timeout: number): Promise<void> {
-    return this.waitManager.waitForCondition(
-      async () => (await this.count()) === 0,
-      timeout,
-      `元素 "${this.selector}" 等待从DOM分离超时`
-    );
-  }
 
   // =============== 查询方法 ===============
 
@@ -1032,10 +980,180 @@ class LocatorAdapter {
     });
   }
 
+  // =============== 自动等待机制 ===============
+
   /**
-   * 获取单个元素
+   * 等待元素满足指定条件
    */
-  async getElement(): Promise<Element> {
+  async waitFor(options: ElementWaitOptions = {}): Promise<Element> {
+    const { 
+      timeout = 30000, 
+      state = 'visible' 
+    } = options;
+
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      try {
+        const element = await this.getElementImmediate();
+        
+        switch (state) {
+          case 'visible':
+            if (this.isElementVisible(element)) {
+              return element;
+            }
+            break;
+          case 'hidden':
+            if (!this.isElementVisible(element)) {
+              return element;
+            }
+            break;
+          case 'attached':
+            if (document.contains(element)) {
+              return element;
+            }
+            break;
+          case 'detached':
+            if (!document.contains(element)) {
+              throw new Error('元素已分离');
+            }
+            break;
+        }
+      } catch (error) {
+        if (state === 'detached') {
+          throw new Error('元素已分离');
+        }
+        // 对于其他状态，继续等待
+      }
+
+      // 等待一小段时间后重试
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    throw new Error(`等待超时 (${timeout}ms): ${this.selector}, 状态: ${state}`);
+  }
+
+  /**
+   * 检查元素是否可见
+   */
+  private isElementVisible(element: Element): boolean {
+    if (typeof window === 'undefined' || !window.getComputedStyle) {
+      return true;
+    }
+
+    const style = window.getComputedStyle(element);
+    
+    // 检查基本可见性属性
+    if (style.display === 'none' || 
+        style.visibility === 'hidden' || 
+        style.opacity === '0') {
+      return false;
+    }
+
+    // 检查元素尺寸
+    const rect = element.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * 检查元素是否可点击
+   */
+  private async isElementClickable(element: Element): Promise<boolean> {
+    if (!this.isElementVisible(element)) {
+      return false;
+    }
+
+    // 检查是否被禁用
+    if (element instanceof HTMLElement && element.hasAttribute('disabled')) {
+      return false;
+    }
+
+    // 检查是否被其他元素遮挡
+    const rect = element.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    const elementAtPoint = document.elementFromPoint(centerX, centerY);
+    
+    // 如果点击点的元素是目标元素或其子元素，则可点击
+    return element === elementAtPoint || element.contains(elementAtPoint);
+  }
+
+  /**
+   * 等待元素可点击
+   */
+  private async waitForClickable(element: Element, timeout: number = 30000): Promise<void> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      if (await this.isElementClickable(element)) {
+        return;
+      }
+
+      // 等待一小段时间后重试
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    throw new Error(`等待元素可点击超时 (${timeout}ms): ${this.selector}`);
+  }
+
+  /**
+   * 检查元素是否可编辑
+   */
+  private isElementEditable(element: Element): boolean {
+    if (!this.isElementVisible(element)) {
+      return false;
+    }
+
+    // 检查是否被禁用
+    if (element instanceof HTMLElement && (
+        element.hasAttribute('disabled') || 
+        element.hasAttribute('readonly')
+    )) {
+      return false;
+    }
+
+    // 检查是否是可编辑元素
+    if (element instanceof HTMLInputElement || 
+        element instanceof HTMLTextAreaElement || 
+        element instanceof HTMLSelectElement) {
+      return true;
+    }
+
+    // 检查 contenteditable
+    if (element instanceof HTMLElement && element.isContentEditable) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * 等待元素可编辑
+   */
+  private async waitForEditable(element: Element, timeout: number = 30000): Promise<void> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < timeout) {
+      if (this.isElementEditable(element)) {
+        return;
+      }
+
+      // 等待一小段时间后重试
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    throw new Error(`等待元素可编辑超时 (${timeout}ms): ${this.selector}`);
+  }
+
+  /**
+   * 立即获取元素（不等待）
+   */
+  private async getElementImmediate(): Promise<Element> {
     if (this._element && document.contains(this._element)) {
       return this._element;
     }
@@ -1060,6 +1178,13 @@ class LocatorAdapter {
     }
 
     return filteredElements[0];
+  }
+
+  /**
+   * 获取单个元素（自动等待可见）
+   */
+  async getElement(): Promise<Element> {
+    return await this.waitFor({ state: 'visible', timeout: 30000 });
   }
 
   /**
