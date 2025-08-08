@@ -912,6 +912,85 @@ class LocatorAdapter {
     return element.value || '';
   }
 
+  // =============== JavaScript 执行方法 ===============
+
+  /**
+   * 在第一个匹配的元素上执行 JavaScript 函数
+   */
+  async evaluate<R, Arg = any>(
+    pageFunction: (element: Element, arg?: Arg) => R | Promise<R>,
+    arg?: Arg
+  ): Promise<R> {
+    const element = await this.getElement();
+    
+    try {
+      // 直接在当前上下文中执行函数
+      const result = await pageFunction(element, arg);
+      
+      // 确保返回值是可序列化的
+      if (result !== undefined && result !== null) {
+        // 尝试序列化和反序列化以验证可序列化性
+        JSON.parse(JSON.stringify(result));
+      }
+      
+      return result;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Evaluation failed: ${error.message}`);
+      }
+      throw new Error('Evaluation failed with unknown error');
+    }
+  }
+
+  /**
+   * 在所有匹配的元素上执行 JavaScript 函数
+   */
+  async evaluateAll<R, Arg = any>(
+    pageFunction: (elements: Element[], arg?: Arg) => R | Promise<R>,
+    arg?: Arg
+  ): Promise<R> {
+    const elements = this.getCurrentElements();
+    
+    try {
+      // 直接在当前上下文中执行函数
+      const result = await pageFunction(elements, arg);
+      
+      // 确保返回值是可序列化的
+      if (result !== undefined && result !== null) {
+        JSON.parse(JSON.stringify(result));
+      }
+      
+      return result;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`EvaluateAll failed: ${error.message}`);
+      }
+      throw new Error('EvaluateAll failed with unknown error');
+    }
+  }
+
+  /**
+   * 在第一个匹配的元素上执行 JavaScript 函数，返回元素引用而非序列化值
+   * 注意：在DOM环境中，我们直接返回元素引用，这与浏览器环境中的JSHandle不同
+   */
+  async evaluateHandle<R, Arg = any>(
+    pageFunction: (element: Element, arg?: Arg) => R | Promise<R>,
+    arg?: Arg
+  ): Promise<R> {
+    const element = await this.getElement();
+    
+    try {
+      // 在DOM环境中直接执行并返回结果
+      // 不进行序列化检查，允许返回DOM对象等不可序列化的值
+      const result = await pageFunction(element, arg);
+      return result;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`EvaluateHandle failed: ${error.message}`);
+      }
+      throw new Error('EvaluateHandle failed with unknown error');
+    }
+  }
 
   // =============== 查询方法 ===============
 

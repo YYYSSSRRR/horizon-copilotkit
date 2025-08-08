@@ -614,6 +614,137 @@ describe('LocatorAdapter Tests', () => {
     });
   });
 
+  describe('JavaScript Execution Methods', () => {
+    let mockElement: HTMLElement;
+
+    beforeEach(() => {
+      mockElement = document.getElementById('test-button')!;
+      mockElement.textContent = 'Test Button';
+      mockElement.setAttribute('data-value', '123');
+    });
+
+    test('evaluate() should execute function on single element', async () => {
+      jest.spyOn(locatorAdapter, 'getElement').mockResolvedValue(mockElement);
+
+      const result = await locatorAdapter.evaluate((el) => {
+        return {
+          tagName: el.tagName,
+          textContent: el.textContent,
+          id: el.id
+        };
+      });
+
+      expect(result).toEqual({
+        tagName: 'BUTTON',
+        textContent: 'Test Button',
+        id: 'test-button'
+      });
+    });
+
+    test('evaluate() should pass arguments to function', async () => {
+      jest.spyOn(locatorAdapter, 'getElement').mockResolvedValue(mockElement);
+
+      const result = await locatorAdapter.evaluate((el, suffix) => {
+        return (el.textContent || '') + (suffix || '');
+      }, ' - Modified');
+
+      expect(result).toBe('Test Button - Modified');
+    });
+
+    test('evaluate() should handle async functions', async () => {
+      jest.spyOn(locatorAdapter, 'getElement').mockResolvedValue(mockElement);
+
+      const result = await locatorAdapter.evaluate(async (el) => {
+        return new Promise((resolve) => {
+          setTimeout(() => resolve(el.getAttribute('data-value')), 10);
+        });
+      });
+
+      expect(result).toBe('123');
+    });
+
+    test('evaluate() should throw error for non-serializable results', async () => {
+      jest.spyOn(locatorAdapter, 'getElement').mockResolvedValue(mockElement);
+
+      await expect(locatorAdapter.evaluate((_el) => {
+        // Return a function (not serializable)
+        return () => 'test';
+      })).rejects.toThrow('Evaluation failed');
+    });
+
+    test('evaluateAll() should execute function on all elements', async () => {
+      const elements = [
+        mockElement,
+        document.getElementById('test-input')!,
+        document.getElementById('test-checkbox')!
+      ];
+      
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue(elements);
+
+      const result = await locatorAdapter.evaluateAll((els) => {
+        return els.map(el => el.tagName);
+      });
+
+      expect(result).toEqual(['BUTTON', 'INPUT', 'INPUT']);
+    });
+
+    test('evaluateAll() should pass arguments to function', async () => {
+      const elements = [mockElement];
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue(elements);
+
+      const result = await locatorAdapter.evaluateAll((els, multiplier) => {
+        return els.length * (multiplier || 1);
+      }, 5);
+
+      expect(result).toBe(5);
+    });
+
+    test('evaluateHandle() should return non-serializable values', async () => {
+      jest.spyOn(locatorAdapter, 'getElement').mockResolvedValue(mockElement);
+
+      const result = await locatorAdapter.evaluateHandle((el) => {
+        // Return the element itself (not serializable but should work with evaluateHandle)
+        return el;
+      });
+
+      expect(result).toBe(mockElement);
+    });
+
+    test('evaluateHandle() should handle functions returning DOM elements', async () => {
+      jest.spyOn(locatorAdapter, 'getElement').mockResolvedValue(mockElement);
+
+      const result = await locatorAdapter.evaluateHandle((el) => {
+        return el.parentElement;
+      });
+
+      expect(result).toBe(mockElement.parentElement);
+    });
+
+    test('evaluate() should handle errors in page function', async () => {
+      jest.spyOn(locatorAdapter, 'getElement').mockResolvedValue(mockElement);
+
+      await expect(locatorAdapter.evaluate(() => {
+        throw new Error('Custom error');
+      })).rejects.toThrow('Evaluation failed: Custom error');
+    });
+
+    test('evaluateAll() should handle errors in page function', async () => {
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue([mockElement]);
+
+      await expect(locatorAdapter.evaluateAll(() => {
+        throw new Error('EvaluateAll error');
+      })).rejects.toThrow('EvaluateAll failed: EvaluateAll error');
+    });
+
+    test('evaluateHandle() should handle errors in page function', async () => {
+      jest.spyOn(locatorAdapter, 'getElement').mockResolvedValue(mockElement);
+
+      await expect(locatorAdapter.evaluateHandle(() => {
+        throw new Error('EvaluateHandle error');
+      })).rejects.toThrow('EvaluateHandle failed: EvaluateHandle error');
+    });
+  });
+
   describe('Wait Methods', () => {
     test('waitFor() should wait for visible elements', async () => {
       // Clear the global mock for this specific test
