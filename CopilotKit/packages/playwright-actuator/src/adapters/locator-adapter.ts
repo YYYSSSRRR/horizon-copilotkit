@@ -817,16 +817,20 @@ class LocatorAdapter {
   // =============== 状态检查方法 ===============
 
   /**
-   * 检查元素是否可见
+   * 检查元素是否可见 - 立即判断，不等待
+   * 符合Playwright的行为：立即返回当前状态，不进行等待
    */
   async isVisible(): Promise<boolean> {
     try {
-      const element = await this.getElement();
-      const rect = element.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      return rect.width > 0 && rect.height > 0 && 
-             style.visibility !== 'hidden' && style.display !== 'none' &&
-             (element as HTMLElement).offsetParent !== null;
+      // 获取当前已存在的元素，不等待
+      const elements = this.getCurrentElements();
+      if (elements.length === 0) {
+        return false; // 没有找到元素
+      }
+      
+      // 检查第一个匹配元素的可见性
+      const element = elements[0];
+      return this.isElementVisible(element);
     } catch (error) {
       return false;
     }
@@ -840,11 +844,16 @@ class LocatorAdapter {
   }
 
   /**
-   * 检查元素是否启用
+   * 检查元素是否启用 - 立即判断，不等待
    */
   async isEnabled(): Promise<boolean> {
     try {
-      const element = await this.getElement() as HTMLInputElement | HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement;
+      const elements = this.getCurrentElements();
+      if (elements.length === 0) {
+        return false;
+      }
+      
+      const element = elements[0] as HTMLInputElement | HTMLButtonElement | HTMLSelectElement | HTMLTextAreaElement;
       return !element.disabled && !element.hasAttribute('disabled');
     } catch (error) {
       return false;
@@ -859,11 +868,16 @@ class LocatorAdapter {
   }
 
   /**
-   * 检查复选框是否选中
+   * 检查复选框是否选中 - 立即判断，不等待
    */
   async isChecked(): Promise<boolean> {
     try {
-      const element = await this.getElement() as HTMLInputElement;
+      const elements = this.getCurrentElements();
+      if (elements.length === 0) {
+        return false;
+      }
+      
+      const element = elements[0] as HTMLInputElement;
       return element.checked || false;
     } catch (error) {
       return false;

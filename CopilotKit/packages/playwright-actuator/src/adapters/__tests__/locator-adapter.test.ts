@@ -503,29 +503,21 @@ describe('LocatorAdapter Tests', () => {
 
     beforeEach(() => {
       mockElement = document.getElementById('test-button')!;
-      jest.spyOn(locatorAdapter as any, 'getElement').mockResolvedValue(mockElement);
+      // 注意：这些状态检查方法现在不再使用getElement，而是getCurrentElements
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue([mockElement]);
     });
 
     test('isVisible() should return true for visible element', async () => {
-      jest.spyOn(mockElement, 'getBoundingClientRect').mockReturnValue({
-        width: 100, height: 50, top: 0, left: 0, bottom: 50, right: 100, x: 0, y: 0, toJSON: jest.fn()
-      });
-      
-      Object.defineProperty(mockElement, 'offsetParent', { value: document.body });
-      
-      (window.getComputedStyle as jest.Mock) = jest.fn().mockReturnValue({
-        visibility: 'visible',
-        display: 'block'
-      });
+      // Mock isElementVisible to return true for visible element
+      jest.spyOn(locatorAdapter as any, 'isElementVisible').mockReturnValue(true);
 
       const result = await locatorAdapter.isVisible();
       expect(result).toBe(true);
     });
 
     test('isVisible() should return false for hidden element', async () => {
-      jest.spyOn(mockElement, 'getBoundingClientRect').mockReturnValue({
-        width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0, x: 0, y: 0, toJSON: jest.fn()
-      });
+      // Mock isElementVisible to return false for hidden element
+      jest.spyOn(locatorAdapter as any, 'isElementVisible').mockReturnValue(false);
 
       const result = await locatorAdapter.isVisible();
       expect(result).toBe(false);
@@ -556,10 +548,49 @@ describe('LocatorAdapter Tests', () => {
     test('isChecked() should return checkbox state', async () => {
       const checkboxElement = document.getElementById('test-checkbox') as HTMLInputElement;
       checkboxElement.checked = true;
-      jest.spyOn(locatorAdapter as any, 'getElement').mockResolvedValue(checkboxElement);
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue([checkboxElement]);
 
       const result = await locatorAdapter.isChecked();
       expect(result).toBe(true);
+    });
+
+    test('isVisible() should NOT wait for elements - immediate check', async () => {
+      // 模拟没有找到元素的情况
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue([]);
+
+      const startTime = Date.now();
+      const isVisible = await locatorAdapter.isVisible();
+      const endTime = Date.now();
+
+      // 验证立即返回false，不等待
+      expect(isVisible).toBe(false);
+      expect(endTime - startTime).toBeLessThan(100); // 应该在100ms内完成
+    });
+
+    test('isEnabled() should NOT wait for elements - immediate check', async () => {
+      // 模拟没有找到元素的情况
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue([]);
+
+      const startTime = Date.now();
+      const isEnabled = await locatorAdapter.isEnabled();
+      const endTime = Date.now();
+
+      // 验证立即返回false，不等待
+      expect(isEnabled).toBe(false);
+      expect(endTime - startTime).toBeLessThan(100); // 应该在100ms内完成
+    });
+
+    test('isChecked() should NOT wait for elements - immediate check', async () => {
+      // 模拟没有找到元素的情况
+      jest.spyOn(locatorAdapter as any, 'getCurrentElements').mockReturnValue([]);
+
+      const startTime = Date.now();
+      const isChecked = await locatorAdapter.isChecked();
+      const endTime = Date.now();
+
+      // 验证立即返回false，不等待
+      expect(isChecked).toBe(false);
+      expect(endTime - startTime).toBeLessThan(100); // 应该在100ms内完成
     });
   });
 
