@@ -421,7 +421,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         let newMessages: Message[] = [];
 
         // 处理流式事件的辅助函数
-        const handleStreamEvent = (eventType: string, eventData: any, streamingMessageId: string) => {
+        const handleStreamEvent = (eventType: string, eventData: any, streamingMsgId: string) => {
           switch (eventType) {
             case "session_start":
               // 会话开始，可以更新线程ID等信息
@@ -443,13 +443,13 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               // 处理累加内容（匹配 TypeScript 版本的行为）
               const cumulativeContent = eventData.content || "";
               const cumulativeMessage = new TextMessage({
-                id: streamingMessageId,
+                id: streamingMsgId,
                 content: cumulativeContent,
                 role: "assistant",
               });
               
               // 更新newMessages
-              const cumulativeMessageIndex = newMessages.findIndex(msg => msg.id === streamingMessageId);
+              const cumulativeMessageIndex = newMessages.findIndex(msg => msg.id === streamingMsgId);
               if (cumulativeMessageIndex >= 0) {
                 newMessages[cumulativeMessageIndex] = cumulativeMessage;
               } else {
@@ -467,7 +467,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
               
             case "text_end":
               // 文本消息结束，标记为成功状态
-              const endMessageIndex = newMessages.findIndex(msg => msg.id === streamingMessageId);
+              const endMessageIndex = newMessages.findIndex(msg => msg.id === streamingMsgId);
               if (endMessageIndex >= 0) {
                 newMessages[endMessageIndex].status = { code: "success" };
                 finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
