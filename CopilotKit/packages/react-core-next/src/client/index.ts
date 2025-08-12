@@ -1,6 +1,5 @@
 // 主要客户端类
 export { CopilotRuntimeClient, createCopilotRuntimeClient } from "./copilot-runtime-client";
-export { CopilotRestClient } from "./rest-client";
 export { StreamProcessor } from "./stream-processor";
 
 // 消息类型
@@ -15,8 +14,6 @@ export type {
   GenerateResponseRequest,
   ChatResponse,
   Agent,
-  AgentStateRequest,
-  AgentStateResponse,
   ProcessedAction,
   AgentSession,
   Extensions,

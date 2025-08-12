@@ -63,21 +63,6 @@ export interface Agent {
   configuration?: any;
 }
 
-export interface AgentStateRequest {
-  agentName: string;
-  threadId: string;
-}
-
-export interface AgentStateResponse {
-  agentName: string;
-  threadId: string;
-  state: any;
-  running: boolean;
-  nodeName?: string;
-  runId?: string;
-  active: boolean;
-}
-
 export class CopilotRestClient {
   private baseUrl: string;
   private headers: Record<string, string>;
@@ -105,147 +90,12 @@ export class CopilotRestClient {
     this.abortController = new AbortController();
   }
 
-  // 发起聊天请求
-  async generateResponse(data: GenerateResponseRequest): Promise<ChatResponse> {
-    try {
-      const requestBody = {
-        ...data,
-        messages: convertMessagesToJSON(data.messages),
-      };
-
-      const response = await fetch(`${this.baseUrl}/api/chat`, {
-        method: "POST",
-        headers: this.headers,
-        body: JSON.stringify(requestBody),
-        signal: this.abortController?.signal,
-        credentials: this.getCredentials(),
-      });
-
-      await this.errorHandler.handleFetchResponse(response);
-      return await response.json();
-    } catch (error) {
-      this.errorHandler.handleNetworkError(error as Error);
-      throw error;
-    }
-  }
-
-  // 获取可用代理
-  async getAvailableAgents(): Promise<Agent[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/agents`, {
-        method: "GET",
-        headers: this.headers,
-        credentials: this.getCredentials(),
-      });
-
-      await this.errorHandler.handleFetchResponse(response);
-      return await response.json();
-    } catch (error) {
-      this.errorHandler.handleNetworkError(error as Error);
-      throw error;
-    }
-  }
-
-  // 加载代理状态
-  async loadAgentState(params: AgentStateRequest): Promise<AgentStateResponse> {
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/api/agents/${encodeURIComponent(params.agentName)}/state?threadId=${encodeURIComponent(params.threadId)}`,
-        {
-          method: "GET",
-          headers: this.headers,
-          credentials: this.getCredentials(),
-        }
-      );
-
-      await this.errorHandler.handleFetchResponse(response);
-      return await response.json();
-    } catch (error) {
-      this.errorHandler.handleNetworkError(error as Error);
-      throw error;
-    }
-  }
-
-  // 更新代理状态
-  async updateAgentState(
-    agentName: string,
-    threadId: string,
-    state: any
-  ): Promise<AgentStateResponse> {
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/api/agents/${encodeURIComponent(agentName)}/state`,
-        {
-          method: "POST",
-          headers: this.headers,
-          body: JSON.stringify({ threadId, state }),
-          credentials: this.getCredentials(),
-        }
-      );
-
-      await this.errorHandler.handleFetchResponse(response);
-      return await response.json();
-    } catch (error) {
-      this.errorHandler.handleNetworkError(error as Error);
-      throw error;
-    }
-  }
-
-  // 启动代理
-  async startAgent(agentName: string, config?: any): Promise<void> {
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/api/agents/${encodeURIComponent(agentName)}/start`,
-        {
-          method: "POST",
-          headers: this.headers,
-          body: JSON.stringify({ config }),
-          credentials: this.getCredentials(),
-        }
-      );
-
-      await this.errorHandler.handleFetchResponse(response);
-    } catch (error) {
-      this.errorHandler.handleNetworkError(error as Error);
-      throw error;
-    }
-  }
-
-  // 停止代理
-  async stopAgent(agentName: string): Promise<void> {
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/api/agents/${encodeURIComponent(agentName)}/stop`,
-        {
-          method: "POST",
-          headers: this.headers,
-          credentials: this.getCredentials(),
-        }
-      );
-
-      await this.errorHandler.handleFetchResponse(response);
-    } catch (error) {
-      this.errorHandler.handleNetworkError(error as Error);
-      throw error;
-    }
-  }
-
   // 中止当前请求
   abort() {
     if (this.abortController) {
       this.abortController.abort();
       this.abortController = new AbortController();
     }
-  }
-
-  // 获取认证凭据设置
-  private getCredentials(): RequestCredentials | undefined {
-    // 如果有公共 API 密钥，通常不需要凭据
-    if (this.headers["X-CopilotCloud-Public-API-Key"]) {
-      return undefined;
-    }
-    // 否则使用默认的 same-origin
-    return "same-origin";
   }
 
   // 健康检查

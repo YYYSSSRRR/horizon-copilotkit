@@ -2,8 +2,6 @@ import React, { createContext, useContext, ReactNode } from "react";
 import { CopilotRuntimeClient } from "../client";
 import { FrontendAction, ScriptAction } from "../types/frontend-action";
 import { CopilotChatSuggestionConfiguration } from "../types/chat-suggestion-configuration";
-import { DocumentPointer } from "../types/document-pointer";
-import { CoAgentStateRender } from "../types/coagent-action";
 import { SystemMessageFunction } from "../types/system-message";
 import { LangGraphInterruptAction } from "../hooks/use-langgraph-interrupt";
 
@@ -39,16 +37,6 @@ export interface CopilotContextValue {
   setChatSuggestion: (id: string, suggestion: CopilotChatSuggestionConfiguration) => void;
   removeChatSuggestion: (id: string) => void;
   
-  // 文档指针
-  documentPointers: DocumentPointer[];
-  setDocumentPointer: (id: string, pointer: DocumentPointer) => void;
-  removeDocumentPointer: (id: string) => void;
-  
-  // CoAgent 状态渲染器
-  coAgentStateRenders: Record<string, CoAgentStateRender>;
-  setCoAgentStateRender: (id: string, render: CoAgentStateRender) => void;
-  removeCoAgentStateRender: (id: string) => void;
-  
   // 系统消息
   systemMessage?: SystemMessageFunction;
   setSystemMessage: (systemMessage: SystemMessageFunction) => void;
@@ -77,27 +65,8 @@ export interface CopilotContextValue {
   setLangGraphInterruptAction: (action: Partial<LangGraphInterruptAction>) => void;
   removeLangGraphInterruptAction: (actionId: string) => void;
   
-  // 代理会话
-  agentSession?: any;
-  setAgentSession?: (session: any) => void;
-  
-  // 认证相关（云服务）
-  authConfig_c?: {
-    SignInComponent: React.ComponentType<{
-      onSignInComplete: (authState: any) => void;
-    }>;
-  };
-  authStates_c?: Record<string, any>;
-  setAuthStates_c?: (states: Record<string, any> | ((prev: Record<string, any>) => Record<string, any>)) => void;
-  
-  // 配置选项
-  cloud?: {
-    guardrails?: Record<string, any>;
-  };
-  
   // 辅助方法
   getContextString: (categories?: string[], defaultCategories?: string[]) => string;
-  getCoAgentStateRender: (agentName: string, nodeName?: string) => CoAgentStateRender | undefined;
 }
 
 const CopilotContext = createContext<CopilotContextValue | undefined>(undefined);

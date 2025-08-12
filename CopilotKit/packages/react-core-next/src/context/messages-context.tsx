@@ -33,13 +33,11 @@ export interface MessagesContextValue {
   appendTextMessage: (content: string, role?: "user" | "assistant" | "system") => void;
   appendActionMessage: (name: string, args: Record<string, any>) => void;
   appendResultMessage: (actionExecutionId: string, actionName: string, result: any) => void;
-  appendAgentStateMessage: (agentName: string, state: any, running: boolean, threadId: string, active: boolean) => void;
   
   // 获取特定类型的消息
   getTextMessages: () => TextMessage[];
   getActionMessages: () => ActionExecutionMessage[];
   getResultMessages: () => ResultMessage[];
-  getAgentStateMessages: () => AgentStateMessage[];
   
   // 根据 ID 查找消息
   getMessageById: (messageId: string) => Message | undefined;
@@ -91,11 +89,9 @@ export function useMessageHelpers() {
     appendTextMessage,
     appendActionMessage,
     appendResultMessage,
-    appendAgentStateMessage,
     getTextMessages,
     getActionMessages,
     getResultMessages,
-    getAgentStateMessages,
     getMessageById,
     getMessagesByParentId,
   } = useMessagesContext();
@@ -104,11 +100,9 @@ export function useMessageHelpers() {
     appendTextMessage,
     appendActionMessage,
     appendResultMessage,
-    appendAgentStateMessage,
     getTextMessages,
     getActionMessages,
     getResultMessages,
-    getAgentStateMessages,
     getMessageById,
     getMessagesByParentId,
   };

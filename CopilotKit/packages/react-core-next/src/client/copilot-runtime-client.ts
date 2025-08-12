@@ -3,10 +3,7 @@ import { StreamProcessor } from "./stream-processor";
 import { 
   CopilotClientOptions, 
   GenerateResponseRequest, 
-  ChatResponse, 
   Agent, 
-  AgentStateRequest, 
-  AgentStateResponse 
 } from "./rest-client";
 import { Message } from "./message-types";
 
@@ -18,28 +15,14 @@ export interface StreamResponseOptions {
 
 export class CopilotRuntimeClient {
   private restClient: CopilotRestClient;
-  private streamProcessor: StreamProcessor;
+  private streamProcessor?: StreamProcessor;
 
   constructor(options: CopilotClientOptions) {
     this.restClient = new CopilotRestClient(options);
-    this.streamProcessor = new StreamProcessor();
-  }
-
-  // 统一的响应生成接口，使用 SSE 流式传输
-  async generateResponse(
-    data: GenerateResponseRequest, 
-    stream = false,
-    options: StreamResponseOptions = {}
-  ): Promise<ChatResponse | Message[]> {
-    if (stream) {
-      return this.generateSSEStreamResponse(data, options);
-    } else {
-      return this.restClient.generateResponse(data);
-    }
   }
 
   // SSE 流式响应（使用 Server-Sent Events）
-  private async generateSSEStreamResponse(
+  async generateSSEStreamResponse(
     data: GenerateResponseRequest,
     options: StreamResponseOptions
   ): Promise<Message[]> {
@@ -69,51 +52,14 @@ export class CopilotRuntimeClient {
         onError: options.onError,
       });
 
-      // 根据响应类型处理流
-      const contentType = response.headers.get('Content-Type') || '';
-      
-      if (contentType.includes('text/event-stream')) {
-        // Server-Sent Events
-        return await this.streamProcessor.processSSEStream(response);
-      } else {
-        // 分块传输编码
-        return await this.streamProcessor.processChunkedResponse(response);
-      }
+      // Server-Sent Events
+      return await this.streamProcessor.processSSEStream(response);
     } catch (error) {
       if (options.onError) {
         options.onError(error as Error);
       }
       throw error;
     }
-  }
-
-  // 获取可用代理
-  async getAvailableAgents(): Promise<Agent[]> {
-    return this.restClient.getAvailableAgents();
-  }
-
-  // 加载代理状态
-  async loadAgentState(params: AgentStateRequest): Promise<AgentStateResponse> {
-    return this.restClient.loadAgentState(params);
-  }
-
-  // 更新代理状态
-  async updateAgentState(
-    agentName: string,
-    threadId: string,
-    state: any
-  ): Promise<AgentStateResponse> {
-    return this.restClient.updateAgentState(agentName, threadId, state);
-  }
-
-  // 启动代理
-  async startAgent(agentName: string, config?: any): Promise<void> {
-    return this.restClient.startAgent(agentName, config);
-  }
-
-  // 停止代理
-  async stopAgent(agentName: string): Promise<void> {
-    return this.restClient.stopAgent(agentName);
   }
 
   // 中止所有请求
@@ -126,15 +72,10 @@ export class CopilotRuntimeClient {
     return this.restClient.healthCheck();
   }
 
-  // 创建流式转换器（用于高级用例）
-  createMessageTransformStream(): TransformStream<Uint8Array, Message> {
-    return this.streamProcessor.createTransformStream();
-  }
-
   // 获取客户端统计信息
   getClientStats() {
     return {
-      lastMessages: this.streamProcessor.getMessages(),
+      lastMessages: this.streamProcessor?.getMessages(),
     };
   }
 
@@ -146,7 +87,7 @@ export class CopilotRuntimeClient {
   // 清理资源
   dispose(): void {
     this.abort();
-    this.streamProcessor.clear();
+    this.streamProcessor?.clear();
   }
 }
 

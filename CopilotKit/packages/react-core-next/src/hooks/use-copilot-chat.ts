@@ -49,7 +49,6 @@ import { SystemMessageFunction } from "../types/system-message";
 import { useChat, AppendMessageOptions, createFunctionCallHandler } from "./use-chat";
 import { defaultCopilotContextCategories } from "../components";
 import { useMessagesContext } from "../context/messages-context";
-import { CoagentState } from "../types/coagent-state";
 
 export interface UseCopilotChatOptions {
   /**
@@ -103,8 +102,6 @@ export function useCopilotChat({
     chatInstructions,
     actions,
     scriptActions,
-    agentSession,
-    setAgentSession,
     forwardedParameters,
     threadId,
     setThreadId,
@@ -144,18 +141,9 @@ export function useCopilotChat({
 
   // Get chat helpers with updated config
   const chatAbortControllerRef = useRef<AbortController | null>(null);
-  const coagentStatesRef = useRef<Record<string, CoagentState>>({});
   const [extensions, setExtensions] = useState<any>({});
   const [agentLock] = useState<string | null>(null);
   const [langGraphInterruptAction, setLangGraphInterruptActionLocal] = useState<any>(null);
-
-  const setCoagentStatesWithRef = useCallback((newStates: React.SetStateAction<Record<string, CoagentState>>) => {
-    if (typeof newStates === 'function') {
-      coagentStatesRef.current = newStates(coagentStatesRef.current);
-    } else {
-      coagentStatesRef.current = newStates;
-    }
-  }, []);
 
   const { append, reload, stop, runChatCompletion } = useChat({
     ...options,
@@ -168,8 +156,6 @@ export function useCopilotChat({
     makeSystemMessageCallback,
     isLoading: isLoading || false,
     setIsLoading: (setIsLoading as React.Dispatch<React.SetStateAction<boolean>>) || (() => {}),
-    agentSession,
-    setAgentSession: setAgentSession || (() => {}),
     forwardedParameters,
     threadId: threadId || '',
     setThreadId: setThreadId || (() => {}),
@@ -187,8 +173,6 @@ export function useCopilotChat({
       properties: {},
     },
     chatAbortControllerRef,
-    coagentStatesRef,
-    setCoagentStatesWithRef,
     agentLock,
     extensions,
     setExtensions,
@@ -242,12 +226,10 @@ export function useCopilotChat({
     latestStopFunc();
     setMessages([]);
     setRunId?.(null);
-    setAgentSession?.(null);
   }, [
     latestStopFunc,
     setMessages,
     setRunId,
-    setAgentSession,
   ]);
 
   const latestReset = useUpdatedRef(reset);

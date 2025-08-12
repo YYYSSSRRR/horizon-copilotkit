@@ -5,11 +5,8 @@ import {
   TextMessage, 
   ActionExecutionMessage, 
   ResultMessage, 
-  AgentStateMessage 
 } from "../client/message-types";
 import { FrontendAction, ScriptAction } from "../types/frontend-action";
-import { CoAgentStateRender } from "../types/coagent-action";
-import { CoagentState } from "../types/coagent-state";
 import { CopilotRuntimeClient } from "../client/copilot-runtime-client";
 
 // Utility function to handle incomplete JSON (similar to untruncate-json)
@@ -121,11 +118,6 @@ export interface LangGraphInterruptAction {
 export type FunctionCallHandler = (message: ActionExecutionMessage) => Promise<ResultMessage | void>;
 
 /**
- * CoAgent 状态渲染处理器类型
- */
-export type CoAgentStateRenderHandler = (render: CoAgentStateRender, state: any) => void;
-
-/**
  * useChat Hook 的选项类型
  */
 export type UseChatOptions = {
@@ -138,11 +130,6 @@ export type UseChatOptions = {
    * 接收功能调用时的回调函数
    */
   onFunctionCall?: FunctionCallHandler;
-
-  /**
-   * 接收 CoAgent 动作时的回调函数
-   */
-  onCoAgentStateRender?: CoAgentStateRenderHandler;
 
   /**
    * 发送到 API 的前端动作列表
@@ -183,26 +170,6 @@ export type UseChatOptions = {
    * 更新 isLoading 状态的方法
    */
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
-
-  /**
-   * 当前 CoAgent 状态列表的引用
-   */
-  coagentStatesRef: React.RefObject<Record<string, CoagentState>>;
-
-  /**
-   * 更新 CoAgent 状态的方法
-   */
-  setCoagentStatesWithRef: React.Dispatch<React.SetStateAction<Record<string, CoagentState>>>;
-
-  /**
-   * 当前代理会话
-   */
-  agentSession: AgentSession | null;
-
-  /**
-   * 更新代理会话的方法
-   */
-  setAgentSession: React.Dispatch<React.SetStateAction<AgentSession | null>>;
 
   /**
    * 转发参数
@@ -312,11 +279,6 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
     actions,
     scriptActions = [],
     onFunctionCall,
-    onCoAgentStateRender,
-    setCoagentStatesWithRef,
-    coagentStatesRef,
-    agentSession,
-    setAgentSession,
     threadId,
     setThreadId,
     runId,
@@ -341,10 +303,6 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
 
   // 内部引用管理
   const runChatCompletionRef = useRef<(previousMessages: Message[]) => Promise<Message[]>>();
-  
-  // 保持状态引用，用于 renderAndWait
-  const agentSessionRef = useRef<AgentSession | null>(agentSession);
-  agentSessionRef.current = agentSession;
 
   const runIdRef = useRef<string | null>(runId);
   runIdRef.current = runId;
@@ -407,10 +365,6 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
             }))
           ],
           threadId: threadId,
-          agentSession: agentSession ? {
-            agentName: agentSession.agentName,
-            threadId: agentSession.threadId,
-          } : undefined,
           extensions: extensionsRef.current,
           forwardedParameters: options.forwardedParameters || {},
         };
@@ -590,7 +544,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         };
 
         // 使用 CopilotRuntimeClient 进行流式传输
-        const streamResult = await runtimeClient.generateResponse(requestData, true, {
+        const streamResult = await runtimeClient.generateSSEStreamResponse(requestData, {
           onMessage: (streamMessage: Message) => {
             try {
               // 检查是否是流式事件伪消息
@@ -605,37 +559,12 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
                 newMessages.push(streamMessage);
                 finalMessages = constructFinalMessages(syncedMessages, previousMessages, newMessages);
                 setMessages(finalMessages);
-                
-                // 处理特定类型的消息
-                if (streamMessage.type === "agent_state") {
-                  const agentStateMessage = streamMessage as AgentStateMessage;
-                  
-                  if (agentStateMessage.agentName && agentStateMessage.state) {
-                    setCoagentStatesWithRef(prev => ({
-                      ...prev,
-                      [agentStateMessage.agentName]: {
-                        name: agentStateMessage.agentName,
-                        state: agentStateMessage.state,
-                        running: agentStateMessage.running,
-                        threadId: agentStateMessage.threadId,
-                        active: agentStateMessage.active,
-                      },
-                    }));
-                  }
-                  
-                  if (onCoAgentStateRender && agentStateMessage.state) {
-                    const renderInfo = agentStateMessage.state.render || agentStateMessage.state;
-                    onCoAgentStateRender(renderInfo, agentStateMessage.state);
-                  }
-                }
               }
             } catch (error) {
               console.error("Error processing stream message:", error);
             }
           },
           onComplete: (completedMessages: Message[]) => {
-            // 🔧 修复：流式传输完成时，如果不是后续请求且没有需要执行的动作，可以提前设置 loading 为 false
-            // 这样可以避免等到 finally 块才设置，提升用户体验
             console.log("🏁 Stream completed with", completedMessages.length, "messages");
           },
           onError: (error: Error) => {
@@ -708,10 +637,9 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         
         
         // 确保界面显示最新状态
-        // finalMessages 已经包含了 previousMessages，不需要再次合并
         setMessages(finalMessages);
         
-        // 执行前端动作（类似 react-core 行为，在流式传输完成后）
+        // 执行前端动作（在流式传输完成后）
         let didExecuteAction = false;
         
         if (onFunctionCall && finalMessages.length > 0) {
@@ -730,7 +658,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
             }
           }
           
-          // 同步执行动作（类似 react-core 的行为）
+          // 同步执行动作
           for (const message of lastMessages) {
             // 先更新UI状态，显示当前消息
             setMessages(finalMessages);
@@ -772,7 +700,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
           setMessages(finalMessages);
         }
         
-        // 检查是否需要后续请求（类似 react-core 行为）
+        // 检查是否需要后续请求
         // 对于后端动作，我们也需要触发后续请求，因为后端可能返回需要处理的结果
         const hasBackendActions = finalMessages.some((msg: Message) => {
           if (!msg.isActionExecutionMessage()) return false;
@@ -793,7 +721,6 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
           await new Promise((resolve) => setTimeout(resolve, 10));
           
           // 🔑 关键：传递完整的消息列表，不是之前的 previousMessages
-          // 这样避免了重复，与 react-core 行为一致
           const followUpMessages = await runChatCompletion(finalMessages, true);
           return followUpMessages;
         }
@@ -828,13 +755,10 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
       initialMessages,
       actions,
       copilotConfig,
-      coagentStatesRef,
       threadId,
       options.forwardedParameters,
       runtimeClient,
       onFunctionCall,
-      onCoAgentStateRender,
-      setCoagentStatesWithRef,
     ]
   );
 

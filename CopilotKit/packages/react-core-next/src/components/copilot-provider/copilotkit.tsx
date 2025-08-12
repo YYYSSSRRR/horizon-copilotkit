@@ -2,11 +2,9 @@ import React, { ReactNode, useMemo, useState, useCallback, useEffect } from "rea
 import { randomId } from "@copilotkit/shared";
 import { CopilotContextProvider, CopilotContextValue, CopilotReadable } from "../../context/copilot-context";
 import { MessagesContextProvider, MessagesContextValue } from "../../context/messages-context";
-import { createCopilotRuntimeClient, CopilotRuntimeClient } from "../../client";
+import { createCopilotRuntimeClient } from "../../client";
 import { FrontendAction, ScriptAction } from "../../types/frontend-action";
 import { CopilotChatSuggestionConfiguration } from "../../types/chat-suggestion-configuration";
-import { DocumentPointer } from "../../types/document-pointer";
-import { CoAgentStateRender } from "../../types/coagent-action";
 import { SystemMessageFunction } from "../../types/system-message";
 import { 
   Message, 
@@ -26,39 +24,9 @@ export interface CopilotKitProps {
   publicApiKey?: string;
 
   /**
-   * Restrict input to a specific topic.
-   * @deprecated Use `guardrails_c` instead to control input restrictions
-   */
-  cloudRestrictToTopic?: {
-    validTopics?: string[];
-    invalidTopics?: string[];
-  };
-
-  /**
-   * Restrict input to specific topics using guardrails.
-   * @remarks
-   *
-   * This feature is only available when using CopilotKit's hosted cloud service. To use this feature, sign up at https://cloud.copilotkit.ai to get your publicApiKey. The feature allows restricting chat conversations to specific topics.
-   */
-  guardrails_c?: {
-    validTopics?: string[];
-    invalidTopics?: string[];
-  };
-
-  /**
    * The endpoint for the Copilot Runtime instance. [Click here for more information](/concepts/copilot-runtime).
    */
   runtimeUrl?: string;
-
-  /**
-   * The endpoint for the Copilot transcribe audio service.
-   */
-  transcribeAudioUrl?: string;
-
-  /**
-   * The endpoint for the Copilot text to speech service.
-   */
-  textToSpeechUrl?: string;
 
   /**
    * Additional headers to be sent with the request.
@@ -114,18 +82,6 @@ export interface CopilotKitProps {
   };
 
   /**
-   * The auth config to use for the CopilotKit.
-   * @remarks
-   *
-   * This feature is only available when using CopilotKit's hosted cloud service. To use this feature, sign up at https://cloud.copilotkit.ai to get your publicApiKey. The feature allows restricting chat conversations to specific topics.
-   */
-  authConfig_c?: {
-    SignInComponent: React.ComponentType<{
-      onSignInComplete: (authState: any) => void;
-    }>;
-  };
-
-  /**
    * The thread id to use for the CopilotKit.
    */
   threadId?: string;
@@ -134,18 +90,13 @@ export interface CopilotKitProps {
 export function CopilotKit({
   children,
   publicApiKey,
-  cloudRestrictToTopic,
-  guardrails_c,
   runtimeUrl,
-  transcribeAudioUrl,
-  textToSpeechUrl,
   headers,
   properties,
   credentials,
   showDevConsole = "auto",
   agent,
   forwardedParameters,
-  authConfig_c,
   threadId: initialThreadId,
 }: CopilotKitProps) {
   // 默认 runtimeUrl 如果未提供
@@ -173,9 +124,6 @@ export function CopilotKit({
   const [scriptActions, setScriptActionsState] = useState<Record<string, ScriptAction>>({});
   const [readables, setReadablesState] = useState<Record<string, CopilotReadable>>({});
   const [chatSuggestions, setChatSuggestionsState] = useState<Record<string, CopilotChatSuggestionConfiguration>>({});
-  const [documentPointers, setDocumentPointersState] = useState<Record<string, DocumentPointer>>({});
-  const [coAgentStateRenders, setCoAgentStateRendersState] = useState<Record<string, CoAgentStateRender>>({});
-  const [currentSystemMessage, setCurrentSystemMessage] = useState<SystemMessageFunction | undefined>(undefined);
 
   // 消息相关状态
   const [messages, setMessages] = useState<Message[]>([]);
@@ -259,30 +207,6 @@ export function CopilotKit({
     });
   }, []);
 
-  // 文档指针管理
-  const setDocumentPointer = useCallback((id: string, pointer: DocumentPointer) => {
-    setDocumentPointersState(prev => ({ ...prev, [id]: pointer }));
-  }, []);
-
-  const removeDocumentPointer = useCallback((id: string) => {
-    setDocumentPointersState(prev => {
-      const { [id]: removed, ...rest } = prev;
-      return rest;
-    });
-  }, []);
-
-  // CoAgent 状态渲染器管理
-  const setCoAgentStateRender = useCallback((id: string, render: CoAgentStateRender) => {
-    setCoAgentStateRendersState(prev => ({ ...prev, [id]: render }));
-  }, []);
-
-  const removeCoAgentStateRender = useCallback((id: string) => {
-    setCoAgentStateRendersState(prev => {
-      const { [id]: removed, ...rest } = prev;
-      return rest;
-    });
-  }, []);
-
   // 获取上下文字符串
   const getContextString = useCallback((categories?: string[]) => {
     const relevantReadables = Object.values(readables).filter(readable => {
@@ -297,13 +221,6 @@ export function CopilotKit({
       })
       .join("\n");
   }, [readables]);
-
-  // 获取 CoAgent 状态渲染器
-  const getCoAgentStateRender = useCallback((agentName: string, nodeName?: string) => {
-    return Object.values(coAgentStateRenders).find(render => {
-      return render.name === agentName && (!nodeName || render.nodeName === nodeName);
-    });
-  }, [coAgentStateRenders]);
 
   // 消息管理
   const appendMessage = useCallback((message: Message) => {
@@ -346,11 +263,6 @@ export function CopilotKit({
     appendMessage(message);
   }, [appendMessage]);
 
-  const appendAgentStateMessage = useCallback((agentName: string, state: any, running: boolean, threadId: string, active: boolean) => {
-    const message = new AgentStateMessage({ agentName, state, running, threadId, active });
-    appendMessage(message);
-  }, [appendMessage]);
-
   // 消息查询方法
   const getTextMessages = useCallback(() => {
     return messages.filter(msg => msg.isTextMessage()) as TextMessage[];
@@ -383,17 +295,12 @@ export function CopilotKit({
   const actionsArray = useMemo(() => Object.values(actions), [actions]);
   const scriptActionsArray = useMemo(() => Object.values(scriptActions), [scriptActions]);
   const chatSuggestionsArray = useMemo(() => Object.values(chatSuggestions), [chatSuggestions]);
-  const documentPointersArray = useMemo(() => Object.values(documentPointers), [documentPointers]);
-  const cloudConfig = useMemo(() => ({ guardrails: guardrails_c }), [guardrails_c]);
-  const authStatesConfig = useMemo(() => ({}), []);
 
   // 缓存占位符函数
   const setSystemMessagePlaceholder = useCallback(() => {}, []);
   const setRunIdPlaceholder = useCallback(() => {}, []);
   const setLangGraphInterruptActionPlaceholder = useCallback(() => {}, []);
   const removeLangGraphInterruptActionPlaceholder = useCallback(() => {}, []);
-  const setAgentSessionPlaceholder = useCallback(() => {}, []);
-  const setAuthStatesCPlaceholder = useCallback(() => {}, []);
 
   // 构建上下文值
   const copilotContextValue: CopilotContextValue = useMemo(() => ({
@@ -411,12 +318,6 @@ export function CopilotKit({
     chatSuggestions: chatSuggestionsArray,
     setChatSuggestion,
     removeChatSuggestion,
-    documentPointers: documentPointersArray,
-    setDocumentPointer,
-    removeDocumentPointer,
-    coAgentStateRenders,
-    setCoAgentStateRender,
-    removeCoAgentStateRender,
     systemMessage: undefined, // 系统消息通过 props 处理
     setSystemMessage: setSystemMessagePlaceholder,
     chatInstructions: undefined, // 聊天指令
@@ -430,14 +331,7 @@ export function CopilotKit({
     langGraphInterruptAction: undefined,
     setLangGraphInterruptAction: setLangGraphInterruptActionPlaceholder,
     removeLangGraphInterruptAction: removeLangGraphInterruptActionPlaceholder,
-    agentSession: null,
-    setAgentSession: setAgentSessionPlaceholder,
-    authConfig_c: authConfig_c,
-    authStates_c: authStatesConfig,
-    setAuthStates_c: setAuthStatesCPlaceholder,
-    cloud: cloudConfig,
     getContextString,
-    getCoAgentStateRender,
   }), [
     runtimeClient,
     actionsArray,
@@ -453,28 +347,16 @@ export function CopilotKit({
     chatSuggestionsArray,
     setChatSuggestion,
     removeChatSuggestion,
-    documentPointersArray,
-    setDocumentPointer,
-    removeDocumentPointer,
-    coAgentStateRenders,
-    setCoAgentStateRender,
-    removeCoAgentStateRender,
     forwardedParameters,
     isLoading,
     setIsLoading,
     threadId,
     setThreadId,
-    authConfig_c,
-    authStatesConfig,
-    cloudConfig,
     getContextString,
-    getCoAgentStateRender,
     setSystemMessagePlaceholder,
     setRunIdPlaceholder,
     setLangGraphInterruptActionPlaceholder,
     removeLangGraphInterruptActionPlaceholder,
-    setAgentSessionPlaceholder,
-    setAuthStatesCPlaceholder,
   ]);
 
   const messagesContextValue: MessagesContextValue = useMemo(() => ({
@@ -491,7 +373,6 @@ export function CopilotKit({
     appendTextMessage,
     appendActionMessage,
     appendResultMessage,
-    appendAgentStateMessage,
     getTextMessages,
     getActionMessages,
     getResultMessages,
@@ -513,7 +394,6 @@ export function CopilotKit({
     appendTextMessage,
     appendActionMessage,
     appendResultMessage,
-    appendAgentStateMessage,
     getTextMessages,
     getActionMessages,
     getResultMessages,

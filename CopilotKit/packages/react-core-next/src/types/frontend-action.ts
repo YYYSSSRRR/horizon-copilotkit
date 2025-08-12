@@ -111,17 +111,6 @@ export type ActionRenderPropsNoArgsWait<T extends Parameter[] | [] = []> =
   | ExecutingStateNoArgsWait<T>
   | InProgressStateNoArgsWait<T>;
 
-export type CatchAllActionRenderProps<T extends Parameter[] | [] = []> =
-  | (CompleteState<T> & {
-      name: string;
-    })
-  | (ExecutingState<T> & {
-      name: string;
-    })
-  | (InProgressState<T> & {
-      name: string;
-    });
-
 export type FrontendActionAvailability = "disabled" | "enabled" | "remote" | "frontend";
 
 export interface Action<T extends Parameter[] | [] = []> {
@@ -167,17 +156,10 @@ export type FrontendAction<
       }
   );
 
-export type CatchAllFrontendAction = {
-  name: "*";
-  render: (props: CatchAllActionRenderProps<any>) => React.ReactElement;
-};
-
 export interface ScriptAction<T extends Parameter[] | [] = []> extends Action<T> {
   executeOnClient?: boolean;
   script?: string;
 }
-
-export type RenderFunctionStatus = ActionRenderProps<any>["status"];
 
 // 新的动作可用性枚举，不依赖 GraphQL
 export enum ActionInputAvailability {
@@ -185,33 +167,3 @@ export enum ActionInputAvailability {
   Disabled = "disabled", 
   Remote = "remote",
 }
-
-export function processActionsForRequest(actions: FrontendAction<any>[]) {
-  const filteredActions = actions
-    .filter(
-      (action) =>
-        action.available !== "disabled" &&
-        action.disabled !== true &&
-        action.name !== "*" &&
-        action.available !== "frontend" &&
-        !action.pairedAction,
-    )
-    .map((action) => {
-      let available: ActionInputAvailability = ActionInputAvailability.Enabled;
-      if (action.disabled) {
-        available = ActionInputAvailability.Disabled;
-      } else if (action.available === "disabled") {
-        available = ActionInputAvailability.Disabled;
-      } else if (action.available === "remote") {
-        available = ActionInputAvailability.Remote;
-      }
-      return {
-        name: action.name,
-        description: action.description || "",
-        jsonSchema: JSON.stringify(actionParametersToJsonSchema(action.parameters || [])),
-        available,
-      };
-    });
-
-  return filteredActions;
-} 
