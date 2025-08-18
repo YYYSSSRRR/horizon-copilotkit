@@ -1,0 +1,92 @@
+{
+  "llm": {
+    "provider": "deepseek",
+    "model": "deepseek-chat", 
+    "apiKey": "sk-your-deepseek-api-key",
+    "baseUrl": "https://api.deepseek.com",
+    "temperature": 0.3,
+    "maxTokens": 4000,
+    "systemPrompt": "你是一个专业的网站菜单功能分析师。请分析网页内容并生成中文的菜单功能描述。请严格按照JSON格式返回分析结果，确保JSON格式正确。"
+  },
+  "crawler": {
+    "concurrency": 2,
+    "delay": 2000,
+    "retries": 3,
+    "timeout": 45000,
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "viewport": { "width": 1920, "height": 1080 }
+  },
+  "output": {
+    "format": "json",
+    "outputPath": "./results/deepseek-analysis",
+    "includeScreenshots": false,
+    "includeRawContent": false
+  },
+  "menu": {
+    "baseUrl": "https://example.com",
+    "menuSelectors": [
+      "[role=\"navigation\"] a",
+      ".navbar a",
+      ".menu a", 
+      ".nav a",
+      ".header a",
+      ".btn[href]"
+    ],
+    "excludePatterns": [
+      "mailto:",
+      "tel:",
+      "javascript:",
+      "#",
+      "facebook.com",
+      "twitter.com", 
+      "instagram.com",
+      "privacy",
+      "terms",
+      "contact"
+    ],
+    "maxDepth": 3,
+    "waitTimeout": 45000
+  },
+  "examples": {
+    "ColoringBook.ai 分析": {
+      "description": "分析 AI 着色书网站的菜单功能",
+      "baseUrl": "https://www.coloringbook.ai/zh",
+      "menuSelectors": [
+        "nav a",
+        ".navbar a", 
+        ".menu a",
+        ".header a",
+        ".btn[href]",
+        ".tool-nav a",
+        ".feature-nav a"
+      ],
+      "excludePatterns": [
+        "mailto:",
+        "tel:",
+        "javascript:",
+        "facebook.com",
+        "twitter.com",
+        "privacy",
+        "terms",
+        "about"
+      ]
+    },
+    "企业管理系统分析": {
+      "description": "分析企业内部管理系统菜单",
+      "baseUrl": "https://admin.yourcompany.com",
+      "loginConfig": {
+        "loginUrl": "https://admin.yourcompany.com/login",
+        "usernameSelector": "input[name=\"username\"]",
+        "passwordSelector": "input[name=\"password\"]", 
+        "submitSelector": "button[type=\"submit\"]",
+        "username": "admin",
+        "password": "your-password"
+      },
+      "menuSelectors": [
+        ".admin-sidebar a",
+        ".main-nav a",
+        ".system-menu a"
+      ]
+    }
+  }
+}
