@@ -137,25 +137,26 @@ const app = express();
 const PORT = 3001;
 
 // 🔧 添加请求日志中间件
-app.use((req, res, next) => {
-  console.log(`📡 ${new Date().toISOString()} - ${req.method} ${req.path}`);
-  if (req.path.includes('/api/copilotkit')) {
-    console.log(`🔗 CopilotKit 请求:`, {
-      headers: {
-        'content-type': req.headers['content-type'],
-        'x-copilotkit-runtime-endpoint': req.headers['x-copilotkit-runtime-endpoint'],
-        'x-copilotkit-runtime-action': req.headers['x-copilotkit-runtime-action'],
-      },
-      bodySize: req.headers['content-length'] || 'unknown'
-    });
-  }
-  next();
-});
+// app.use((req, res, next) => {
+//   console.log(`📡 ${new Date().toISOString()} - ${req.method} ${req.path}`);
+//   if (req.path.includes('/api/copilotkit')) {
+//     console.log(`🔗 CopilotKit 请求:`, {
+//       headers: {
+//         'content-type': req.headers['content-type'],
+//         'x-copilotkit-runtime-endpoint': req.headers['x-copilotkit-runtime-endpoint'],
+//         'x-copilotkit-runtime-action': req.headers['x-copilotkit-runtime-action'],
+//       },
+//       bodySize: req.headers['content-length'] || 'unknown'
+//     });
+//   }
+//   next();
+// });
 
 // ⚡ CORS 配置 - 允许前端访问
 app.use(cors({
   origin: [
     'http://localhost:3000',
+    'http://localhost:3002',
     'http://localhost:5173', 
     'http://127.0.0.1:3000',
     'http://127.0.0.1:5173',

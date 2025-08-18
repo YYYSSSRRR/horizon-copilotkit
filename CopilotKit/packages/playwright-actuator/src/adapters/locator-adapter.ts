@@ -1230,15 +1230,17 @@ class LocatorAdapter {
       return false;
     }
 
-    // 检查是否被其他元素遮挡
-    const rect = element.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    // 先不检查位置，让click可以点击滚动条外的内容
+    // // 检查是否被其他元素遮挡
+    // const rect = element.getBoundingClientRect();
+    // const centerX = rect.left + rect.width / 2;
+    // const centerY = rect.top + rect.height / 2;
     
-    const elementAtPoint = document.elementFromPoint(centerX, centerY);
+    // const elementAtPoint = document.elementFromPoint(centerX, centerY);
     
-    // 如果点击点的元素是目标元素或其子元素，则可点击
-    return element === elementAtPoint || element.contains(elementAtPoint);
+    // // 如果点击点的元素是目标元素或其子元素，则可点击
+    // return element === elementAtPoint || element.contains(elementAtPoint);
+    return true;
   }
 
   /**
