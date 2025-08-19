@@ -16,18 +16,31 @@ export class MenuCrawler {
   async initialize(): Promise<void> {
     this.logger.info('Initializing browser...');
     this.browser = await chromium.launch({ 
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      headless: false,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox', 
+        '--ignore-certificate-errors', 
+        '--disable-web-security', 
+        '--ignore-ssl-errors',
+        '--disable-dev-shm-usage',
+        '--disable-extensions'
+      ]
     });
     
     this.page = await this.browser.newPage({
       viewport: { width: 1920, height: 1080 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      javaScriptEnabled: false  // 禁用JavaScript避免jQuery错误
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      javaScriptEnabled: true  // 启用JavaScript - 现代网页必需
     });
 
     // Set longer timeout
     this.page.setDefaultTimeout(this.config.waitTimeout || 30000);
+    
+    // 添加一些有用的配置来提高稳定性
+    await this.page.setExtraHTTPHeaders({
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+    });
     
     this.logger.info('Browser initialized successfully');
   }
