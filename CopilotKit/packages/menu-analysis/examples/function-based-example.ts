@@ -126,7 +126,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
         submitSelector: process.env.LOGIN_BUTTON_SELECTOR || 'button[type="submit"]',
         username: process.env.LOGIN_USERNAME || 'admin',
         password: process.env.LOGIN_PASSWORD || 'password',
-        successSelector: process.env.SUCCESS_INDICATOR || '.dashboard'
+        successSelector: process.env.SUCCESS_INDICATOR
       }
     } as any;
 
