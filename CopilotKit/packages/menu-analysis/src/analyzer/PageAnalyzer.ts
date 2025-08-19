@@ -118,7 +118,7 @@ export class PageAnalyzer {
           action: $form.attr('action'),
           method: $form.attr('method') || 'GET',
           fields,
-          purpose: this.inferFormPurpose($form, fields)
+          purpose: this.inferFormPurpose($, $form, fields)
         });
       }
     });
@@ -185,7 +185,7 @@ export class PageAnalyzer {
     return undefined;
   }
 
-  private inferFormPurpose($form: cheerio.Cheerio<cheerio.Element>, fields: any[]): string {
+  private inferFormPurpose($: cheerio.CheerioAPI, $form: cheerio.Cheerio<cheerio.Element>, fields: any[]): string {
     const formText = $form.text().toLowerCase();
     const fieldNames = fields.map(f => f.name?.toLowerCase() || '').join(' ');
     const combined = `${formText} ${fieldNames}`;
