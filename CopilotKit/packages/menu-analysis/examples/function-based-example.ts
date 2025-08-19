@@ -119,15 +119,15 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
       
       // MenuConfig 额外字段（通过 as any 传递）
       baseUrl: process.env.BASE_URL || 'http://localhost:3000/dashboard',
-      // loginConfig: {
-      //   loginUrl: process.env.LOGIN_URL || 'http://localhost:3000/login',
-      //   usernameSelector: process.env.USERNAME_SELECTOR || '#username',
-      //   passwordSelector: process.env.PASSWORD_SELECTOR || '#password',
-      //   submitSelector: process.env.LOGIN_BUTTON_SELECTOR || 'button[type="submit"]',
-      //   username: process.env.LOGIN_USERNAME || 'admin',
-      //   password: process.env.LOGIN_PASSWORD || 'password',
-      //   successSelector: process.env.SUCCESS_INDICATOR || '.dashboard'
-      // }
+      loginConfig: {
+        loginUrl: process.env.LOGIN_URL || 'http://localhost:3000/login',
+        usernameSelector: process.env.USERNAME_SELECTOR || '#username',
+        passwordSelector: process.env.PASSWORD_SELECTOR || '#password',
+        submitSelector: process.env.LOGIN_BUTTON_SELECTOR || 'button[type="submit"]',
+        username: process.env.LOGIN_USERNAME || 'admin',
+        password: process.env.LOGIN_PASSWORD || 'password',
+        successSelector: process.env.SUCCESS_INDICATOR || '.dashboard'
+      }
     } as any;
 
     // 配置函数式导航回调
