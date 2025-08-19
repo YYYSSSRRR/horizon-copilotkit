@@ -52,6 +52,11 @@ export class SimpleTransformer {
         emit: rawItem.emit ? [...rawItem.emit] : []
       };
       
+      // 添加 preferNewWindow 字段支持
+      if (typeof rawItem.preferNewWindow === 'boolean') {
+        menuItem.preferNewWindow = rawItem.preferNewWindow;
+      }
+      
       // 如果有href但没有emit，自动生成emit
       if (rawItem.href && (!menuItem.emit || menuItem.emit.length === 0)) {
         menuItem.emit = ['jumpSPAPage', `{'Href': '${rawItem.href}'}`];
@@ -122,12 +127,17 @@ export class SimpleTransformer {
       
       if (item.emit && item.emit.length > 0) {
         code += ',\n';
-        const emitStr = item.emit.map(e => `'${e.replace(/'/g, "\\'")}'`).join(', ');
-        code += `    emit: [${emitStr}]\n`;
-      } else {
-        code += '\n';
+        const emitStr = item.emit.map(e => `'${e.replace(/'/g, "\\\'")}'`).join(', ');
+        code += `    emit: [${emitStr}]`;
       }
       
+      // 添加 preferNewWindow 字段
+      if (typeof item.preferNewWindow === 'boolean') {
+        code += ',\n';
+        code += `    preferNewWindow: ${item.preferNewWindow}`;
+      }
+      
+      code += '\n';
       code += '  },\n';
     });
     

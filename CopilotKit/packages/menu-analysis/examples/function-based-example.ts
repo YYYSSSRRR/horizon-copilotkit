@@ -41,6 +41,7 @@ function filterWithEmit(menuItems: MenuItem[]): MenuItem[] {
 async function handleMenuOpen(page: Page, emit: string[], menuItem: MenuItem): Promise<void> {
   console.log(`📱 通过函数打开菜单: ${menuItem.text}`);
   console.log(`   Emit 动作: [${emit.map(e => `"${e}"`).join(', ')}]`);
+  console.log(`   新窗口模式: ${menuItem.preferNewWindow ? '是' : '否'}`);
 
   try {
     // 先初始化，再执行跳转，预期会有导航发生

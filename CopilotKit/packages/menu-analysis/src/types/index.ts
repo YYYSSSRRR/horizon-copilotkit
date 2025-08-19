@@ -10,6 +10,7 @@ export interface MenuItem {
   elementSelector?: string;
   // New fields for function-based navigation
   emit?: string[];
+  preferNewWindow?: boolean;  // Whether the menu should open in a new window
 }
 
 
@@ -21,7 +22,7 @@ export interface MenuConfig {
   maxDepth?: number;
   waitTimeout?: number;
   // New fields for function-based menu handling
-  functionBased?: FunctionBasedMenuConfig;
+  // functionBased?: FunctionBasedMenuConfig;  // TODO: Define this interface if needed
 }
 
 export interface LoginConfig {
