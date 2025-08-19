@@ -157,7 +157,11 @@ export class MenuAnalysisEngine {
     return path;
   }
 
-  async analyzeSingleMenu(menuUrl: string, menuName: string): Promise<MenuFunctionality> {
+  // Method overloads
+  async analyzeSingleMenu(menuUrl: string, menuName: string): Promise<MenuFunctionality>;
+  async analyzeSingleMenu(menuItem: MenuItem, menuName?: string): Promise<MenuFunctionality>;
+  
+  async analyzeSingleMenu(menuItemOrUrl: MenuItem | string, menuName?: string): Promise<MenuFunctionality> {
     try {
       await this.menuCrawler.initialize();
       await this.menuCrawler.login();
@@ -165,23 +169,34 @@ export class MenuAnalysisEngine {
       const page = await this.menuCrawler.getPage();
       const pageAnalyzer = new PageAnalyzer(page, this.logger, this.config.onMenuOpen);
 
-      // Create a mock menu item
-      const menuItem: MenuItem = {
-        id: 'single-analysis',
-        text: menuName,
-        url: menuUrl,
-        level: 0,
-        hasSubmenu: false
-      };
-
+      let menuItem: MenuItem;
+      let actualMenuName: string;
+      
+      // Handle both MenuItem and URL+name parameters
+      if (typeof menuItemOrUrl === 'string') {
+        // Backward compatibility: URL-based call
+        actualMenuName = menuName!;
+        menuItem = {
+          id: 'single-analysis',
+          text: actualMenuName,
+          url: menuItemOrUrl,
+          level: 0,
+          hasSubmenu: false
+        };
+      } else {
+        // New: MenuItem-based call (supports emit)
+        menuItem = menuItemOrUrl;
+        actualMenuName = menuName || menuItem.text;
+      }
+      
       // Analyze the page
-      const pageAnalysis = await pageAnalyzer.analyzePage(menuItem, [menuName]);
+      const pageAnalysis = await pageAnalyzer.analyzePage(menuItem, [actualMenuName]);
 
       // Generate functionality description
       const request: LLMAnalysisRequest = {
         menuItem,
         pageContent: pageAnalysis.content,
-        context: menuName
+        context: actualMenuName
       };
 
       const functionality = await this.llmAnalyzer.analyzeMenuFunctionality(request);
