@@ -46,17 +46,19 @@ async function handleMenuOpen(page: Page, emit: string[], menuItem: MenuItem): P
     // 先初始化，再执行跳转，预期会有导航发生
     await page.evaluate(({ emit }) => {
       console.log('into page.evaluate...');
-      // // 初始化 PIU
-      // if (!(window as any).isInitPIU) {
-      //   (window as any).Prel.define({'abc@1.0.0': { config: { base: '/invgrpwebsite' }}});
-      //   (window as any).Prel.start('abc', '1.0.0', [], (piu, st) => {
-      //     (window as any).abcPiu = piu;
-      //   });
-      //   (window as any).isInitPIU = true;
-      // }
-
-      // // 执行跳转（这会导致页面跳转和上下文销毁）
-      // (window as any).abcPiu.emit('userAction', ...emit);
+      // 初始化 PIU
+      if (!(window as any).isInitPIU) {
+        (window as any).Prel.define({'abc@1.0.0': { config: { base: '/invgrpwebsite' }}});
+        (window as any).Prel.start('abc', '1.0.0', [], (piu, st) => {
+          (window as any).abcPiu = piu;
+          // 执行跳转（这会导致页面跳转和上下文销毁）
+          (window as any).abcPiu.emit('userAction', ...emit);
+        });
+        (window as any).isInitPIU = true;
+      } else {
+        // 执行跳转（这会导致页面跳转和上下文销毁）
+        (window as any).abcPiu.emit('userAction', ...emit);
+      }
     }, { emit });
 
   } catch (e) {
@@ -67,6 +69,10 @@ async function handleMenuOpen(page: Page, emit: string[], menuItem: MenuItem): P
       console.error('意外错误：', e);
     }
   }
+
+  // 增加3秒等待，给页面跳转更充足的时间
+  console.log(`   ⏰ 等待3秒...`);
+  await page.waitForTimeout(3000);
 
   // 等待新页面加载完成
   console.log(`   ⏳ 等待新页面加载...`);
@@ -125,8 +131,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
         passwordSelector: process.env.PASSWORD_SELECTOR || '#password',
         submitSelector: process.env.LOGIN_BUTTON_SELECTOR || 'button[type="submit"]',
         username: process.env.LOGIN_USERNAME || 'admin',
-        password: process.env.LOGIN_PASSWORD || 'password',
-        successSelector: process.env.SUCCESS_INDICATOR
+        password: process.env.LOGIN_PASSWORD || 'password'
       }
     } as any;
 

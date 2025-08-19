@@ -1,5 +1,5 @@
 import { Browser, Page, chromium } from 'playwright';
-import { MenuItem, MenuConfig, LoginConfig } from '../types';
+import { MenuItem, MenuConfig } from '../types';
 import { Logger } from '../utils/Logger';
 
 export class MenuCrawler {
@@ -105,68 +105,6 @@ export class MenuCrawler {
         
         // 等待页面稳定（可能有AJAX请求）
         await this.page.waitForLoadState('networkidle', { timeout: 10000 });
-      }
-
-      // Wait for login success confirmation
-      if (loginConfig.successSelector) {
-        try {
-          await this.page.waitForSelector(loginConfig.successSelector, { timeout: 30000 });
-          this.logger.info(`Login success confirmed by selector: ${loginConfig.successSelector}`);
-          
-          // 确保页面完全稳定
-          await this.page.waitForLoadState('networkidle', { timeout: 5000 });
-          
-        } catch (successError) {
-          // Try to check for common error indicators
-          const errorSelectors = ['.error', '.alert-danger', '[role="alert"]', '.login-error', '.error-message'];
-          let errorMessage = '';
-          
-          for (const errorSelector of errorSelectors) {
-            try {
-              const errorElement = await this.page.$(errorSelector);
-              if (errorElement) {
-                const errorText = await errorElement.textContent();
-                if (errorText?.trim()) {
-                  errorMessage = errorText.trim();
-                  break;
-                }
-              }
-            } catch (e) {
-              // Continue to next selector
-            }
-          }
-          
-          const message = errorMessage 
-            ? `Login failed: ${errorMessage}` 
-            : `Login may have failed - success selector '${loginConfig.successSelector}' not found within 30 seconds`;
-          throw new Error(message);
-        }
-      } else {
-        // Fallback: wait for page to stabilize and check for common success indicators
-        await this.page.waitForLoadState('networkidle', { timeout: 10000 });
-        
-        // 尝试检测常见的登录成功指示器
-        const commonSuccessSelectors = [
-          '.dashboard', '.main-content', '#main-content', 
-          '.welcome', '.user-info', '[data-testid="dashboard"]',
-          '.navbar .user', '.header .user'
-        ];
-        
-        let loginSuccessDetected = false;
-        for (const selector of commonSuccessSelectors) {
-          try {
-            await this.page.waitForSelector(selector, { timeout: 3000 });
-            this.logger.info(`Login success detected by common selector: ${selector}`);
-            loginSuccessDetected = true;
-            break;
-          } catch (e) {
-            // Continue to next selector
-          }
-        }
-        
-        if (!loginSuccessDetected) {
-          this.logger.info('Login completed (no success selector specified, assuming success)');
-        }
       }
 
       // 最终状态验证
