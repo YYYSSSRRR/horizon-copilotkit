@@ -110,7 +110,7 @@ export class PageAnalyzer {
 
     $('form').each((_, formElement) => {
       const $form = $(formElement);
-      const fields = this.extractFormFields($form);
+      const fields = this.extractFormFields($, $form);
       
       if (fields.length > 0) {
         forms.push({
@@ -126,7 +126,7 @@ export class PageAnalyzer {
     return forms;
   }
 
-  private extractFormFields($form: cheerio.Cheerio<cheerio.Element>) {
+  private extractFormFields($: cheerio.CheerioAPI, $form: cheerio.Cheerio): any[] {
     const fields: any[] = [];
 
     $form.find('input, select, textarea').each((_, fieldElement) => {
@@ -139,10 +139,10 @@ export class PageAnalyzer {
       const field = {
         name: $field.attr('name'),
         type,
-        label: this.findFieldLabel($field),
+        label: this.findFieldLabel($, $field),
         placeholder: $field.attr('placeholder'),
         required: $field.attr('required') !== undefined,
-        options: this.extractSelectOptions($field)
+        options: this.extractSelectOptions($, $field)
       };
 
       fields.push(field);
@@ -151,7 +151,7 @@ export class PageAnalyzer {
     return fields;
   }
 
-  private findFieldLabel($field: cheerio.Cheerio<cheerio.Element>): string | undefined {
+  private findFieldLabel($: cheerio.CheerioAPI, $field: cheerio.Cheerio): string | undefined {
     // Try to find associated label
     const fieldId = $field.attr('id');
     if (fieldId) {
@@ -171,7 +171,7 @@ export class PageAnalyzer {
     return $field.attr('placeholder');
   }
 
-  private extractSelectOptions($field: cheerio.Cheerio<cheerio.Element>): string[] | undefined {
+  private extractSelectOptions($: cheerio.CheerioAPI, $field: cheerio.Cheerio): string[] | undefined {
     if ($field.prop('tagName')?.toLowerCase() === 'select') {
       const options: string[] = [];
       $field.find('option').each((_, option) => {
@@ -209,16 +209,16 @@ export class PageAnalyzer {
 
     $('table, [role="grid"], .table, .data-table').each((_, tableElement) => {
       const $table = $(tableElement);
-      const headers = this.extractTableHeaders($table);
-      const rowCount = this.countTableRows($table);
+      const headers = this.extractTableHeaders($, $table);
+      const rowCount = this.countTableRows($, $table);
       
       if (headers.length > 0 || rowCount > 0) {
         tables.push({
           id: $table.attr('id'),
           headers,
           rowCount,
-          hasActions: this.hasTableActions($table),
-          purpose: this.inferTablePurpose($table, headers)
+          hasActions: this.hasTableActions($, $table),
+          purpose: this.inferTablePurpose($, $table, headers)
         });
       }
     });
@@ -226,7 +226,7 @@ export class PageAnalyzer {
     return tables;
   }
 
-  private extractTableHeaders($table: cheerio.Cheerio<cheerio.Element>): string[] {
+  private extractTableHeaders($: cheerio.CheerioAPI, $table: cheerio.Cheerio): string[] {
     const headers: string[] = [];
     
     $table.find('th, thead td, .table-header').each((_, headerElement) => {
@@ -237,15 +237,15 @@ export class PageAnalyzer {
     return headers;
   }
 
-  private countTableRows($table: cheerio.Cheerio<cheerio.Element>): number {
+  private countTableRows($: cheerio.CheerioAPI, $table: cheerio.Cheerio): number {
     return $table.find('tbody tr, .table-row').length;
   }
 
-  private hasTableActions($table: cheerio.Cheerio<cheerio.Element>): boolean {
+  private hasTableActions($: cheerio.CheerioAPI, $table: cheerio.Cheerio): boolean {
     return $table.find('button, .btn, .action, [role="button"]').length > 0;
   }
 
-  private inferTablePurpose($table: cheerio.Cheerio<cheerio.Element>, headers: string[]): string {
+  private inferTablePurpose($: cheerio.CheerioAPI, $table: cheerio.Cheerio, headers: string[]): string {
     const tableText = $table.text().toLowerCase();
     const headerText = headers.join(' ').toLowerCase();
     const combined = `${tableText} ${headerText}`;

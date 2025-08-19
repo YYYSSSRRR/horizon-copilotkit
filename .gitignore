@@ -26,3 +26,5 @@ __pycache__/
 *.next
 .venv
 venv
+
+*.pkl
