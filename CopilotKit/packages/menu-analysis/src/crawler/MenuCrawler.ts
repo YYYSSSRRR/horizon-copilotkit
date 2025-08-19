@@ -54,6 +54,8 @@ export class MenuCrawler {
     const loginConfig = this.config.loginConfig;
     
     try {
+      this.logger.info(`Logging in at ${loginConfig.loginUrl}...`);
+
       // Navigate to login page
       await this.page.goto(loginConfig.loginUrl);
       await this.page.waitForLoadState('networkidle');
@@ -71,16 +73,49 @@ export class MenuCrawler {
 
       // Fill login form
       await this.page.fill(loginConfig.usernameSelector, loginConfig.username);
+      this.logger.info(`Username filled: ${loginConfig.username}`);
       
       await this.page.fill(loginConfig.passwordSelector, loginConfig.password);
+      this.logger.info('Password filled');
       
+      // 记录登录前的URL
+      const beforeLoginUrl = this.page.url();
+      this.logger.info(`URL before login: ${beforeLoginUrl}`);
+      
+      // 提交登录表单
       await this.page.click(loginConfig.submitSelector);
+      this.logger.info('Login form submitted');
 
-      // Wait for login success
+      // 等待导航完成（如果有的话）
+      try {
+        // 方法1：等待URL变化（如果登录后会跳转）
+        await this.page.waitForURL((url) => url.toString() !== beforeLoginUrl, { 
+          timeout: 10000, 
+          waitUntil: 'domcontentloaded' 
+        });
+        this.logger.info(`Navigation after login detected: ${this.page.url()}`);
+        
+        // 等待新页面完全加载
+        await this.page.waitForLoadState('networkidle', { timeout: 15000 });
+        this.logger.info('Post-login page fully loaded');
+        
+      } catch (navigationError) {
+        // 没有导航也是正常的，可能登录后停留在同一页面
+        this.logger.info('No navigation after login (staying on same page)');
+        
+        // 等待页面稳定（可能有AJAX请求）
+        await this.page.waitForLoadState('networkidle', { timeout: 10000 });
+      }
+
+      // Wait for login success confirmation
       if (loginConfig.successSelector) {
         try {
           await this.page.waitForSelector(loginConfig.successSelector, { timeout: 30000 });
           this.logger.info(`Login success confirmed by selector: ${loginConfig.successSelector}`);
+          
+          // 确保页面完全稳定
+          await this.page.waitForLoadState('networkidle', { timeout: 5000 });
+          
         } catch (successError) {
           // Try to check for common error indicators
           const errorSelectors = ['.error', '.alert-danger', '[role="alert"]', '.login-error', '.error-message'];
@@ -107,10 +142,53 @@ export class MenuCrawler {
           throw new Error(message);
         }
       } else {
-        // Fallback: wait for page to stabilize
-        await this.page.waitForLoadState('networkidle');
-        this.logger.info('Login completed (no success selector specified)');
+        // Fallback: wait for page to stabilize and check for common success indicators
+        await this.page.waitForLoadState('networkidle', { timeout: 10000 });
+        
+        // 尝试检测常见的登录成功指示器
+        const commonSuccessSelectors = [
+          '.dashboard', '.main-content', '#main-content', 
+          '.welcome', '.user-info', '[data-testid="dashboard"]',
+          '.navbar .user', '.header .user'
+        ];
+        
+        let loginSuccessDetected = false;
+        for (const selector of commonSuccessSelectors) {
+          try {
+            await this.page.waitForSelector(selector, { timeout: 3000 });
+            this.logger.info(`Login success detected by common selector: ${selector}`);
+            loginSuccessDetected = true;
+            break;
+          } catch (e) {
+            // Continue to next selector
+          }
+        }
+        
+        if (!loginSuccessDetected) {
+          this.logger.info('Login completed (no success selector specified, assuming success)');
+        }
       }
+
+      // 最终状态验证
+      const finalUrl = this.page.url();
+      this.logger.info(`Login process completed. Final URL: ${finalUrl}`);
+      
+      // 验证执行上下文是否健康
+      try {
+        const contextHealth = await this.page.evaluate(() => {
+          return {
+            readyState: document.readyState,
+            url: window.location.href,
+            hasWindow: typeof window !== 'undefined'
+          };
+        });
+        this.logger.info(`Page context health check: ${JSON.stringify(contextHealth)}`);
+      } catch (contextError) {
+        this.logger.warn('Could not verify page context health, but continuing...');
+      }
+
+      this.logger.info('Login successful');
+
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(`Login failed: ${errorMsg}`);
