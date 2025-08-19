@@ -19,6 +19,8 @@ export class MenuAnalysisEngine {
   private menuCrawler: MenuCrawler;
   private llmAnalyzer: LLMAnalyzer;
   private outputManager: OutputManager;
+  private isInitialized: boolean = false;
+  private isLoggedIn: boolean = false;
 
   constructor(config: AnalysisConfig) {
     this.config = config;
@@ -34,9 +36,8 @@ export class MenuAnalysisEngine {
     try {
       this.logger.info('Starting menu analysis process...');
 
-      // Step 1: Initialize browser and login
-      await this.menuCrawler.initialize();
-      await this.menuCrawler.login();
+      // Step 1: Initialize browser and login (只执行一次)
+      await this.ensureInitializedAndLoggedIn();
 
       // Step 2: Discover all menus
       this.logger.info('Discovering menu structure...');
@@ -63,7 +64,7 @@ export class MenuAnalysisEngine {
       throw error;
     } finally {
       // Cleanup
-      await this.menuCrawler.close();
+      await this.close();
     }
   }
 
@@ -157,14 +158,43 @@ export class MenuAnalysisEngine {
     return path;
   }
 
+  /**
+   * 确保引擎已初始化和登录（只执行一次）
+   */
+  private async ensureInitializedAndLoggedIn(): Promise<void> {
+    if (!this.isInitialized) {
+      this.logger.info('Initializing MenuCrawler...');
+      await this.menuCrawler.initialize();
+      this.isInitialized = true;
+    }
+
+    if (!this.isLoggedIn) {
+      this.logger.info('Logging in...');
+      await this.menuCrawler.login();
+      this.isLoggedIn = true;
+    }
+  }
+
+  /**
+   * 手动关闭引擎（清理资源）
+   */
+  async close(): Promise<void> {
+    if (this.isInitialized) {
+      await this.menuCrawler.close();
+      this.isInitialized = false;
+      this.isLoggedIn = false;
+      this.logger.info('MenuAnalysisEngine closed');
+    }
+  }
+
   // Method overloads
   async analyzeSingleMenu(menuUrl: string, menuName: string): Promise<MenuFunctionality>;
   async analyzeSingleMenu(menuItem: MenuItem, menuName?: string): Promise<MenuFunctionality>;
   
   async analyzeSingleMenu(menuItemOrUrl: MenuItem | string, menuName?: string): Promise<MenuFunctionality> {
     try {
-      await this.menuCrawler.initialize();
-      await this.menuCrawler.login();
+      // 确保只初始化和登录一次
+      await this.ensureInitializedAndLoggedIn();
 
       const page = await this.menuCrawler.getPage();
       const pageAnalyzer = new PageAnalyzer(page, this.logger, this.config.onMenuOpen);
@@ -203,8 +233,9 @@ export class MenuAnalysisEngine {
       
       return functionality;
 
-    } finally {
-      await this.menuCrawler.close();
+    } catch (error) {
+      this.logger.error('Single menu analysis failed:', error);
+      throw error;
     }
   }
 }

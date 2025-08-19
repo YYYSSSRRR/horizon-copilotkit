@@ -146,6 +146,8 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
     
     console.log(`🚀 开始分析 ${selectedMenus.length} 个菜单功能...\n`);
     
+    try {
+    
     // MenuAnalysisEngine 会自动处理登录和初始化
     console.log('🔐 MenuAnalysisEngine 将自动处理登录流程...');
     
@@ -210,7 +212,20 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
     console.log('  * BASE_URL, USERNAME_SELECTOR, PASSWORD_SELECTOR');
     console.log('  * LOGIN_BUTTON_SELECTOR, SUCCESS_INDICATOR');
 
-    return results;
+      return results;
+
+    } catch (analysisError) {
+      console.error('❌ 菜单分析过程失败:', analysisError);
+      throw analysisError;
+    } finally {
+      // 确保清理引擎资源
+      try {
+        await engine.close();
+        console.log('🧹 引擎资源已清理');
+      } catch (cleanupError) {
+        console.log('⚠️ 清理资源时出现警告:', cleanupError.message);
+      }
+    }
 
   } catch (error) {
     console.error('❌ 完整分析失败:', error);
