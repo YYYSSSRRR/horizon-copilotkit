@@ -35,6 +35,21 @@ interface RawMenuItem {
   actions?: Record<string, RawMenuItem>;
 }
 
+interface AnalysisResult {
+  menuItem: MenuItem;
+  analysis: {
+    menuId: string;
+    menuName: string;
+    menuPath: string;
+    url: string;
+    primaryFunction: string;
+    capabilities: string[];
+    businessScope: string;
+    confidence: number;
+  };
+  timestamp: string;
+}
+
 // 现在使用 SimpleTransformer
 function transformMenuConfig(filePath: string): MenuItem[] {
   return SimpleTransformer.transformFromJsonFile(filePath);
@@ -125,7 +140,7 @@ async function handleMenuOpen(emit: string[], menuItem: MenuItem): Promise<PageA
 /**
  * 完整的菜单分析流程（使用函数式导航）
  */
-async function analyzeFunctionBasedMenus(): Promise<any[]> {
+async function analyzeFunctionBasedMenus(): Promise<AnalysisResult[]> {
   try {
     console.log('🚀 开始函数式菜单导航分析...');
 
@@ -200,20 +215,34 @@ async function analyzeFunctionBasedMenus(): Promise<any[]> {
     };
 
     // 关键：添加函数式菜单打开回调
-    config.onMenuOpen = async (emit) => {
-      // 这里需要额外的上下文信息，但为了演示我们使用简化版本
-      const menuItem = { text: '演示菜单', id: 'demo-menu' };
-      return await handleMenuOpen(emit, menuItem);
+    config.onMenuOpen = async (emit: string[]) => {
+      // 在回调中我们需要找到对应的menuItem，这里使用全局变量传递
+      const currentMenuItem = (globalThis as any).currentAnalyzingMenuItem;
+      if (currentMenuItem) {
+        return await handleMenuOpen(emit, currentMenuItem);
+      }
+      // 如果没有找到，返回默认的模拟结果
+      const demoItem: MenuItem = { 
+        id: 'demo', 
+        text: '演示菜单', 
+        level: 0, 
+        hasSubmenu: false,
+        emit: emit
+      };
+      return await handleMenuOpen(emit, demoItem);
     };
 
     console.log('✅ 配置创建完成\n');
 
-    // 第三步：演示菜单转换和函数式导航
-    console.log('🔍 第三步：演示函数式导航...');
+    // 第三步：使用 MenuAnalysisEngine 进行真实分析
+    console.log('🔍 第三步：使用引擎进行菜单分析...');
     console.log('=====================================');
     
     const selectedItems = menuItemsWithEmit.slice(0, 3);
-    const analysisResults = [];
+    const analysisResults: AnalysisResult[] = [];
+
+    // 创建分析引擎
+    const engine = new MenuAnalysisEngine(config);
 
     for (const menuItem of selectedItems) {
       console.log(`🔸 分析菜单: ${menuItem.text}`);
@@ -221,17 +250,53 @@ async function analyzeFunctionBasedMenus(): Promise<any[]> {
       console.log(`   层级: ${menuItem.level}, 父菜单: ${menuItem.parentId || '(root)'}`);
       
       if (menuItem.emit && menuItem.emit.length > 0) {
-        // 调用函数式导航
-        const pageAnalysis = await handleMenuOpen(menuItem.emit, menuItem);
-        analysisResults.push({
-          menuItem,
-          pageAnalysis,
-          timestamp: new Date().toISOString()
-        });
+        try {
+          // 设置当前分析的菜单项（供回调使用）
+          (globalThis as any).currentAnalyzingMenuItem = menuItem;
+          
+          // 使用引擎分析单个菜单
+          console.log(`   🔄 正在分析页面内容...`);
+          const analysis = await engine.analyzeSingleMenu(
+            menuItem.url || `function://emit-${menuItem.id}`,
+            menuItem.text,
+            [menuItem]
+          );
+          
+          analysisResults.push({
+            menuItem,
+            analysis,
+            timestamp: new Date().toISOString()
+          });
+          
+          console.log(`   ✅ 分析完成: ${analysis.primaryFunction}\n`);
+          
+        } catch (error) {
+          console.log(`   ❌ 分析失败: ${error.message}`);
+          // 降级到模拟分析
+          const pageAnalysis = await handleMenuOpen(menuItem.emit, menuItem);
+          analysisResults.push({
+            menuItem,
+            analysis: {
+              menuId: menuItem.id,
+              menuName: menuItem.text,
+              menuPath: menuItem.parentId ? `${menuItem.parentId}/${menuItem.text}` : menuItem.text,
+              url: pageAnalysis.url,
+              primaryFunction: pageAnalysis.functionality.primaryFunction,
+              capabilities: pageAnalysis.functionality.capabilities,
+              businessScope: pageAnalysis.functionality.businessScope,
+              confidence: pageAnalysis.functionality.confidence
+            },
+            timestamp: new Date().toISOString()
+          });
+          console.log(`   ⚠️ 使用模拟分析结果\n`);
+        }
       } else {
         console.log('   ⚠️ 该菜单没有emit动作，跳过\n');
       }
     }
+    
+    // 清理全局变量
+    delete (globalThis as any).currentAnalyzingMenuItem;
 
     // 第四步：生成分析报告
     console.log('📊 第四步：生成分析报告...');
@@ -241,12 +306,12 @@ async function analyzeFunctionBasedMenus(): Promise<any[]> {
     
     console.log('📋 菜单功能摘要:');
     analysisResults.forEach((result, index) => {
-      const { menuItem, pageAnalysis } = result;
-      console.log(`${index + 1}. ${menuItem.text}: ${pageAnalysis.functionality.primaryFunction}`);
-      console.log(`   URL: ${pageAnalysis.url}`);
-      console.log(`   能力: ${pageAnalysis.functionality.capabilities.join(', ')}`);
-      console.log(`   置信度: ${(pageAnalysis.functionality.confidence * 100).toFixed(1)}%`);
-      console.log(`   页面元素: ${pageAnalysis.content.buttons.length}个按钮, ${pageAnalysis.content.links.length}个链接\n`);
+      const { menuItem, analysis } = result;
+      console.log(`${index + 1}. ${menuItem.text}: ${analysis.primaryFunction}`);
+      console.log(`   URL: ${analysis.url || `function://emit-${menuItem.id}`}`);
+      console.log(`   能力: ${analysis.capabilities.join(', ')}`);
+      console.log(`   置信度: ${(analysis.confidence * 100).toFixed(1)}%`);
+      console.log(`   业务范围: ${analysis.businessScope}\n`);
     });
 
     // 第五步：保存结果
@@ -270,27 +335,6 @@ async function analyzeFunctionBasedMenus(): Promise<any[]> {
     
     console.log(`✅ 结果已保存到: ${outputFile}\n`);
 
-    // 使用说明
-    console.log('📝 实际使用方式:');
-    console.log('=====================================');
-    console.log('1. 菜单转换:');
-    console.log('   const menuItems = SimpleTransformer.transformFromJsonFile("./menus-config.json");');
-    console.log('');
-    console.log('2. 配置分析引擎:');
-    console.log('   const config = {');
-    console.log('     onMenuOpen: async (emit) => { return await handleMenuOpen(emit, menuItem); }');
-    console.log('   };');
-    console.log('');
-    console.log('3. 进行分析:');
-    console.log('   const engine = new MenuAnalysisEngine(config);');
-    console.log('   const functionalities = await engine.analyze();');
-    console.log('');
-    console.log('🎯 核心优势:');
-    console.log('- 📱 支持函数调用打开页面，不依赖URL');
-    console.log('- 🔧 保持完整的页面内容分析功能');
-    console.log('- 🚀 完美适配SPA和企业级应用');
-    console.log('- ⚡ 支持复杂的业务动作执行');
-
     return analysisResults;
 
   } catch (error) {
@@ -304,6 +348,91 @@ async function analyzeFunctionBasedMenus(): Promise<any[]> {
       console.error('💡 请确保 examples/menus-config.json 文件存在');
     }
     
+    throw error;
+  }
+}
+
+/**
+ * 使用 MenuAnalysisEngine 完整分析所有菜单
+ */
+async function analyzeFullMenuTree(): Promise<any[]> {
+  try {
+    console.log('🌳 完整菜单树分析示例...');
+
+    // 加载菜单配置
+    const configPath = path.join(__dirname, 'menus-config.json');
+    const allMenuItems = transformMenuConfig(configPath);
+    const menuItemsWithEmit = filterWithEmit(allMenuItems);
+    
+    console.log(`📊 加载完成: ${allMenuItems.length} 个菜单项，${menuItemsWithEmit.length} 个有emit动作`);
+
+    // 创建分析配置
+    const config = createDefaultConfig();
+    config.llm = {
+      ...config.llm,
+      provider: 'deepseek',
+      apiKey: process.env.DEEPSEEK_API_KEY || 'your-deepseek-api-key-here',
+      model: 'deepseek-chat',
+      baseUrl: 'https://api.deepseek.com',
+      temperature: 0.3
+    };
+
+    // 配置函数式导航回调
+    config.onMenuOpen = async (emit: string[]) => {
+      const currentMenuItem = (globalThis as any).currentAnalyzingMenuItem;
+      if (currentMenuItem) {
+        console.log(`  🔧 执行菜单打开: ${currentMenuItem.text}`);
+        return await handleMenuOpen(emit, currentMenuItem);
+      }
+      throw new Error('未找到当前分析的菜单项');
+    };
+
+    // 创建分析引擎
+    const engine = new MenuAnalysisEngine(config);
+    
+    // 只分析前5个有emit的菜单项（避免过长分析）
+    const selectedMenus = menuItemsWithEmit.slice(0, 5);
+    
+    console.log(`🚀 开始分析 ${selectedMenus.length} 个菜单功能...`);
+    
+    const results = [];
+    
+    for (const menuItem of selectedMenus) {
+      try {
+        console.log(`\n🔸 分析: ${menuItem.text}`);
+        
+        // 设置当前菜单项
+        (globalThis as any).currentAnalyzingMenuItem = menuItem;
+        
+        // 使用引擎的 analyzeSingleMenu 方法
+        const analysis = await engine.analyzeSingleMenu(
+          menuItem.url || `function://emit-${menuItem.id}`,
+          menuItem.text,
+          [menuItem]
+        );
+        
+        results.push(analysis);
+        console.log(`  ✅ 完成: ${analysis.primaryFunction}`);
+        
+      } catch (error) {
+        console.log(`  ❌ 失败: ${error.message}`);
+      }
+    }
+    
+    // 清理
+    delete (globalThis as any).currentAnalyzingMenuItem;
+    
+    console.log(`\n🎉 分析完成！成功分析了 ${results.length} 个菜单功能`);
+    console.log('\n📋 结果摘要:');
+    results.forEach((result, index) => {
+      console.log(`${index + 1}. ${result.menuName}: ${result.primaryFunction}`);
+      console.log(`   置信度: ${(result.confidence * 100).toFixed(1)}%`);
+    });
+
+    return results;
+
+  } catch (error) {
+    console.error('❌ 完整分析失败:', error);
     throw error;
   }
 }
@@ -353,12 +482,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     console.log('');
   }
 
-  // 可以选择运行完整分析或单菜单分析
-  const analysisType = process.argv[2] || 'full';
+  // 可以选择运行不同类型的分析
+  const analysisType = process.argv[2] || 'demo';
   
   if (analysisType === 'single') {
     analyzeSingleFunctionMenu().catch(console.error);
+  } else if (analysisType === 'full') {
+    analyzeFullMenuTree().catch(console.error);
   } else {
+    // 默认运行演示分析
     analyzeFunctionBasedMenus().catch(console.error);
   }
 }
@@ -366,6 +498,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 export { 
   analyzeFunctionBasedMenus, 
   analyzeSingleFunctionMenu,
+  analyzeFullMenuTree,
   handleMenuOpen,
   transformMenuConfig 
 };
