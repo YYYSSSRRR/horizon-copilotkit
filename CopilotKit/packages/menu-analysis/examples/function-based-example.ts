@@ -233,14 +233,4 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
   }
 }
 
-// 如果直接运行此文件
-if (import.meta.url === `file://${process.argv[1]}`) {
-  // 直接运行完整分析
-  analyzeFullMenuTree().catch(console.error);
-}
-
-export { 
-  analyzeFullMenuTree,
-  handleMenuOpen,
-  transformMenuConfig 
-};
+analyzeFullMenuTree().catch(console.error);
