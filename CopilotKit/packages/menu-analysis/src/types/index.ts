@@ -1,3 +1,5 @@
+import { Page } from 'playwright';
+
 export interface MenuItem {
   id: string;
   text: string;
@@ -142,7 +144,7 @@ export interface AnalysisConfig {
   crawler: CrawlerConfig;
   output: OutputConfig;
   // Optional callback for function-based menu navigation
-  onMenuOpen?: (emit: string[]) => Promise<void>;
+  onMenuOpen?: (page: Page, emit: string[]) => Promise<void>;
 }
 
 export interface LLMConfig {

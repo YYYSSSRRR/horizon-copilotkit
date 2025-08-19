@@ -23,6 +23,7 @@ import {
   MenuFunctionality
 } from '../src';
 import { SimpleTransformer } from '../src/menu-transformers';
+import { Page } from 'playwright';
 
 // 现在使用 SimpleTransformer
 async function transformMenuConfig(filePath: string): Promise<MenuItem[]> {
@@ -37,48 +38,46 @@ function filterWithEmit(menuItems: MenuItem[]): MenuItem[] {
 /**
  * 菜单打开回调函数 - 这是核心的函数式导航实现
  */
-async function handleMenuOpen(emit: string[], menuItem: MenuItem): Promise<void> {
+async function handleMenuOpen(page: Page, emit: string[], menuItem: MenuItem): Promise<void> {
   console.log(`📱 通过函数打开菜单: ${menuItem.text}`);
   console.log(`   Emit 动作: [${emit.map(e => `"${e}"`).join(', ')}]`);
-  
-  // 这里实现你的具体菜单打开逻辑
-  for (let i = 0; i < emit.length; i++) {
-    const action = emit[i];
-    console.log(`   🔧 执行动作 ${i + 1}: ${action}`);
-    
-    try {
-      // 尝试解析JSON格式的动作
-      const actionData = JSON.parse(action);
-      
-      if (actionData.Href) {
-        console.log(`      🔗 导航到页面: ${actionData.Href}`);
-      } else if (actionData.Action) {
-        console.log(`      ⚡ 执行业务动作: ${actionData.Action}`);
-      } else if (actionData.CmdId) {
-        console.log(`      🖥️ 执行系统命令: ${actionData.CmdId}`);
-      } else {
-        console.log(`      📄 执行复合动作: ${JSON.stringify(actionData)}`);
-      }
-      
-    } catch (e) {
-      // 不是JSON格式的动作，直接作为字符串处理
-      if (action === 'jumpSPAPage') {
-        console.log(`      📄 准备跳转到SPA页面`);
-      } else if (action === 'jump2QueryHdDlg') {
-        console.log(`      📊 准备打开查询对话框`);
-      } else if (action === 'openTransNeWebServiceTaskManageProgress') {
-        console.log(`      📈 打开网管任务管理进度`);
-      } else {
-        console.log(`      📝 执行自定义动作: ${action}`);
-      }
+
+  try {
+    // 先初始化，再执行跳转，预期会有导航发生
+    await page.evaluate(({ emit }) => {
+      console.log('into page.evaluate...');
+      // // 初始化 PIU
+      // if (!(window as any).isInitPIU) {
+      //   (window as any).Prel.define({'abc@1.0.0': { config: { base: '/invgrpwebsite' }}});
+      //   (window as any).Prel.start('abc', '1.0.0', [], (piu, st) => {
+      //     (window as any).abcPiu = piu;
+      //   });
+      //   (window as any).isInitPIU = true;
+      // }
+
+      // // 执行跳转（这会导致页面跳转和上下文销毁）
+      // (window as any).abcPiu.emit('userAction', ...emit);
+    }, { emit });
+
+  } catch (e) {
+    // 预期的错误 - 执行上下文被销毁意味着跳转成功
+    if (e.message.includes('Execution context was destroyed')) {
+      console.log(`   🔄 页面正在跳转...`);
+    } else {
+      console.error('意外错误：', e);
     }
   }
-  
-  // 模拟等待页面加载完成
-  console.log(`   ⏳ 等待页面加载...`);
-  await new Promise(resolve => setTimeout(resolve, 800));
-  console.log(`   ✅ 页面加载完成\n`);
+
+  // 等待新页面加载完成
+  console.log(`   ⏳ 等待新页面加载...`);
+  try {
+    await page.waitForLoadState('networkidle', { timeout: 10000 });
+    console.log(`   ✅ 页面加载完成: ${page.url()}\n`);
+  } catch (e) {
+    console.log(`   ⚠️  页面加载超时，当前页面: ${page.url()}\n`);
+  }
 }
+
 
 /**
  * 使用 MenuAnalysisEngine 完整分析所有菜单
@@ -120,22 +119,22 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
       
       // MenuConfig 额外字段（通过 as any 传递）
       baseUrl: process.env.BASE_URL || 'http://localhost:3000/dashboard',
-      loginConfig: {
-        loginUrl: process.env.LOGIN_URL || 'http://localhost:3000/login',
-        usernameSelector: process.env.USERNAME_SELECTOR || '#username',
-        passwordSelector: process.env.PASSWORD_SELECTOR || '#password',
-        submitSelector: process.env.LOGIN_BUTTON_SELECTOR || 'button[type="submit"]',
-        username: process.env.LOGIN_USERNAME || 'admin',
-        password: process.env.LOGIN_PASSWORD || 'password',
-        successSelector: process.env.SUCCESS_INDICATOR || '.dashboard'
-      }
+      // loginConfig: {
+      //   loginUrl: process.env.LOGIN_URL || 'http://localhost:3000/login',
+      //   usernameSelector: process.env.USERNAME_SELECTOR || '#username',
+      //   passwordSelector: process.env.PASSWORD_SELECTOR || '#password',
+      //   submitSelector: process.env.LOGIN_BUTTON_SELECTOR || 'button[type="submit"]',
+      //   username: process.env.LOGIN_USERNAME || 'admin',
+      //   password: process.env.LOGIN_PASSWORD || 'password',
+      //   successSelector: process.env.SUCCESS_INDICATOR || '.dashboard'
+      // }
     } as any;
 
     // 配置函数式导航回调
-    config.onMenuOpen = async (emit: string[]): Promise<void> => {
+    config.onMenuOpen = async (page: Page, emit: string[]): Promise<void> => {
       const currentMenuItem = (globalThis as any).currentAnalyzingMenuItem;
       if (currentMenuItem) {
-        await handleMenuOpen(emit, currentMenuItem);
+        await handleMenuOpen(page, emit, currentMenuItem);
         return;
       }
       console.log(`  ⚠️ 未找到当前分析的菜单项`);

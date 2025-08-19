@@ -7,7 +7,7 @@ export class PageAnalyzer {
   private page: Page;
   private logger: Logger;
 
-  constructor(page: Page, logger: Logger, private onMenuOpen?: (emit: string[]) => Promise<void>) {
+  constructor(page: Page, logger: Logger, private onMenuOpen?: (page: Page, emit: string[]) => Promise<void>) {
     this.page = page;
     this.logger = logger;
   }
@@ -20,7 +20,7 @@ export class PageAnalyzer {
       if (menuItem.emit && this.onMenuOpen) {
         // Function-based navigation
         this.logger.info(`Opening page via function with emit: ${menuItem.emit.join(', ')}`);
-        await this.onMenuOpen(menuItem.emit);
+        await this.onMenuOpen(this.page, menuItem.emit);
         
         // Wait for the page to load after function call
         await this.page.waitForTimeout(3000);
