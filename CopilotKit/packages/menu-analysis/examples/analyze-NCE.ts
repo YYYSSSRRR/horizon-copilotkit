@@ -22,16 +22,16 @@ import {
   MenuItem,
   MenuFunctionality
 } from '../src/index.js';
-import { SimpleTransformer } from '../src/menu-transformers/index.js';
+import { NCEMenuTransformer } from '../src/menu-transformers/index.js';
 import { Page } from 'playwright';
 
-// 现在使用 SimpleTransformer
+// 现在使用 NCEMenuTransformer
 async function transformMenuConfig(filePath: string): Promise<MenuItem[]> {
-  return await SimpleTransformer.transformFromJsonFile(filePath);
+  return await NCEMenuTransformer.transformFromJsonFile(filePath);
 }
 
 function filterWithEmit(menuItems: MenuItem[]): MenuItem[] {
-  return SimpleTransformer.filterWithEmit(menuItems);
+  return NCEMenuTransformer.filterWithEmit(menuItems);
 }
 
 
@@ -225,7 +225,6 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
           results.push(functionality);
           console.log(`   ✅ 分析完成: ${functionality.primaryFunction}`);
           console.log(`   📊 置信度: ${(functionality.confidence * 100).toFixed(1)}%`);
-          console.log(`   🔗 业务范围: ${functionality.businessScope}\n`);
 
         } catch (error) {
           console.log(`   ❌ 分析失败: ${error.message}`);

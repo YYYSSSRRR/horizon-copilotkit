@@ -5,7 +5,7 @@ import * as path from 'path';
 /**
  * 简单的菜单配置转换工具
  */
-export class SimpleTransformer {
+export class NCEMenuTransformer {
   
   /**
    * 从菜单配置JSON文件转换为MenuItem数组
@@ -40,7 +40,7 @@ export class SimpleTransformer {
       const rawItem = menuLevel[key];
       
       // 生成菜单ID（转换为kebab-case）
-      const id = this.toKebabCase(key);
+      const id = key;
       
       // 创建MenuItem
       const menuItem: MenuItem = {
@@ -73,17 +73,6 @@ export class SimpleTransformer {
         this.processLevel(rawItem.actions, menuItems, level + 1, id);
       }
     });
-  }
-  
-  /**
-   * 转换为kebab-case格式的ID
-   */
-  private static toKebabCase(str: string): string {
-    return str
-      .replace(/([A-Z])/g, '-$1')
-      .toLowerCase()
-      .replace(/^-/, '')
-      .replace(/_/g, '-');
   }
   
   /**

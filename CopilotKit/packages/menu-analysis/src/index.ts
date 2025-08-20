@@ -16,8 +16,7 @@ export * from './types';
 export { createDefaultConfig, createMenuConfig, validateConfig, loadConfigFromEnv, mergeConfigs } from './config/ConfigManager';
 
 // Menu transformers
-export { MenuConfigTransformer, type RawMenuConfig, type RawMenuItem, type MenuTreeNode } from './menu-transformers';
-export { SimpleTransformer, type MenuStatistics } from './menu-transformers';
+export { NCEMenuTransformer, type MenuStatistics } from './menu-transformers';
 
 // CLI
 export { runCLI } from './cli/CLI';

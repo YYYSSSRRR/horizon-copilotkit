@@ -39,27 +39,9 @@ async function analyzeColoringBook() {
 
 请严格按照以下JSON格式返回分析结果：
 {
-  "menuId": "菜单ID",
-  "menuName": "菜单名称", 
-  "menuPath": "菜单路径",
-  "url": "页面URL",
-  "primaryFunction": "主要功能描述（一句话概括）",
-  "capabilities": ["功能能力列表"],
-  "businessScope": "业务范围描述",
-  "userActions": ["用户可执行的操作列表"],
-  "dataManagement": {
-    "dataTypes": ["涉及的数据类型"],
-    "operations": ["支持的数据操作"],
-    "integrations": ["相关系统集成"]
-  },
-  "technicalDetails": {
-    "componentTypes": ["页面组件类型"],
-    "frameworks": ["使用的框架"],
-    "apis": ["API接口"]
-  },
-  "usageScenarios": ["使用场景描述"],
-  "relatedModules": ["相关模块"],
-  "confidence": 0.9
+  "id": "菜单ID",
+  "name": "菜单名称",
+  "primaryFunction": "主要功能描述（一句话概括）"
 }
       `.trim()
     };
@@ -151,10 +133,10 @@ async function analyzeColoringBook() {
     // 显示分析摘要
     console.log('\n📋 菜单功能摘要:');
     results.forEach((result, index) => {
-      console.log(`${index + 1}. ${result.menuName}: ${result.primaryFunction}`);
-      console.log(`   URL: ${result.url}`);
-      console.log(`   能力: ${result.capabilities.join(', ')}`);
-      console.log(`   置信度: ${(result.confidence * 100).toFixed(1)}%\n`);
+      console.log(`${index + 1}. ${result.name}: ${result.primaryFunction}`);
+      if (result.emit) {
+        console.log(`   Emit: ${Array.isArray(result.emit) ? result.emit.join(', ') : result.emit}`);
+      }
     });
 
     // 按功能类型分组
@@ -169,7 +151,7 @@ async function analyzeColoringBook() {
     Object.entries(groupedByFunction).forEach(([category, items]) => {
       const itemList = items as any[];
       console.log(`\n${category} (${itemList.length}个):`);
-      itemList.forEach(item => console.log(`  - ${item.menuName}`));
+      itemList.forEach(item => console.log(`  - ${item.name}`));
     });
 
     return results;
@@ -222,7 +204,9 @@ async function analyzeSinglePage() {
 
     console.log('✅ 单页分析完成!');
     console.log('📄 页面功能:', result.primaryFunction);
-    console.log('🎯 主要能力:', result.capabilities.join(', '));
+    if (result.emit) {
+      console.log('🎯 Emit动作:', Array.isArray(result.emit) ? result.emit.join(', ') : result.emit);
+    }
     console.log('📁 结果保存到:', finalConfig.output.outputPath);
 
     return result;

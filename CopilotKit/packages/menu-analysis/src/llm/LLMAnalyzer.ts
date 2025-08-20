@@ -163,10 +163,9 @@ export class LLMAnalyzer {
       }
 
       // Ensure required fields and add metadata
-      analysis.menuId = request.menuItem.id;
-      analysis.menuName = request.menuItem.text;
-      analysis.url = request.menuItem.url || '';
-      analysis.confidence = analysis.confidence || 0.8;
+      analysis.id = request.menuItem.id;
+      analysis.name = request.menuItem.text;
+      analysis.emit = request.menuItem.emit || '';
 
       this.logger.info(`Successfully analyzed menu: ${request.menuItem.text}`);
       return analysis;
@@ -186,10 +185,8 @@ export class LLMAnalyzer {
 请严格按照以下JSON格式返回分析结果：
 
 {
-  "menuId": "菜单ID",
-  "menuName": "菜单名称",
-  "menuPath": "菜单路径",
-  "url": "页面URL",
+  "id": "菜单ID",
+  "name": "菜单名称",
   "primaryFunction": "主要功能"
 }
 
@@ -277,45 +274,24 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
     const buttonCount = pageContent.buttons?.length || 0;
 
     let primaryFunction = '信息展示';
-    const capabilities: string[] = [];
 
     if (hasForm && hasTable) {
       primaryFunction = '数据管理';
-      capabilities.push('数据查询', '数据维护');
     } else if (hasForm) {
       primaryFunction = '数据录入';
-      capabilities.push('数据新增', '数据编辑');
     } else if (hasTable) {
       primaryFunction = '数据查询';
-      capabilities.push('数据展示', '数据查询');
     }
 
     if (buttonCount > 0) {
-      capabilities.push('用户操作');
+      primaryFunction += ' - 可交互操作';
     }
 
     return {
-      menuId: menuItem.id,
-      menuName: menuItem.text,
-      menuPath: '',
-      url: menuItem.url || '',
+      id: menuItem.id,
+      name: menuItem.text,
       primaryFunction,
-      capabilities,
-      businessScope: '基于页面内容推断',
-      userActions: capabilities,
-      dataManagement: {
-        dataTypes: ['未知'],
-        operations: capabilities,
-        integrations: []
-      },
-      technicalDetails: {
-        componentTypes: [],
-        frameworks: [],
-        apis: []
-      },
-      usageScenarios: ['日常业务操作'],
-      relatedModules: [],
-      confidence: 0.5
+      emit: menuItem.emit
     };
   }
 

@@ -119,19 +119,10 @@ export interface LLMAnalysisRequest {
 }
 
 export interface MenuFunctionality {
-  menuId: string;
-  menuName: string;
-  menuPath: string;
-  url: string;
+  id: string;
+  name: string;
   primaryFunction: string;
-  capabilities: string[];
-  businessScope: string;
-  userActions: string[];
-  dataManagement: DataManagementInfo;
-  technicalDetails: TechnicalDetails;
-  usageScenarios: string[];
-  relatedModules: string[];
-  confidence: number;
+  emit?: string | string[];
 }
 
 export interface DataManagementInfo {
@@ -152,8 +143,6 @@ export interface AnalysisConfig {
   output: OutputConfig;
   // Optional callback for function-based menu navigation
   onMenuOpen?: (page: Page, emit: string[]) => Promise<void>;
-  // Optional callback for custom content extraction
-  onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>;
 }
 
 export interface LLMConfig {
