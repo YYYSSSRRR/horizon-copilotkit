@@ -1,27 +1,32 @@
 import { Page } from 'playwright';
 import * as cheerio from 'cheerio';
-import { PageAnalysis, PageContent, FormInfo, TableInfo, ButtonInfo, LinkInfo, ImageInfo, PageMetadata, MenuItem } from '../types';
+import { PageAnalysis, PageContent, FormInfo, TableInfo, ButtonInfo, LinkInfo, ImageInfo, PageMetadata, MenuItem, WindowContent } from '../types';
 import { Logger } from '../utils/Logger';
 
 export class PageAnalyzer {
   private page: Page;
   private logger: Logger;
 
-  constructor(page: Page, logger: Logger, private onMenuOpen?: (page: Page, emit: string[]) => Promise<void>) {
+  constructor(
+    page: Page, 
+    logger: Logger, 
+    private onMenuOpen?: (page: Page, emit: string[]) => Promise<void>,
+    private onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>
+  ) {
     this.page = page;
     this.logger = logger;
   }
 
   async analyzePage(menuItem: MenuItem, menuPath: string[]): Promise<PageAnalysis> {
     this.logger.info(`Analyzing page: ${menuItem.text} ${menuItem.url ? `(${menuItem.url})` : '(function-based)'}`);
-
+  
     try {
       // Navigate to the page using URL or function call
       if (menuItem.emit && this.onMenuOpen) {
         // Function-based navigation
         this.logger.info(`Opening page via function with emit: ${menuItem.emit.join(', ')}`);
         await this.onMenuOpen(this.page, menuItem.emit);
-        
+  
         // Wait for the page to load after function call
         await this.page.waitForTimeout(3000);
       } else if (menuItem.url) {
@@ -31,25 +36,40 @@ export class PageAnalyzer {
       } else {
         throw new Error(`MenuItem ${menuItem.text} has neither URL nor emit actions`);
       }
-
-      // Extract page content
-      const title = await this.page.title();
-      const html = await this.page.content();
-      const currentUrl = this.page.url();
-      const content = await this.extractPageContent(html, currentUrl);
-
+  
+      // Extract page content using custom callback or default method
+      let windowContent: WindowContent;
+      if (this.onExtractContent) {
+        // Use custom content extraction provided by user
+        windowContent = await this.onExtractContent(this.page, menuItem);
+      } else {
+        // Fallback to default page content extraction
+        windowContent = await this.extractDefaultContent();
+      }
+  
+      const content = await this.extractPageContent(windowContent.html, windowContent.url);
+  
       return {
-        url: currentUrl,
-        title,
+        url: windowContent.url,
+        title: windowContent.title,
         menuPath,
         content,
         timestamp: new Date()
       };
-
+  
     } catch (error) {
       this.logger.error(`Failed to analyze page ${menuItem.text}:`, error);
       throw error;
     }
+  }
+
+  private async extractDefaultContent(): Promise<WindowContent> {
+    // Default content extraction - just get current page content
+    const html = await this.page.content();
+    const title = await this.page.title();
+    const url = this.page.url();
+    
+    return { html, title, url };
   }
 
   private async extractPageContent(html: string, url: string): Promise<PageContent> {
@@ -65,7 +85,6 @@ export class PageAnalyzer {
       tables: this.extractTables($),
       buttons: this.extractButtons($),
       links: this.extractLinks($, url),
-      images: this.extractImages($, url),
       metadata: this.extractMetadata($)
     };
 
@@ -325,44 +344,6 @@ export class PageAnalyzer {
     });
 
     return links;
-  }
-
-  private extractImages($: cheerio.CheerioAPI, baseUrl: string): ImageInfo[] {
-    const images: ImageInfo[] = [];
-
-    $('img[src]').each((_, imgElement) => {
-      const $img = $(imgElement);
-      const src = $img.attr('src');
-      const alt = $img.attr('alt');
-      
-      if (src) {
-        try {
-          const url = new URL(src, baseUrl);
-          images.push({
-            src: url.toString(),
-            alt,
-            purpose: this.inferImagePurpose($img, alt)
-          });
-        } catch (error) {
-          // Invalid URL, skip
-        }
-      }
-    });
-
-    return images;
-  }
-
-  private inferImagePurpose($img: cheerio.Cheerio<cheerio.Element>, alt?: string): string {
-    const className = $img.attr('class') || '';
-    const altText = (alt || '').toLowerCase();
-    
-    if (className.includes('logo') || altText.includes('logo')) return 'logo';
-    if (className.includes('icon') || altText.includes('icon')) return 'icon';
-    if (className.includes('avatar') || altText.includes('avatar')) return 'avatar';
-    if (className.includes('banner') || altText.includes('banner')) return 'banner';
-    if (className.includes('chart') || altText.includes('chart')) return 'chart';
-    
-    return 'content';
   }
 
   private extractMetadata($: cheerio.CheerioAPI): PageMetadata {

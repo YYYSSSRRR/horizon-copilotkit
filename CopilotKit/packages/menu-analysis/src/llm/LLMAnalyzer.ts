@@ -76,7 +76,7 @@ export class LLMAnalyzer {
       // Ensure required fields and add metadata
       analysis.menuId = request.menuItem.id;
       analysis.menuName = request.menuItem.text;
-      analysis.url = request.menuItem.url;
+      analysis.url = request.menuItem.url || '';
       analysis.confidence = analysis.confidence || 0.8;
 
       this.logger.info(`Successfully analyzed menu: ${request.menuItem.text}`);
@@ -101,31 +101,14 @@ export class LLMAnalyzer {
   "menuName": "菜单名称",
   "menuPath": "菜单路径",
   "url": "页面URL",
-  "primaryFunction": "主要功能描述（一句话概括）",
-  "capabilities": ["功能能力列表", "如：数据查询", "数据新增", "数据编辑"],
-  "businessScope": "业务范围描述",
-  "userActions": ["用户可执行的操作列表"],
-  "dataManagement": {
-    "dataTypes": ["涉及的数据类型"],
-    "operations": ["支持的数据操作"],
-    "integrations": ["相关系统集成"]
-  },
-  "technicalDetails": {
-    "componentTypes": ["页面组件类型"],
-    "frameworks": ["使用的框架"],
-    "apis": ["API接口"]
-  },
-  "usageScenarios": ["使用场景描述"],
-  "relatedModules": ["相关模块"],
-  "confidence": 0.9
+  "primaryFunction": "主要功能"
 }
 
 分析要求：
 1. 基于页面的表单、表格、按钮等元素推断功能
 2. 从页面标题、文本内容理解业务背景
 3. 识别用户可能的操作流程
-4. 评估功能的复杂程度和重要性
-5. 提供1-10的置信度评分（10表示非常确定）
+4. 提供简洁明确的功能描述
 
 请确保返回有效的JSON格式。
     `.trim();
@@ -226,7 +209,7 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
       menuId: menuItem.id,
       menuName: menuItem.text,
       menuPath: '',
-      url: menuItem.url,
+      url: menuItem.url || '',
       primaryFunction,
       capabilities,
       businessScope: '基于页面内容推断',

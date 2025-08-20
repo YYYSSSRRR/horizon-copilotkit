@@ -21,8 +21,8 @@ import {
   MenuAnalysisEngine,
   MenuItem,
   MenuFunctionality
-} from '../src';
-import { SimpleTransformer } from '../src/menu-transformers';
+} from '../src/index.js';
+import { SimpleTransformer } from '../src/menu-transformers/index.js';
 import { Page } from 'playwright';
 
 // 现在使用 SimpleTransformer
@@ -146,6 +146,52 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
       console.log(`  ⚠️ 未找到当前分析的菜单项`);
     };
 
+    // 配置自定义内容提取回调
+    (config as any).onExtractContent = async (page: Page, menuItem: any) => {
+      let windowContent: any = { html: '', title: '', url: '' };
+      
+      if (menuItem.preferNewWindow) {
+        await page.waitForSelector('iframe.spa_iframe');
+  
+        // Extract page content from spa iframe
+        windowContent = await page.evaluate(() => {
+          const spaIframes = document.querySelectorAll('iframe.spa_iframe');
+          const lastSpaIframe = spaIframes[spaIframes.length - 1] as HTMLIFrameElement;
+  
+          if (lastSpaIframe && lastSpaIframe.contentDocument) {
+            return {
+              title: lastSpaIframe.contentDocument.title,
+              html: lastSpaIframe.contentDocument.documentElement.outerHTML,
+              url: lastSpaIframe.contentWindow?.location.href || ''
+            };
+          }
+  
+          return { title: '', html: '', url: '' };
+        });
+      } else {
+        // Extract page content
+        await page.waitForSelector('#webswing-root-container iframe');
+  
+        windowContent = await page.evaluate(() => {
+            const container = document.querySelector('#webswing-root-container');
+            const iframes = container?.querySelectorAll('iframe');
+            const lastIframe = iframes?.[iframes.length - 1] as HTMLIFrameElement;
+  
+            if (lastIframe && lastIframe.contentDocument) {
+                return {
+                    title: lastIframe.contentDocument.title,
+                    html: lastIframe.contentDocument.documentElement.outerHTML,
+                    url: lastIframe.contentWindow?.location.href || ''
+                };
+            }
+  
+            return { title: '', html: '', url: '' };
+        });
+      }
+      
+      return windowContent;
+    };
+
     // 创建分析引擎
     const engine = new MenuAnalysisEngine(config);
     
@@ -200,6 +246,14 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
     console.log('='.repeat(50));
     console.log(`🎉 分析完成！成功分析了 ${results.length} 个菜单功能`);
     console.log(`📊 分析成功率: ${((results.length / selectedMenus.length) * 100).toFixed(1)}%`);
+    
+    // 保存结果到文件
+    const fs = require('fs-extra');
+    const outputPath = path.join(__dirname, 'results', 'NCE-analysis.json');
+    await fs.ensureDir(path.dirname(outputPath));
+    await fs.writeJson(outputPath, results, { spaces: 2 });
+    
+    console.log(`📁 结果保存到: ${outputPath}`);
     
     console.log('\n📋 详细结果摘要:');
     results.forEach((result, index) => {

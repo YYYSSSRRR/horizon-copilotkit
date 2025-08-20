@@ -106,6 +106,12 @@ export interface PageMetadata {
   pageType?: string;
 }
 
+export interface WindowContent {
+  html: string;
+  title: string;
+  url: string;
+}
+
 export interface LLMAnalysisRequest {
   menuItem: MenuItem;
   pageContent: PageContent;
@@ -146,6 +152,8 @@ export interface AnalysisConfig {
   output: OutputConfig;
   // Optional callback for function-based menu navigation
   onMenuOpen?: (page: Page, emit: string[]) => Promise<void>;
+  // Optional callback for custom content extraction
+  onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>;
 }
 
 export interface LLMConfig {

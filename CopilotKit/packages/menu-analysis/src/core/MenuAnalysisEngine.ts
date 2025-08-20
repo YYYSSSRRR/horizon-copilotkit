@@ -72,7 +72,7 @@ export class MenuAnalysisEngine {
     const pageAnalyses = new Map<string, PageAnalysis>();
     const page = await this.menuCrawler.getPage();
     // Pass the onMenuOpen callback to PageAnalyzer
-    const pageAnalyzer = new PageAnalyzer(page, this.logger, this.config.onMenuOpen);
+    const pageAnalyzer = new PageAnalyzer(page, this.logger, this.config.onMenuOpen, this.config.onExtractContent);
 
     this.progressTracker.start(menuItems.length, 'Analyzing pages');
 
@@ -197,7 +197,7 @@ export class MenuAnalysisEngine {
       await this.ensureInitializedAndLoggedIn();
 
       const page = await this.menuCrawler.getPage();
-      const pageAnalyzer = new PageAnalyzer(page, this.logger, this.config.onMenuOpen);
+      const pageAnalyzer = new PageAnalyzer(page, this.logger, this.config.onMenuOpen, this.config.onExtractContent);
 
       let menuItem: MenuItem;
       let actualMenuName: string;
