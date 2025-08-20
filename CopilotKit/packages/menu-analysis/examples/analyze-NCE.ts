@@ -16,7 +16,7 @@ import path from 'path';
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 // 使用 TypeScript 导入
-import { 
+import {
   createDefaultConfig,
   MenuAnalysisEngine,
   MenuItem,
@@ -49,7 +49,7 @@ async function handleMenuOpen(page: Page, emit: string[], menuItem: MenuItem): P
       console.log('into page.evaluate...');
       // 初始化 PIU
       if (!(window as any).isInitPIU) {
-        (window as any).Prel.define({'abc@1.0.0': { config: { base: '/invgrpwebsite' }}});
+        (window as any).Prel.define({ 'abc@1.0.0': { config: { base: '/invgrpwebsite' } } });
         (window as any).Prel.start('abc', '1.0.0', [], (piu, st) => {
           (window as any).abcPiu = piu;
           // 执行跳转（这会导致页面跳转和上下文销毁）
@@ -97,7 +97,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
     const configPath = path.join(__dirname, 'menus-config.json');
     const allMenuItems = await transformMenuConfig(configPath);
     const menuItemsWithEmit = filterWithEmit(allMenuItems);
-    
+
     console.log(`📊 加载完成: ${allMenuItems.length} 个菜单项，${menuItemsWithEmit.length} 个有emit动作`);
 
     // 只选择前3个菜单进行分析（避免过长分析）
@@ -123,7 +123,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
       timeout: 30000,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       viewport: { width: 1920, height: 1080 },
-      
+
       // MenuConfig 额外字段（通过 as any 传递）
       baseUrl: process.env.BASE_URL || 'http://localhost:3000/dashboard',
       loginConfig: {
@@ -149,15 +149,15 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
     // 配置自定义内容提取回调
     (config as any).onExtractContent = async (page: Page, menuItem: any) => {
       let windowContent: any = { html: '', title: '', url: '' };
-      
+
       if (menuItem.preferNewWindow) {
         await page.waitForSelector('iframe.spa_iframe');
-  
+
         // Extract page content from spa iframe
         windowContent = await page.evaluate(() => {
           const spaIframes = document.querySelectorAll('iframe.spa_iframe');
           const lastSpaIframe = spaIframes[spaIframes.length - 1] as HTMLIFrameElement;
-  
+
           if (lastSpaIframe && lastSpaIframe.contentDocument) {
             return {
               title: lastSpaIframe.contentDocument.title,
@@ -165,111 +165,95 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
               url: lastSpaIframe.contentWindow?.location.href || ''
             };
           }
-  
+
           return { title: '', html: '', url: '' };
         });
       } else {
         // Extract page content
         await page.waitForSelector('#webswing-root-container iframe');
-  
+
         windowContent = await page.evaluate(() => {
-            const container = document.querySelector('#webswing-root-container');
-            const iframes = container?.querySelectorAll('iframe');
-            const lastIframe = iframes?.[iframes.length - 1] as HTMLIFrameElement;
-  
-            if (lastIframe && lastIframe.contentDocument) {
-                return {
-                    title: lastIframe.contentDocument.title,
-                    html: lastIframe.contentDocument.documentElement.outerHTML,
-                    url: lastIframe.contentWindow?.location.href || ''
-                };
-            }
-  
-            return { title: '', html: '', url: '' };
+          const container = document.querySelector('#webswing-root-container');
+          const iframes = container?.querySelectorAll('iframe');
+          const lastIframe = iframes?.[iframes.length - 1] as HTMLIFrameElement;
+
+          if (lastIframe && lastIframe.contentDocument) {
+            return {
+              title: lastIframe.contentDocument.title,
+              html: lastIframe.contentDocument.documentElement.outerHTML,
+              url: lastIframe.contentWindow?.location.href || ''
+            };
+          }
+
+          return { title: '', html: '', url: '' };
         });
       }
-      
+
       return windowContent;
     };
 
     // 创建分析引擎
     const engine = new MenuAnalysisEngine(config);
-    
+
     console.log(`🚀 开始分析 ${selectedMenus.length} 个菜单功能...\n`);
-    
+
     try {
-    
-    // MenuAnalysisEngine 会自动处理登录和初始化
-    console.log('🔐 MenuAnalysisEngine 将自动处理登录流程...');
-    
-    console.log('📋 第三步：开始菜单功能分析...');
-    console.log('='.repeat(50));
-    
-    const results: MenuFunctionality[] = [];
-    
-    for (const menuItem of selectedMenus) {
-      console.log(`🔸 分析菜单: ${menuItem.text}`);
-      console.log(`   ID: ${menuItem.id}`);
-      console.log(`   Emit: [${menuItem.emit?.join(', ') || 'none'}]`);
-      
-      // MenuAnalysisEngine 会自动处理登录状态检查
-      
-      try {
-        // 设置当前菜单项供回调使用
-        (globalThis as any).currentAnalyzingMenuItem = menuItem;
-        
-        console.log(`   🔄 开始页面分析...`);
-        
-        // 直接传入完整的 menuItem，引擎会自动处理登录和导航
-        const functionality = await engine.analyzeSingleMenu(menuItem);
-        
-        results.push(functionality);
-        console.log(`   ✅ 分析完成: ${functionality.primaryFunction}`);
-        console.log(`   📊 置信度: ${(functionality.confidence * 100).toFixed(1)}%`);
-        console.log(`   🔗 业务范围: ${functionality.businessScope}\n`);
-        
-      } catch (error) {
-        console.log(`   ❌ 分析失败: ${error.message}`);
-        
-        // 提供错误提示
-        if (error.message.includes('login') || error.message.includes('auth')) {
-          console.log(`   💡 提示: 检查 config.crawler.loginConfig 配置\n`);
-        } else {
-          console.log(`   💡 提示: 检查页面结构或网络连接\n`);
+
+      // MenuAnalysisEngine 会自动处理登录和初始化
+      console.log('🔐 MenuAnalysisEngine 将自动处理登录流程...');
+
+      console.log('📋 第三步：开始菜单功能分析...');
+      console.log('='.repeat(50));
+
+      const results: MenuFunctionality[] = [];
+
+      for (const menuItem of selectedMenus) {
+        console.log(`🔸 分析菜单: ${menuItem.text}`);
+        console.log(`   ID: ${menuItem.id}`);
+        console.log(`   Emit: [${menuItem.emit?.join(', ') || 'none'}]`);
+
+        // MenuAnalysisEngine 会自动处理登录状态检查
+
+        try {
+          // 设置当前菜单项供回调使用
+          (globalThis as any).currentAnalyzingMenuItem = menuItem;
+
+          console.log(`   🔄 开始页面分析...`);
+
+          // 直接传入完整的 menuItem，引擎会自动处理登录和导航
+          const functionality = await engine.analyzeSingleMenu(menuItem);
+
+          results.push(functionality);
+          console.log(`   ✅ 分析完成: ${functionality.primaryFunction}`);
+          console.log(`   📊 置信度: ${(functionality.confidence * 100).toFixed(1)}%`);
+          console.log(`   🔗 业务范围: ${functionality.businessScope}\n`);
+
+        } catch (error) {
+          console.log(`   ❌ 分析失败: ${error.message}`);
+
+          // 提供错误提示
+          if (error.message.includes('login') || error.message.includes('auth')) {
+            console.log(`   💡 提示: 检查 config.crawler.loginConfig 配置\n`);
+          } else {
+            console.log(`   💡 提示: 检查页面结构或网络连接\n`);
+          }
         }
       }
-    }
-    
-    // 清理
-    delete (globalThis as any).currentAnalyzingMenuItem;
-    
-    console.log('='.repeat(50));
-    console.log(`🎉 分析完成！成功分析了 ${results.length} 个菜单功能`);
-    console.log(`📊 分析成功率: ${((results.length / selectedMenus.length) * 100).toFixed(1)}%`);
-    
-    // 保存结果到文件
-    const fs = require('fs-extra');
-    const outputPath = path.join(__dirname, 'results', 'NCE-analysis.json');
-    await fs.ensureDir(path.dirname(outputPath));
-    await fs.writeJson(outputPath, results, { spaces: 2 });
-    
-    console.log(`📁 结果保存到: ${outputPath}`);
-    
-    console.log('\n📋 详细结果摘要:');
-    results.forEach((result, index) => {
-      console.log(`${index + 1}. ${result.menuName}: ${result.primaryFunction}`);
-      console.log(`   置信度: ${(result.confidence * 100).toFixed(1)}%`);
-      console.log(`   业务范围: ${result.businessScope}`);
-      console.log(`   主要能力: ${result.capabilities.slice(0, 3).join(', ')}${result.capabilities.length > 3 ? '...' : ''}`);
-    });
-    
-    // 提供使用建议
-    console.log('\n💡 使用建议:');
-    console.log('- 设置正确的登录配置以分析更多需要权限的菜单');
-    console.log('- 检查以下环境变量:');
-    console.log('  * LOGIN_URL, LOGIN_USERNAME, LOGIN_PASSWORD');
-    console.log('  * BASE_URL, USERNAME_SELECTOR, PASSWORD_SELECTOR');
-    console.log('  * LOGIN_BUTTON_SELECTOR, SUCCESS_INDICATOR');
+
+      // 清理
+      delete (globalThis as any).currentAnalyzingMenuItem;
+
+      console.log('='.repeat(50));
+      console.log(`🎉 分析完成！成功分析了 ${results.length} 个菜单功能`);
+      console.log(`📊 分析成功率: ${((results.length / selectedMenus.length) * 100).toFixed(1)}%`);
+
+      // 保存结果到文件
+      const fs = require('fs-extra');
+      const outputPath = path.join(__dirname, 'results', 'NCE-analysis.json');
+      await fs.ensureDir(path.dirname(outputPath));
+      await fs.writeJson(outputPath, results, { spaces: 2 });
+
+      console.log(`📁 结果保存到: ${outputPath}`);
 
       return results;
 
