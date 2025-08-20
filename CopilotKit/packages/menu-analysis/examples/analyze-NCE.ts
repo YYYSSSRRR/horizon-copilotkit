@@ -100,8 +100,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
 
     console.log(`📊 加载完成: ${allMenuItems.length} 个菜单项，${menuItemsWithEmit.length} 个有emit动作`);
 
-    // 只选择前3个菜单进行分析（避免过长分析）
-    const selectedMenus = menuItemsWithEmit.slice(0, 3);
+    const selectedMenus = menuItemsWithEmit;
 
     // 创建分析配置
     const config = createDefaultConfig();
