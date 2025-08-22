@@ -94,6 +94,27 @@ python examples/integration_example.py
 - 自动生成 `conversation_log.json` 对话日志
 - API 集成模式演示
 
+### 6. Collection删除示例 (`delete_collection_example.py`)
+**适用人群**: 需要管理向量数据库collection的管理员和高级用户
+
+**功能展示**:
+- Collection状态检查和统计
+- 安全的collection删除操作（自动重建）
+- 手动collection删除（不重建）
+- 删除前后的数据验证
+- Collection管理最佳实践说明
+- 操作风险和注意事项
+
+**运行方式**:
+```bash
+python examples/delete_collection_example.py
+```
+
+**⚠️ 重要警告**:
+- 此操作将永久删除所有存储的函数数据
+- 建议在测试环境中运行
+- 生产环境使用前请备份重要数据
+
 ## 环境配置
 
 在运行示例之前，请确保：
@@ -137,6 +158,9 @@ docker-compose up -d qdrant
 
 5. 🤖 **实际集成**: `python integration_example.py`
    - 看看如何集成到实际应用中
+
+6. 🗑️ **管理数据**: `python delete_collection_example.py`
+   - 学习如何安全地删除和重建collection
 
 ## 示例数据
 

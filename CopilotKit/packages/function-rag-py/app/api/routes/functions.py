@@ -193,7 +193,7 @@ async def get_functions_by_category(
     subcategory: Optional[str] = Query(None, description="Optional subcategory filter"),
     limit: int = Query(10, ge=1, le=50, description="Result limit"),
     rag_system: FunctionRAGSystem = Depends(get_rag_system)
-) -> List[Dict]:
+) -> Dict:
     """Get functions by category."""
     try:
         results = await rag_system.get_functions_by_category(
@@ -213,7 +213,13 @@ async def get_functions_by_category(
             }
             result_dicts.append(result_dict)
         
-        return result_dicts
+        return {
+            "category": category,
+            "subcategory": subcategory,
+            "total_found": len(results),
+            "returned_count": len(results),
+            "results": result_dicts
+        }
         
     except Exception as e:
         logger.error(f"Failed to get functions by category: {e}")
