@@ -2,6 +2,7 @@
 Vector storage service using Qdrant for similarity search.
 """
 
+import os
 import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -35,6 +36,18 @@ class VectorStorageService:
     
     def __init__(self, config: StorageConfig):
         """Initialize vector storage service."""
+
+        # 临时禁用代理
+        os.environ.pop('HTTP_PROXY', None)
+        os.environ.pop('HTTPS_PROXY', None)
+        os.environ.pop('http_proxy', None)
+        os.environ.pop('https_proxy', None)
+        
+        # 设置localhost不走代理
+        no_proxy = os.environ.get('NO_PROXY', '')
+        if 'localhost' not in no_proxy:
+            os.environ['NO_PROXY'] = f"{no_proxy},localhost,127.0.0.1"
+
         self.config = config
         self.client = AsyncQdrantClient(url=config.vector_db_url)
         self.collection_name = config.collection_name

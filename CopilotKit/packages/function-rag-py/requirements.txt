@@ -20,6 +20,7 @@ pydantic-settings==2.1.0
 # Caching and performance
 redis==5.0.1
 httpx==0.25.2
+aiohttp>=3.8.0
 
 # Testing and development
 pytest==7.4.3
