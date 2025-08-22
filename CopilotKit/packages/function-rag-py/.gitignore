@@ -173,7 +173,6 @@ qdrant_storage/
 *.qdrant
 
 # Model files and caches
-models/
 .cache/
 embeddings_cache/
 
