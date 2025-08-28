@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { 
   useCopilotChat, 
   TextMessage 
 } from '@copilotkit/react-core-next'
 import { ChatInput } from './ChatInput'
 import { useBusinessActions } from '../hooks/useBusinessActions'
+import { useDynamicActions } from '../hooks/useDynamicActions'
 
 // 内部聊天组件
 export function ChatbotContent() {
@@ -12,6 +13,35 @@ export function ChatbotContent() {
   
   // 注册业务相关的 Actions
   useBusinessActions();
+  
+  // 动态Actions功能
+  const { queryDynamicActions, addDynamicActions, removeDynamicActions, appendHandlerToAction } = useDynamicActions()
+  
+  // 查询并注册动态Actions的组合函数
+  const queryAndRegisterDynamicActions = useCallback(async (userQuery: string) => {
+    if (!queryDynamicActions) return [];
+    
+    try {
+      // 先清除旧的动态actions
+      removeDynamicActions();
+      
+      // 查询新的动态actions
+      const actions = await queryDynamicActions(userQuery);
+
+      // 遍历actions，调用appendHandlerToAction为每个action添加handler
+      const enhancedActions = actions.map(action => appendHandlerToAction(action));
+      
+      // 如果找到actions，添加增强后的actions到状态中
+      if (enhancedActions.length > 0) {
+        addDynamicActions(enhancedActions);
+      }
+      
+      return enhancedActions;
+    } catch (error) {
+      console.error('查询和注册动态Actions失败:', error);
+      return [];
+    }
+  }, [queryDynamicActions, addDynamicActions, removeDynamicActions])
   
   const { 
     visibleMessages, 
@@ -21,11 +51,33 @@ export function ChatbotContent() {
     isLoading 
   } = useCopilotChat()
 
-  const handleSendMessage = (message: string) => {
+  // 增强的消息发送处理，支持动态查询
+  const handleSendMessage = useCallback(async (message: string) => {
     if (message.trim()) {
+      // 检查是否需要触发动态查询（基于关键词）
+      const triggerKeywords = [
+        '功能', '操作', '管理', '配置', '设置', '帮助', '如何', '怎么',
+        '网络', '用户', '安全', '监控', '系统', '权限', '日志', '策略'
+      ]
+      
+      const shouldQuery = triggerKeywords.some(keyword => 
+        message.toLowerCase().includes(keyword)
+      )
+      
+      // 先处理动态Actions（如果需要），再发送消息
+      if (shouldQuery && queryAndRegisterDynamicActions) {
+        try {
+          console.log('🔍 正在查询相关功能...')
+          await queryAndRegisterDynamicActions(message)
+        } catch (error) {
+          console.error('动态查询失败:', error)
+        }
+      }
+      
+      // 然后发送用户消息（AI现在可以使用刚查询到的动态功能）
       appendMessage(new TextMessage({ content: message, role: 'user' }))
     }
-  }
+  }, [appendMessage, queryAndRegisterDynamicActions])
 
   // 聊天按钮 - 未打开时显示
   if (!isOpen) {
@@ -63,9 +115,11 @@ export function ChatbotContent() {
         {/* 消息区域 */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {visibleMessages.length === 0 && (
-            <div className="text-center text-gray-500 text-sm">
-              <p>👋 您好！我是 AI 助手</p>
-              <p>有什么可以帮助您的吗？</p>
+            <div className="space-y-4">
+              <div className="text-center text-gray-500 text-sm">
+                <p>👋 您好！我是 AI 助手</p>
+                <p>我可以帮助您查找和使用各种功能，有什么可以帮助您的吗？</p>
+              </div>
             </div>
           )}
           

@@ -31,9 +31,9 @@ class Settings(BaseSettings):
     workers: int = Field(default=1)
     
     # Embedding Configuration
-    embedding_provider: str = Field(default="deepseek")
+    embedding_provider: str = Field(default="openai")
     embedding_model: str = Field(default="text-embedding-3-large")
-    embedding_api_key: Optional[str] = Field(default=None)
+    embedding_api_key: Optional[str] = Field(default=None, env="EMBEDDING_API_KEY")
     embedding_base_url: Optional[str] = Field(default=None)
     embedding_max_tokens: int = Field(default=8191)
     embedding_batch_size: int = Field(default=100)

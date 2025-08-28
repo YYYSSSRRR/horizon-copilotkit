@@ -11,3 +11,4 @@ export { useCopilotReadable } from "./use-copilot-readable";
 export { useLangGraphInterrupt } from "./use-langgraph-interrupt";
 export { useLangGraphInterruptRender } from "./use-langgraph-interrupt-render";
 export { useCopilotAdditionalInstructions } from "./use-copilot-additional-instructions";
+export { useDynamicActions } from "./use-copilot-dynamic-actions";
