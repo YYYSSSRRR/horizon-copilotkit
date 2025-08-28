@@ -80,7 +80,7 @@ export const handleMenuOpen = async (menuItem: MenuData): Promise<void> => {
 
 export function useDynamicActions() {
   const { dynamicActions, queryRelevantActions, registerDynamicActions } = useCoreDynamicActions({
-    ragEndpoint: 'http://localhost:8000/functions/search',
+    ragEndpoint: '/functions/search',
     enabled: true,
     searchLimit: 5,
     confidenceThreshold: 0.2,

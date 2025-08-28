@@ -3,10 +3,10 @@ import { render } from 'react-dom'
 import App from './App.tsx'
 import './index.css'
 
-let rootElement = document.getElementById('root')
+let rootElement = document.getElementById('copilot-container')
 if (!rootElement) {
   rootElement = document.createElement('div')
-  rootElement.id = 'root'
+  rootElement.id = 'copilot-container'
   document.body.appendChild(rootElement)
 }
 
