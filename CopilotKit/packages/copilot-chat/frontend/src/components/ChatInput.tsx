@@ -1,13 +1,19 @@
 import React, { useState } from 'react'
 
+interface ChatInputProps {
+  onSendMessage: (message: string) => void | Promise<void>;
+  disabled: boolean;
+  placeholder?: string;
+}
+
 // 聊天输入组件
-export function ChatInput({ onSendMessage, disabled }: { onSendMessage: (message: string) => void, disabled: boolean }) {
+export function ChatInput({ onSendMessage, disabled, placeholder = "输入消息..." }: ChatInputProps): React.ReactElement {
   const [message, setMessage] = useState('')
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (message.trim() && !disabled) {
-      onSendMessage(message)
+      await onSendMessage(message)
       setMessage('')
     }
   }
@@ -18,7 +24,7 @@ export function ChatInput({ onSendMessage, disabled }: { onSendMessage: (message
         type="text"
         value={message}
         onChange={(e) => setMessage(e.target.value)}
-        placeholder="输入消息..."
+        placeholder={placeholder}
         disabled={disabled}
         className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
       />

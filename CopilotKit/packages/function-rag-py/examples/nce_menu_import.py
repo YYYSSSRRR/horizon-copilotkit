@@ -76,8 +76,8 @@ def convert_menu_to_function(menu_item: Dict[str, Any]) -> AddFunctionRequest:
     implementation = generate_implementation(menu_id, emit_actions)
     
     return AddFunctionRequest(
-        name=f"open_{menu_id.lower()}_menu",
-        description=f"{name}: {primary_function}" if primary_function else name,
+        name=f"{menu_id.lower()}",
+        description=f"菜单名称：{name}，功能描述：{primary_function}" if primary_function else name,
         category=category,
         subcategory=subcategory,
         parameters=parameters,
