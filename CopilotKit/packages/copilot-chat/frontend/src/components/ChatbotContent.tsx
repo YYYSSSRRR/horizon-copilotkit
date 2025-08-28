@@ -54,24 +54,13 @@ export function ChatbotContent() {
   // 增强的消息发送处理，支持动态查询
   const handleSendMessage = useCallback(async (message: string) => {
     if (message.trim()) {
-      // 检查是否需要触发动态查询（基于关键词）
-      const triggerKeywords = [
-        '功能', '操作', '管理', '配置', '设置', '帮助', '如何', '怎么',
-        '网络', '用户', '安全', '监控', '系统', '权限', '日志', '策略'
-      ]
-      
-      const shouldQuery = triggerKeywords.some(keyword => 
-        message.toLowerCase().includes(keyword)
-      )
-      
+
       // 先处理动态Actions（如果需要），再发送消息
-      if (shouldQuery && queryAndRegisterDynamicActions) {
-        try {
-          console.log('🔍 正在查询相关功能...')
-          await queryAndRegisterDynamicActions(message)
-        } catch (error) {
-          console.error('动态查询失败:', error)
-        }
+      try {
+        console.log('🔍 正在查询相关功能...')
+        await queryAndRegisterDynamicActions(message)
+      } catch (error) {
+        console.error('动态查询失败:', error)
       }
       
       // 然后发送用户消息（AI现在可以使用刚查询到的动态功能）
