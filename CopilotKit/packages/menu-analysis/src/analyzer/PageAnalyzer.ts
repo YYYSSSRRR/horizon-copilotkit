@@ -1,76 +1,179 @@
-import { Page } from 'playwright';
+import { Page, ElementHandle } from 'playwright';
 import * as cheerio from 'cheerio';
 import { PageAnalysis, PageContent, FormInfo, TableInfo, ButtonInfo, LinkInfo, ImageInfo, PageMetadata, MenuItem, WindowContent } from '../types';
 import { Logger } from '../utils/Logger';
+import { LLMAnalyzer, ImageAnalysisConfig, ImageAnalysisResult } from '../llm/LLMAnalyzer';
+import * as fs from 'fs/promises';
+
 
 export class PageAnalyzer {
   private page: Page;
   private logger: Logger;
+  private llmAnalyzer?: LLMAnalyzer;
 
   constructor(
     page: Page, 
     logger: Logger, 
+    llmAnalyzer?: LLMAnalyzer,
     private onMenuOpen?: (page: Page, emit: string[]) => Promise<void>,
     private onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>
   ) {
     this.page = page;
     this.logger = logger;
+    this.llmAnalyzer = llmAnalyzer;
   }
 
-  async analyzePage(menuItem: MenuItem, menuPath: string[]): Promise<PageAnalysis> {
-    this.logger.info(`Analyzing page: ${menuItem.text} ${menuItem.url ? `(${menuItem.url})` : '(function-based)'}`);
-  
+  async analyzeImageWithLLM(imagePath: string, config: ImageAnalysisConfig): Promise<ImageAnalysisResult | null> {
+    if (!this.llmAnalyzer) {
+      this.logger.warn('LLMAnalyzer not provided, skipping image analysis');
+      return null;
+    }
+
+    if (!config.enabled) {
+      return null;
+    }
+
     try {
-      // Navigate to the page using URL or function call
-      if (menuItem.emit && this.onMenuOpen) {
-        // Function-based navigation
-        this.logger.info(`Opening page via function with emit: ${menuItem.emit.join(', ')}`);
-        await this.onMenuOpen(this.page, menuItem.emit);
-  
-        // Wait for the page to load after function call
-        await this.page.waitForTimeout(3000);
-      } else if (menuItem.url) {
-        // Traditional URL-based navigation
-        await this.page.goto(menuItem.url, { waitUntil: 'networkidle' });
-        await this.page.waitForTimeout(2000);
-      } else {
-        throw new Error(`MenuItem ${menuItem.text} has neither URL nor emit actions`);
-      }
-  
-      // Extract page content using custom callback or default method
-      let windowContent: WindowContent;
-      if (this.onExtractContent) {
-        // Use custom content extraction provided by user
-        windowContent = await this.onExtractContent(this.page, menuItem);
-      } else {
-        // Fallback to default page content extraction
-        windowContent = await this.extractDefaultContent();
-      }
-  
-      const content = await this.extractPageContent(windowContent.html, windowContent.url);
-  
-      return {
-        url: windowContent.url,
-        title: windowContent.title,
-        menuPath,
-        content,
-        timestamp: new Date()
-      };
-  
+      return await this.llmAnalyzer.analyzeImage(imagePath, config);
     } catch (error) {
-      this.logger.error(`Failed to analyze page ${menuItem.text}:`, error);
-      throw error;
+      this.logger.error(`Failed to analyze image with LLM: ${imagePath}`, error);
+      return null;
     }
   }
 
-  private async extractDefaultContent(): Promise<WindowContent> {
-    // Default content extraction - just get current page content
-    const html = await this.page.content();
-    const title = await this.page.title();
-    const url = this.page.url();
+  async analyzePage(menuItem: MenuItem, menuPath: string[]): Promise<PageAnalysis> {
+  this.logger.info(`Analyzing page: ${menuItem.text} ${menuItem.url ? `(${menuItem.url})` : '(function-based)'}`);
+
+  try {
+    // Navigate to the page using URL or function call
+    if (menuItem.emit && this.onMenuOpen) {
+      // Function-based navigation
+      this.logger.info(`Opening page via function with emit: ${menuItem.emit.join(', ')}`);
+      await this.onMenuOpen(this.page, menuItem.emit);
+
+      // Wait for the page to load after function call
+      await this.page.waitForTimeout(3000);
+    } else if (menuItem.url) {
+      // Traditional URL-based navigation
+      await this.page.goto(menuItem.url, { waitUntil: 'networkidle' });
+      await this.page.waitForTimeout(2000);
+    } else {
+      throw new Error(`MenuItem ${menuItem.text} has neither URL nor emit actions`);
+    }
+
+    // Extract page content using custom callback or default method
+    let windowContent: WindowContent;
+    if (this.onExtractContent) {
+      // Use custom content extraction provided by user
+      windowContent = await this.onExtractContent(this.page, menuItem);
+    } else {
+      // Fallback to default page content extraction
+      windowContent = await this.extractDefaultContent();
+    }
+
+    // 根据 WindowContent 的 type 决定分析方式
+    let content: PageContent;
     
-    return { html, title, url };
+    if (windowContent.type === 'canvas') {
+      this.logger.info('Using canvas-based analysis');
+      content = await this.analyzeCanvasContent(windowContent);
+    } else {
+      this.logger.info('Using HTML content extraction');
+      content = await this.extractPageContent(windowContent.html, windowContent.url);
+    }
+
+    return {
+      url: windowContent.url,
+      title: windowContent.title,
+      menuPath,
+      content,
+      timestamp: new Date()
+    };
+
+  } catch (error) {
+    this.logger.error(`Failed to analyze page ${menuItem.text}:`, error);
+    throw error;
   }
+}
+
+  private async extractDefaultContent(): Promise<WindowContent> {
+  // Default content extraction - just get current page content
+  const html = await this.page.content();
+  const title = await this.page.title();
+  const url = this.page.url();
+  
+  return { 
+    html, 
+    title, 
+    url, 
+    type: 'html' 
+  };
+}
+
+  private async analyzeCanvasContent(windowContent: WindowContent): Promise<PageContent> {
+    this.logger.info('Analyzing canvas content');
+
+    // 基础内容结构
+    const content: PageContent = {
+      html: windowContent.html,
+      text: 'Canvas-based content analysis',
+      forms: [],
+      tables: [],
+      buttons: [],
+      links: [],
+      metadata: {
+        description: 'Canvas-based page content',
+        breadcrumbs: [],
+        pageType: 'canvas'
+      }
+    };
+
+    // 如果有 LLM 分析器且提供了 canvas 对象，进行 AI 分析
+    if (this.llmAnalyzer && windowContent.canvas) {
+      try {
+        // 将 canvas 转换为 dataURL 进行分析
+        const dataUrl = windowContent.canvas.toDataURL('image/png');
+        
+        // 创建临时图片文件用于分析
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const tempImagePath = `./screenshots/temp-canvas-${timestamp}.png`;
+        
+        // 将 dataURL 转换为文件
+        const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+        await fs.writeFile(tempImagePath, base64Data, 'base64');
+
+        const imageAnalysisConfig: ImageAnalysisConfig = {
+          enabled: true,
+          prompt: 'Analyze this canvas content and describe what is displayed, including any UI elements, charts, graphics, or interactive content.'
+        };
+
+        const analysisResult = await this.analyzeImageWithLLM(tempImagePath, imageAnalysisConfig);
+        
+        if (analysisResult) {
+          content.text = analysisResult.analysis || 'Canvas content analyzed via AI';
+          if (analysisResult.visualElements) {
+            content.metadata.visualElements = analysisResult.visualElements;
+          }
+          if (analysisResult.suggestions) {
+            content.metadata.aiSuggestions = analysisResult.suggestions;
+          }
+        }
+
+        // 清理临时文件
+        try {
+          await fs.unlink(tempImagePath);
+        } catch (error) {
+          this.logger.warn(`Failed to cleanup temp file: ${tempImagePath}`);
+        }
+
+      } catch (error) {
+        this.logger.error('Failed to analyze canvas with LLM:', error);
+      }
+    }
+
+    return content;
+  }
+
 
   private async extractPageContent(html: string, url: string): Promise<PageContent> {
     const $ = cheerio.load(html);

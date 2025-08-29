@@ -2,6 +2,26 @@ import OpenAI from 'openai';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { LLMConfig, PageAnalysis, MenuFunctionality, MenuItem, LLMAnalysisRequest } from '../types';
 import { Logger } from '../utils/Logger';
+import * as fs from 'fs/promises';
+
+// 图片分析配置
+export interface ImageAnalysisConfig {
+  enabled: boolean;
+  provider?: 'openai' | 'deepseek' | 'claude';
+  model?: string;
+  maxTokens?: number;
+  prompt?: string;
+  temperature?: number;
+}
+
+// 图片分析结果
+export interface ImageAnalysisResult {
+  filePath: string;
+  analysis: string;
+  visualElements?: string[];
+  suggestions?: string[];
+  confidence?: number;
+}
 
 export class LLMAnalyzer {
   private client: OpenAI;
@@ -323,6 +343,305 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
     }
 
     this.logger.info(`Completed batch analysis. Processed ${results.length} menus.`);
+    return results;
+  }
+
+  async analyzeImage(imagePath: string, config: ImageAnalysisConfig): Promise<ImageAnalysisResult> {
+    if (!config.enabled) {
+      throw new Error('Image analysis is not enabled');
+    }
+
+    this.logger.info(`Analyzing image: ${imagePath}`);
+
+    try {
+      // 读取图片文件并转换为base64
+      const imageBuffer = await fs.readFile(imagePath);
+      const base64Image = imageBuffer.toString('base64');
+      const mimeType = this.getMimeTypeFromPath(imagePath);
+      
+      const prompt = config.prompt || this.getDefaultImagePrompt();
+      
+      // 根据provider选择不同的分析方法
+      let analysis = '';
+      
+      switch (config.provider || this.config.provider) {
+        case 'openai':
+          analysis = await this.analyzeImageWithOpenAI(base64Image, mimeType, prompt, config);
+          break;
+        case 'deepseek':
+          analysis = await this.analyzeImageWithDeepSeek(base64Image, mimeType, prompt, config);
+          break;
+        case 'claude':
+          analysis = await this.analyzeImageWithClaude(base64Image, mimeType, prompt, config);
+          break;
+        default:
+          throw new Error(`Unsupported AI provider: ${config.provider || this.config.provider}`);
+      }
+
+      const result: ImageAnalysisResult = {
+        filePath: imagePath,
+        analysis,
+        visualElements: this.extractVisualElementsFromAnalysis(analysis),
+        suggestions: this.extractSuggestionsFromAnalysis(analysis),
+        confidence: this.calculateConfidence(analysis)
+      };
+
+      this.logger.info(`Image analysis completed: ${imagePath}`);
+      return result;
+
+    } catch (error) {
+      this.logger.error(`Failed to analyze image ${imagePath}:`, error);
+      throw error;
+    }
+  }
+
+  private getMimeTypeFromPath(imagePath: string): string {
+    const extension = imagePath.split('.').pop()?.toLowerCase();
+    switch (extension) {
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/png';
+    }
+  }
+
+  private getDefaultImagePrompt(): string {
+    return `
+分析这个页面截图或界面元素，请提取以下信息：
+
+1. **页面功能和用途**：这个页面的主要作用是什么？
+2. **UI元素和组件**：识别可见的按钮、表单、表格、导航等元素
+3. **页面布局和结构**：描述页面的整体布局和信息组织方式
+4. **交互元素**：用户可以进行哪些操作？
+5. **视觉层次**：页面的信息重要性和视觉引导
+6. **数据内容**：如果有图表或数据展示，请描述其内容
+7. **可用性问题**：是否发现任何界面设计或用户体验问题
+
+请用中文回答，并提供具体的观察和分析。
+    `.trim();
+  }
+
+  private async analyzeImageWithOpenAI(
+    base64Image: string, 
+    mimeType: string, 
+    prompt: string, 
+    config: ImageAnalysisConfig
+  ): Promise<string> {
+    try {
+      const response = await this.client.chat.completions.create({
+        model: config.model || 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: prompt
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${base64Image}`,
+                  detail: 'high'
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: config.maxTokens || 2000,
+        temperature: config.temperature || 0.3
+      });
+
+      return response.choices[0]?.message?.content || 'No analysis generated';
+    } catch (error) {
+      this.logger.error('OpenAI image analysis failed:', error);
+      throw error;
+    }
+  }
+
+  private async analyzeImageWithDeepSeek(
+    base64Image: string, 
+    mimeType: string, 
+    prompt: string, 
+    config: ImageAnalysisConfig
+  ): Promise<string> {
+    // DeepSeek vision API implementation
+    // 注意：需要根据DeepSeek的实际API格式调整
+    try {
+      const response = await this.client.chat.completions.create({
+        model: config.model || 'deepseek-vl-67b-chat',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: prompt
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${base64Image}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: config.maxTokens || 2000,
+        temperature: config.temperature || 0.3
+      });
+
+      return response.choices[0]?.message?.content || 'No analysis generated';
+    } catch (error) {
+      this.logger.error('DeepSeek image analysis failed:', error);
+      throw error;
+    }
+  }
+
+  private async analyzeImageWithClaude(
+    base64Image: string, 
+    mimeType: string, 
+    prompt: string, 
+    config: ImageAnalysisConfig
+  ): Promise<string> {
+    // Claude vision API implementation
+    // 注意：这需要使用 @anthropic-ai/sdk 而不是 openai
+    this.logger.warn('Claude image analysis not implemented yet. Using placeholder.');
+    return `Claude图像分析结果占位符
+    
+图片路径分析：基于图片内容的分析
+- 这是一个占位符实现
+- 需要集成 @anthropic-ai/sdk
+- 将在实际部署时完成集成
+
+请实现真实的Claude Vision API调用。`;
+  }
+
+  private extractVisualElementsFromAnalysis(analysis: string): string[] {
+    const elements: string[] = [];
+    const text = analysis.toLowerCase();
+    
+    // 提取常见的UI元素
+    const elementKeywords = [
+      { keywords: ['按钮', 'button'], element: '按钮' },
+      { keywords: ['表单', 'form'], element: '表单' },
+      { keywords: ['表格', 'table'], element: '表格' },
+      { keywords: ['导航', 'navigation', 'nav'], element: '导航' },
+      { keywords: ['菜单', 'menu'], element: '菜单' },
+      { keywords: ['图表', 'chart'], element: '图表' },
+      { keywords: ['列表', 'list'], element: '列表' },
+      { keywords: ['搜索', 'search'], element: '搜索框' },
+      { keywords: ['输入框', 'input'], element: '输入框' },
+      { keywords: ['下拉框', 'select', 'dropdown'], element: '下拉框' },
+      { keywords: ['复选框', 'checkbox'], element: '复选框' },
+      { keywords: ['单选框', 'radio'], element: '单选框' },
+      { keywords: ['标签', 'tab'], element: '标签页' },
+      { keywords: ['弹窗', 'modal', 'dialog'], element: '弹窗' },
+      { keywords: ['工具栏', 'toolbar'], element: '工具栏' }
+    ];
+
+    elementKeywords.forEach(({ keywords, element }) => {
+      if (keywords.some(keyword => text.includes(keyword))) {
+        elements.push(element);
+      }
+    });
+    
+    return [...new Set(elements)]; // 去重
+  }
+
+  private extractSuggestionsFromAnalysis(analysis: string): string[] {
+    const suggestions: string[] = [];
+    const lines = analysis.split('\n');
+    
+    lines.forEach(line => {
+      const trimmedLine = line.trim();
+      // 寻找包含建议性词汇的行
+      if (trimmedLine && (
+        trimmedLine.includes('建议') || 
+        trimmedLine.includes('推荐') || 
+        trimmedLine.includes('可以') ||
+        trimmedLine.includes('应该') ||
+        trimmedLine.includes('优化') ||
+        trimmedLine.includes('改进') ||
+        trimmedLine.includes('问题')
+      )) {
+        suggestions.push(trimmedLine);
+      }
+    });
+    
+    return suggestions.slice(0, 5); // 限制建议数量
+  }
+
+  private calculateConfidence(analysis: string): number {
+    // 基于分析内容的长度和详细程度计算置信度
+    let confidence = 0.5; // 基础置信度
+    
+    // 分析长度因子
+    if (analysis.length > 500) confidence += 0.2;
+    if (analysis.length > 1000) confidence += 0.1;
+    
+    // 结构化内容因子
+    const structuredIndicators = ['1.', '2.', '3.', '**', '##', '###'];
+    const structuredCount = structuredIndicators.filter(indicator => 
+      analysis.includes(indicator)
+    ).length;
+    confidence += Math.min(structuredCount * 0.05, 0.2);
+    
+    // 具体描述因子
+    const specificWords = ['按钮', '表单', '表格', '布局', '功能', '界面'];
+    const specificCount = specificWords.filter(word => 
+      analysis.includes(word)
+    ).length;
+    confidence += Math.min(specificCount * 0.02, 0.1);
+    
+    return Math.min(confidence, 1.0);
+  }
+
+  async batchAnalyzeImages(imagePaths: string[], config: ImageAnalysisConfig): Promise<ImageAnalysisResult[]> {
+    if (!config.enabled || imagePaths.length === 0) {
+      return [];
+    }
+
+    const results: ImageAnalysisResult[] = [];
+    const batchSize = 3; // 图片分析更耗费资源，使用更小的批次
+
+    this.logger.info(`Starting batch image analysis of ${imagePaths.length} images...`);
+
+    for (let i = 0; i < imagePaths.length; i += batchSize) {
+      const batch = imagePaths.slice(i, i + batchSize);
+
+      this.logger.info(`Processing image batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(imagePaths.length / batchSize)}`);
+
+      const batchPromises = batch.map(imagePath =>
+        this.analyzeImage(imagePath, config).catch(error => {
+          this.logger.error(`Failed to analyze image ${imagePath}:`, error);
+          return {
+            filePath: imagePath,
+            analysis: `分析失败: ${error.message}`,
+            visualElements: [],
+            suggestions: [],
+            confidence: 0
+          } as ImageAnalysisResult;
+        })
+      );
+
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
+
+      // 图片分析间隔时间更长
+      if (i + batchSize < imagePaths.length) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    this.logger.info(`Completed batch image analysis. Processed ${results.length} images.`);
     return results;
   }
 }

@@ -24,6 +24,7 @@ import {
 } from '../src/index.js';
 import { NCEMenuTransformer } from '../src/menu-transformers/index.js';
 import { Page } from 'playwright';
+import * as fs from 'fs-extra';
 
 // 现在使用 NCEMenuTransformer
 async function transformMenuConfig(filePath: string): Promise<MenuItem[]> {
@@ -149,43 +150,98 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
     (config as any).onExtractContent = async (page: Page, menuItem: any) => {
       let windowContent: any = { html: '', title: '', url: '' };
 
-      if (menuItem.preferNewWindow) {
-        await page.waitForSelector('iframe.spa_iframe');
-
-        // Extract page content from spa iframe
-        windowContent = await page.evaluate(() => {
-          const spaIframes = document.querySelectorAll('iframe.spa_iframe');
-          const lastSpaIframe = spaIframes[spaIframes.length - 1] as HTMLIFrameElement;
-
-          if (lastSpaIframe && lastSpaIframe.contentDocument) {
-            return {
-              title: lastSpaIframe.contentDocument.title,
-              html: lastSpaIframe.contentDocument.documentElement.outerHTML,
-              url: lastSpaIframe.contentWindow?.location.href || ''
-            };
+      // 检查第二个参数是否包含Action属性
+      let useScreenshot = false;
+      if (menuItem.emit && menuItem.emit.length > 1) {
+        try {
+          const secondParam = JSON.parse(menuItem.emit[1]);
+          if (secondParam && typeof secondParam === 'object' && 'Action' in secondParam) {
+            useScreenshot = true;
+            console.log(`   📸 检测到Action属性，将使用截图方式: ${secondParam.Action}`);
           }
+        } catch (e) {
+          // 如果解析失败，继续使用原有逻辑
+          console.log(`   ⚠️ 第二个参数解析失败，使用默认处理方式`);
+        }
+      }
 
-          return { title: '', html: '', url: '' };
-        });
-      } else {
-        // Extract page content
-        await page.waitForSelector('#webswing-root-container iframe');
+      if (useScreenshot) {
+        // 使用截图方式处理
+        try {
+          console.log(`   📸 使用截图方式提取内容...`);
+          
+          // 确保截图目录存在
+          const screenshotDir = path.join(__dirname, 'screenshots');
+          await fs.ensureDir(screenshotDir);
+          
+          // 等待canvas元素出现
+          await page.waitForSelector('.internal-frames-wrapper canvas', { timeout: 5000 });
+          
+          // 获取canvas对象用于分析
+          const canvasObj = await page.evaluate(() => {
+            const canvases = document.querySelectorAll('.internal-frames-wrapper canvas');
+            const lastCanvas = canvases[canvases.length - 1] as HTMLCanvasElement;
+            return lastCanvas;
+          });
+          
+          // 返回符合WindowContent接口的内容
+          windowContent = {
+            title: `Canvas Content - ${menuItem.text}`,
+            html: `<div class="canvas-content"><h2>Canvas-based Menu Content</h2><p>Menu: ${menuItem.text}</p><p>Action: ${menuItem.emit[1]}</p><p>Canvas dimensions: ${canvasObj?.width || 'unknown'}x${canvasObj?.height || 'unknown'}</p></div>`,
+            url: page.url(),
+            type: 'canvas' as const,
+            canvas: canvasObj
+          };
+          
+        } catch (e) {
+          console.error(`   ❌ 截图处理失败:`, e.message);
+          // 回退到原有逻辑
+          useScreenshot = false;
+        }
+      }
 
-        windowContent = await page.evaluate(() => {
-          const container = document.querySelector('#webswing-root-container');
-          const iframes = container?.querySelectorAll('iframe');
-          const lastIframe = iframes?.[iframes.length - 1] as HTMLIFrameElement;
+      if (!useScreenshot) {
+        // 原有的内容提取逻辑
+        if (menuItem.preferNewWindow) {
+          await page.waitForSelector('iframe.spa_iframe');
 
-          if (lastIframe && lastIframe.contentDocument) {
-            return {
-              title: lastIframe.contentDocument.title,
-              html: lastIframe.contentDocument.documentElement.outerHTML,
-              url: lastIframe.contentWindow?.location.href || ''
-            };
-          }
+          // Extract page content from spa iframe
+          windowContent = await page.evaluate(() => {
+            const spaIframes = document.querySelectorAll('iframe.spa_iframe');
+            const lastSpaIframe = spaIframes[spaIframes.length - 1] as HTMLIFrameElement;
 
-          return { title: '', html: '', url: '' };
-        });
+            if (lastSpaIframe && lastSpaIframe.contentDocument) {
+              return {
+                title: lastSpaIframe.contentDocument.title,
+                html: lastSpaIframe.contentDocument.documentElement.outerHTML,
+                url: lastSpaIframe.contentWindow?.location.href || '',
+                type: 'html' as const
+              };
+            }
+
+            return { title: '', html: '', url: '', type: 'html' as const };
+          });
+        } else {
+          // Extract page content
+          await page.waitForSelector('#webswing-root-container iframe');
+
+          windowContent = await page.evaluate(() => {
+            const container = document.querySelector('#webswing-root-container');
+            const iframes = container?.querySelectorAll('iframe');
+            const lastIframe = iframes?.[iframes.length - 1] as HTMLIFrameElement;
+
+            if (lastIframe && lastIframe.contentDocument) {
+              return {
+                title: lastIframe.contentDocument.title,
+                html: lastIframe.contentDocument.documentElement.outerHTML,
+                url: lastIframe.contentWindow?.location.href || '',
+                type: 'html' as const
+              };
+            }
+
+            return { title: '', html: '', url: '', type: 'html' as const };
+          });
+        }
       }
 
       return windowContent;
