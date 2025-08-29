@@ -43,7 +43,6 @@ export interface PageAnalysis {
   timestamp: Date;
 }
 
-
 export interface PageContent {
   html: string;
   text: string;
@@ -51,7 +50,6 @@ export interface PageContent {
   tables: TableInfo[];
   buttons: ButtonInfo[];
   links: LinkInfo[];
-  images: ImageInfo[];
   metadata: PageMetadata;
 }
 
@@ -104,12 +102,16 @@ export interface PageMetadata {
   keywords?: string[];
   breadcrumbs: string[];
   pageType?: string;
+  visualElements?: string[];
+  aiSuggestions?: string[];
 }
 
 export interface WindowContent {
   html: string;
   title: string;
   url: string;
+  type: 'html' | 'canvas';
+  canvas?: HTMLCanvasElement;
 }
 
 export interface LLMAnalysisRequest {
@@ -143,6 +145,8 @@ export interface AnalysisConfig {
   output: OutputConfig;
   // Optional callback for function-based menu navigation
   onMenuOpen?: (page: Page, emit: string[]) => Promise<void>;
+  // Optional callback for custom content extraction
+  onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>;
 }
 
 export interface LLMConfig {
