@@ -136,7 +136,7 @@ export class PageAnalyzer {
 
         // 创建临时图片文件用于分析
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const tempImagePath = `./screenshots/temp-canvas-${timestamp}.png`;
+        const tempImagePath = `./screenshots/temp-${windowContent.title}-${timestamp}.png`;
 
         // 将 dataURL 转换为文件
         const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
@@ -144,7 +144,6 @@ export class PageAnalyzer {
 
         const imageAnalysisConfig: ImageAnalysisConfig = {
           enabled: true,
-          prompt: 'Analyze this canvas content and describe what is displayed, including any UI elements, charts, graphics, or interactive content.'
         };
 
         const analysisResult = await this.analyzeImageWithLLM(tempImagePath, imageAnalysisConfig);

@@ -178,28 +178,34 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
           // 等待canvas元素出现
           await page.waitForSelector('.internal-frames-wrapper canvas', { timeout: 5000 });
           
-          // 获取canvas信息和数据
-          const canvasInfo = await page.evaluate(() => {
-            const canvases = document.querySelectorAll('.internal-frames-wrapper canvas');
-            const lastCanvas = canvases[canvases.length - 1] as HTMLCanvasElement;
-            return {
-              dataURL: lastCanvas.toDataURL('image/png'),
-              width: lastCanvas.width,
-              height: lastCanvas.height
-            };
-          });
+          // 获取canvas信息（尺寸）
+          // const canvasDimensions = await page.evaluate(() => {
+          //   const canvases = document.querySelectorAll('.internal-frames-wrapper canvas');
+          //   const lastCanvas = canvases[canvases.length - 1] as HTMLCanvasElement;
+          //   return {
+          //     width: lastCanvas.width,
+          //     height: lastCanvas.height
+          //   };
+          // });
+          
+          // 使用Playwright截图功能获取canvas内容
+          const canvasElement = page.locator('.internal-frames-wrapper').last();
+          const screenshotBuffer = await canvasElement.screenshot({ type: 'png' });
+          
+          // 将截图转换为dataURL格式
+          const dataURL = `data:image/png;base64,${screenshotBuffer.toString('base64')}`;
           
           // 创建一个模拟的canvas对象，包含dataURL方法
           const mockCanvas = {
-            width: canvasInfo.width,
-            height: canvasInfo.height,
-            toDataURL: () => canvasInfo.dataURL
+            // width: canvasDimensions.width,
+            // height: canvasDimensions.height,
+            toDataURL: () => dataURL
           } as HTMLCanvasElement;
           
           // 返回符合WindowContent接口的内容
           windowContent = {
-            title: `Canvas Content - ${menuItem.text}`,
-            html: `<div class="canvas-content"><h2>Canvas-based Menu Content</h2><p>Menu: ${menuItem.text}</p><p>Action: ${menuItem.emit[1]}</p><p>Canvas dimensions: ${canvasInfo.width}x${canvasInfo.height}</p></div>`,
+            title: menuItem.text,
+            html: `<div class="canvas-content"><h2>Canvas-based Menu Content</h2><p>Menu: ${menuItem.text}</p><p>Action: ${menuItem.emit[1]}</p><p>Canvas dimensions: ${canvasDimensions.width}x${canvasDimensions.height}</p></div>`,
             url: page.url(),
             type: 'canvas' as const,
             canvas: mockCanvas
