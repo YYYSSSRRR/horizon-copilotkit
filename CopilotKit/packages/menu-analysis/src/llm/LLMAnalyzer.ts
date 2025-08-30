@@ -401,21 +401,7 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
       const prompt = config.prompt || this.getDefaultImagePrompt();
       
       // 强制使用OpenAI进行图像分析
-      const imageConfig = (this.config as any).imageAnalysis || {};
-      const imageProvider = imageConfig.provider || 'openai';
       let analysis = await this.analyzeImageWithOpenAI(base64Image, mimeType, prompt, config);
-      
-      switch (imageProvider) {
-        case 'openai':
-          analysis = await this.analyzeImageWithOpenAI(base64Image, mimeType, prompt, config);
-          break;
-        case 'deepseek':
-          analysis = await this.analyzeImageWithDeepSeek(base64Image, mimeType, prompt, config);
-          break;
-        default:
-          // 默认使用OpenAI
-          analysis = await this.analyzeImageWithOpenAI(base64Image, mimeType, prompt, config);
-      }
 
       const result: ImageAnalysisResult = {
         filePath: imagePath,
