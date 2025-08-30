@@ -12,8 +12,8 @@ export class PageAnalyzer {
   private llmAnalyzer?: LLMAnalyzer;
 
   constructor(
-    page: Page, 
-    logger: Logger, 
+    page: Page,
+    logger: Logger,
     llmAnalyzer?: LLMAnalyzer,
     private onMenuOpen?: (page: Page, emit: string[]) => Promise<void>,
     private onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>
@@ -42,73 +42,73 @@ export class PageAnalyzer {
   }
 
   async analyzePage(menuItem: MenuItem, menuPath: string[]): Promise<PageAnalysis> {
-  this.logger.info(`Analyzing page: ${menuItem.text} ${menuItem.url ? `(${menuItem.url})` : '(function-based)'}`);
+    this.logger.info(`Analyzing page: ${menuItem.text} ${menuItem.url ? `(${menuItem.url})` : '(function-based)'}`);
 
-  try {
-    // Navigate to the page using URL or function call
-    if (menuItem.emit && this.onMenuOpen) {
-      // Function-based navigation
-      this.logger.info(`Opening page via function with emit: ${menuItem.emit.join(', ')}`);
-      await this.onMenuOpen(this.page, menuItem.emit);
+    try {
+      // Navigate to the page using URL or function call
+      if (menuItem.emit && this.onMenuOpen) {
+        // Function-based navigation
+        this.logger.info(`Opening page via function with emit: ${menuItem.emit.join(', ')}`);
+        await this.onMenuOpen(this.page, menuItem.emit);
 
-      // Wait for the page to load after function call
-      await this.page.waitForTimeout(3000);
-    } else if (menuItem.url) {
-      // Traditional URL-based navigation
-      await this.page.goto(menuItem.url, { waitUntil: 'networkidle' });
-      await this.page.waitForTimeout(2000);
-    } else {
-      throw new Error(`MenuItem ${menuItem.text} has neither URL nor emit actions`);
+        // Wait for the page to load after function call
+        await this.page.waitForTimeout(3000);
+      } else if (menuItem.url) {
+        // Traditional URL-based navigation
+        await this.page.goto(menuItem.url, { waitUntil: 'networkidle' });
+        await this.page.waitForTimeout(2000);
+      } else {
+        throw new Error(`MenuItem ${menuItem.text} has neither URL nor emit actions`);
+      }
+
+      // Extract page content using custom callback or default method
+      let windowContent: WindowContent;
+      if (this.onExtractContent) {
+        // Use custom content extraction provided by user
+        windowContent = await this.onExtractContent(this.page, menuItem);
+      } else {
+        // Fallback to default page content extraction
+        windowContent = await this.extractDefaultContent();
+      }
+
+      // 根据 WindowContent 的 type 决定分析方式
+      let content: PageContent;
+
+      if (windowContent.type === 'canvas') {
+        this.logger.info('Using canvas-based analysis');
+        content = await this.analyzeCanvasContent(windowContent);
+      } else {
+        this.logger.info('Using HTML content extraction');
+        content = await this.extractPageContent(windowContent.html, windowContent.url);
+      }
+
+      return {
+        url: windowContent.url,
+        title: windowContent.title,
+        menuPath,
+        content,
+        timestamp: new Date()
+      };
+
+    } catch (error) {
+      this.logger.error(`Failed to analyze page ${menuItem.text}:`, error);
+      throw error;
     }
-
-    // Extract page content using custom callback or default method
-    let windowContent: WindowContent;
-    if (this.onExtractContent) {
-      // Use custom content extraction provided by user
-      windowContent = await this.onExtractContent(this.page, menuItem);
-    } else {
-      // Fallback to default page content extraction
-      windowContent = await this.extractDefaultContent();
-    }
-
-    // 根据 WindowContent 的 type 决定分析方式
-    let content: PageContent;
-    
-    if (windowContent.type === 'canvas') {
-      this.logger.info('Using canvas-based analysis');
-      content = await this.analyzeCanvasContent(windowContent);
-    } else {
-      this.logger.info('Using HTML content extraction');
-      content = await this.extractPageContent(windowContent.html, windowContent.url);
-    }
-
-    return {
-      url: windowContent.url,
-      title: windowContent.title,
-      menuPath,
-      content,
-      timestamp: new Date()
-    };
-
-  } catch (error) {
-    this.logger.error(`Failed to analyze page ${menuItem.text}:`, error);
-    throw error;
   }
-}
 
   private async extractDefaultContent(): Promise<WindowContent> {
-  // Default content extraction - just get current page content
-  const html = await this.page.content();
-  const title = await this.page.title();
-  const url = this.page.url();
-  
-  return { 
-    html, 
-    title, 
-    url, 
-    type: 'html' 
-  };
-}
+    // Default content extraction - just get current page content
+    const html = await this.page.content();
+    const title = await this.page.title();
+    const url = this.page.url();
+
+    return {
+      html,
+      title,
+      url,
+      type: 'html'
+    };
+  }
 
   private async analyzeCanvasContent(windowContent: WindowContent): Promise<PageContent> {
     this.logger.info('Analyzing canvas content');
@@ -133,11 +133,11 @@ export class PageAnalyzer {
       try {
         // 将 canvas 转换为 dataURL 进行分析
         const dataUrl = windowContent.canvas.toDataURL('image/png');
-        
+
         // 创建临时图片文件用于分析
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const tempImagePath = `./screenshots/temp-canvas-${timestamp}.png`;
-        
+
         // 将 dataURL 转换为文件
         const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
         await fs.writeFile(tempImagePath, base64Data, 'base64');
@@ -148,7 +148,7 @@ export class PageAnalyzer {
         };
 
         const analysisResult = await this.analyzeImageWithLLM(tempImagePath, imageAnalysisConfig);
-        
+
         if (analysisResult) {
           content.text = analysisResult.analysis || 'Canvas content analyzed via AI';
           if (analysisResult.visualElements) {
@@ -177,7 +177,7 @@ export class PageAnalyzer {
 
   private async extractPageContent(html: string, url: string): Promise<PageContent> {
     const $ = cheerio.load(html);
-    
+
     // Remove script and style tags for cleaner text extraction
     $('script, style, nav, footer, .sidebar, .menu').remove();
 
@@ -198,14 +198,14 @@ export class PageAnalyzer {
     // Extract main content areas
     const contentSelectors = [
       'main', '.main', '#main',
-      '.content', '#content', 
+      '.content', '#content',
       '.page-content', '.main-content',
       'article', '.article',
       '.container', '.wrapper'
     ];
 
     let mainText = '';
-    
+
     for (const selector of contentSelectors) {
       const element = $(selector).first();
       if (element.length > 0) {
@@ -233,7 +233,7 @@ export class PageAnalyzer {
     $('form').each((_, formElement) => {
       const $form = $(formElement);
       const fields = this.extractFormFields($, $form);
-      
+
       if (fields.length > 0) {
         forms.push({
           id: $form.attr('id'),
@@ -254,7 +254,7 @@ export class PageAnalyzer {
     $form.find('input, select, textarea').each((_, fieldElement) => {
       const $field = $(fieldElement);
       const type = $field.attr('type') || $field.prop('tagName')?.toLowerCase() || 'text';
-      
+
       // Skip hidden and submit buttons for analysis
       if (type === 'hidden' || type === 'submit') return;
 
@@ -322,7 +322,7 @@ export class PageAnalyzer {
     if (combined.includes('delete') || combined.includes('remove')) return 'delete';
     if (combined.includes('upload') || combined.includes('file')) return 'upload';
     if (combined.includes('payment') || combined.includes('billing')) return 'payment';
-    
+
     return 'data-entry';
   }
 
@@ -333,7 +333,7 @@ export class PageAnalyzer {
       const $table = $(tableElement);
       const headers = this.extractTableHeaders($, $table);
       const rowCount = this.countTableRows($, $table);
-      
+
       if (headers.length > 0 || rowCount > 0) {
         tables.push({
           id: $table.attr('id'),
@@ -350,7 +350,7 @@ export class PageAnalyzer {
 
   private extractTableHeaders($: cheerio.CheerioAPI, $table: cheerio.Cheerio): string[] {
     const headers: string[] = [];
-    
+
     $table.find('th, thead td, .table-header').each((_, headerElement) => {
       const text = $(headerElement).text().trim();
       if (text) headers.push(text);
@@ -380,7 +380,7 @@ export class PageAnalyzer {
     if (combined.includes('permission') || combined.includes('role')) return 'access-control';
     if (combined.includes('config') || combined.includes('setting')) return 'configuration';
     if (combined.includes('data') || combined.includes('record')) return 'data-management';
-    
+
     return 'data-display';
   }
 
@@ -390,7 +390,7 @@ export class PageAnalyzer {
     $('button, input[type="submit"], input[type="button"], .btn, [role="button"]').each((_, buttonElement) => {
       const $button = $(buttonElement);
       const text = $button.text().trim() || $button.attr('value') || $button.attr('title') || '';
-      
+
       if (text) {
         buttons.push({
           text,
@@ -406,7 +406,7 @@ export class PageAnalyzer {
 
   private inferButtonPurpose(text: string): string {
     const lowerText = text.toLowerCase();
-    
+
     if (lowerText.includes('save') || lowerText.includes('submit')) return 'save';
     if (lowerText.includes('edit') || lowerText.includes('modify')) return 'edit';
     if (lowerText.includes('delete') || lowerText.includes('remove')) return 'delete';
@@ -419,7 +419,7 @@ export class PageAnalyzer {
     if (lowerText.includes('cancel') || lowerText.includes('close')) return 'cancel';
     if (lowerText.includes('confirm') || lowerText.includes('ok')) return 'confirm';
     if (lowerText.includes('reset') || lowerText.includes('clear')) return 'reset';
-    
+
     return 'action';
   }
 
@@ -431,7 +431,7 @@ export class PageAnalyzer {
       const $link = $(linkElement);
       const href = $link.attr('href');
       const text = $link.text().trim();
-      
+
       if (href && text) {
         try {
           const url = new URL(href, baseUrl);
@@ -451,7 +451,7 @@ export class PageAnalyzer {
 
   private extractMetadata($: cheerio.CheerioAPI): PageMetadata {
     const breadcrumbs: string[] = [];
-    
+
     // Extract breadcrumbs
     $('.breadcrumb, .breadcrumbs, [aria-label="breadcrumb"]').find('a, span').each((_, element) => {
       const text = $(element).text().trim();
@@ -478,7 +478,7 @@ export class PageAnalyzer {
     if (combined.includes('report')) return 'report';
     if (combined.includes('setting') || combined.includes('config')) return 'settings';
     if (combined.includes('admin')) return 'admin';
-    
+
     return 'content';
   }
 }

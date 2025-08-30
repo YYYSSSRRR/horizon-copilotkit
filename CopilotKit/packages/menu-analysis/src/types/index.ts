@@ -157,6 +157,23 @@ export interface LLMConfig {
   temperature?: number;
   maxTokens?: number;
   systemPrompt?: string;
+  // 分离的配置选项
+  menuAnalysis?: {
+    provider?: 'openai' | 'anthropic' | 'deepseek' | 'custom';
+    model?: string;
+    apiKey?: string;
+    baseUrl?: string;
+    temperature?: number;
+    maxTokens?: number;
+  };
+  imageAnalysis?: {
+    provider?: 'openai' | 'anthropic' | 'deepseek' | 'custom';
+    model?: string;
+    apiKey?: string;
+    baseUrl?: string;
+    temperature?: number;
+    maxTokens?: number;
+  };
 }
 
 export interface CrawlerConfig {
