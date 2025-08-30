@@ -176,8 +176,9 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
           await fs.ensureDir(screenshotDir);
           
           // 等待canvas元素出现
-          await page.waitForSelector('.internal-frames-wrapper canvas', { timeout: 5000 });
-          
+          // await page.waitForSelector('.internal-frames-wrapper canvas', { timeout: 5000 });
+          await page.waitForTimeout(5000);
+
           // 获取canvas信息（尺寸）
           // const canvasDimensions = await page.evaluate(() => {
           //   const canvases = document.querySelectorAll('.internal-frames-wrapper canvas');
@@ -205,7 +206,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
           // 返回符合WindowContent接口的内容
           windowContent = {
             title: menuItem.text,
-            html: `<div class="canvas-content"><h2>Canvas-based Menu Content</h2><p>Menu: ${menuItem.text}</p><p>Action: ${menuItem.emit[1]}</p><p>Canvas dimensions: ${canvasDimensions.width}x${canvasDimensions.height}</p></div>`,
+            html: `<div class="canvas-content"><h2>Canvas-based Menu Content</h2><p>Menu: ${menuItem.text}</p><p>Action: ${menuItem.emit[1]}</p></div>`,
             url: page.url(),
             type: 'canvas' as const,
             canvas: mockCanvas
