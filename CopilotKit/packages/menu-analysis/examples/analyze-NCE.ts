@@ -154,7 +154,8 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
       let useScreenshot = false;
       if (menuItem.emit && menuItem.emit.length > 1) {
         try {
-          const secondParam = JSON.parse(menuItem.emit[1]);
+          const correctedJson = menuItem.emit[1].replace(/'/g, '"');
+          const secondParam = JSON.parse(correctedJson);
           if (secondParam && typeof secondParam === 'object' && 'Action' in secondParam) {
             useScreenshot = true;
             console.log(`   📸 检测到Action属性，将使用截图方式: ${secondParam.Action}`);
