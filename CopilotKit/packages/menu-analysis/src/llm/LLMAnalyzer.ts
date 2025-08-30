@@ -24,10 +24,12 @@ export interface ImageAnalysisResult {
 }
 
 export class LLMAnalyzer {
-  private client: OpenAI;
+  private client: OpenAI; // 默认客户端
+  private menuAnalysisClient: OpenAI; // DeepSeek客户端用于菜单分析
+  private imageAnalysisClient: OpenAI; // OpenAI客户端用于图像分析
   private config: LLMConfig;
   private logger: Logger;
-  private proxyAgent?: HttpsProxyAgent;
+  private proxyAgent?: HttpsProxyAgent<string>;
 
   constructor(config: LLMConfig, logger: Logger) {
     this.config = config;
@@ -36,28 +38,65 @@ export class LLMAnalyzer {
     // 华为企业代理配置
     this.setupProxy();
 
-    // DeepSeek API configuration
-    const baseURL = config.baseUrl ||
+    // 创建默认客户端 (兼容性)
+    const defaultBaseURL = config.baseUrl ||
       (config.provider === 'deepseek' ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
-
-    // Create OpenAI client with proxy support
-    const clientConfig: any = {
+    
+    const defaultClientConfig: any = {
       apiKey: config.apiKey,
-      baseURL
+      baseURL: defaultBaseURL
     };
-
-    // Add proxy agent if configured
+    
     if (this.proxyAgent) {
-      clientConfig.httpAgent = this.proxyAgent;
-      clientConfig.httpsAgent = this.proxyAgent;
+      defaultClientConfig.httpAgent = this.proxyAgent;
+      defaultClientConfig.httpsAgent = this.proxyAgent;
     }
+    
+    this.client = new OpenAI(defaultClientConfig);
 
-    this.client = new OpenAI(clientConfig);
+    // 创建菜单分析客户端 (DeepSeek)
+    const menuConfig = (config as any).menuAnalysis || {};
+    const menuProvider = menuConfig.provider || 'deepseek';
+    const menuBaseURL = menuConfig.baseUrl || 
+      (menuProvider === 'deepseek' ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
+    
+    const menuClientConfig: any = {
+      apiKey: menuConfig.apiKey || process.env.DEEPSEEK_API_KEY || config.apiKey,
+      baseURL: menuBaseURL
+    };
+    
+    if (this.proxyAgent) {
+      menuClientConfig.httpAgent = this.proxyAgent;
+      menuClientConfig.httpsAgent = this.proxyAgent;
+    }
+    
+    this.menuAnalysisClient = new OpenAI(menuClientConfig);
 
-    this.logger.info('LLMAnalyzer initialized', {
-      provider: config.provider,
-      model: config.model,
-      baseURL,
+    // 创建图像分析客户端 (OpenAI)
+    const imageConfig = (config as any).imageAnalysis || {};
+    const imageProvider = imageConfig.provider || 'openai';
+    const imageBaseURL = imageConfig.baseUrl || 
+      (imageProvider === 'openai' ? 'https://api.openai.com/v1' : 'https://api.deepseek.com');
+    
+    const imageClientConfig: any = {
+      apiKey: imageConfig.apiKey || process.env.OPENAI_API_KEY || config.apiKey,
+      baseURL: imageBaseURL
+    };
+    
+    if (this.proxyAgent) {
+      imageClientConfig.httpAgent = this.proxyAgent;
+      imageClientConfig.httpsAgent = this.proxyAgent;
+    }
+    
+    this.imageAnalysisClient = new OpenAI(imageClientConfig);
+
+    this.logger.info('LLMAnalyzer initialized with separated clients', {
+      defaultProvider: config.provider,
+      defaultModel: config.model,
+      menuProvider: menuProvider,
+      menuModel: menuConfig.model || 'deepseek-chat',
+      imageProvider: imageProvider,
+      imageModel: imageConfig.model || 'gpt-4o',
       proxyEnabled: !!this.proxyAgent
     });
   }
@@ -131,7 +170,7 @@ export class LLMAnalyzer {
   }
 
   async analyzeMenuFunctionality(request: LLMAnalysisRequest): Promise<MenuFunctionality> {
-    this.logger.info(`Analyzing functionality for menu: ${request.menuItem.text}`);
+    this.logger.info(`Analyzing functionality for menu: ${request.menuItem.text} using DeepSeek`);
 
     const prompt = this.buildAnalysisPrompt(request);
 
@@ -158,11 +197,11 @@ export class LLMAnalyzer {
         requestOptions.response_format = { type: 'json_object' };
       }
 
-      const response = await this.client.chat.completions.create(requestOptions);
+      const response = await this.menuAnalysisClient.chat.completions.create(requestOptions);
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
-        throw new Error('No response content received from LLM');
+        throw new Error('No response content received from DeepSeek');
       }
 
       // For DeepSeek, we need to extract JSON from the response
@@ -178,8 +217,8 @@ export class LLMAnalyzer {
           analysis = JSON.parse(content) as MenuFunctionality;
         }
       } catch (parseError) {
-        this.logger.warn(`Failed to parse LLM response as JSON: ${parseError}`, { content });
-        throw new Error(`Invalid JSON response from LLM: ${parseError}`);
+        this.logger.warn(`Failed to parse DeepSeek response as JSON: ${parseError}`, { content });
+        throw new Error(`Invalid JSON response from DeepSeek: ${parseError}`);
       }
 
       // Ensure required fields and add metadata
@@ -187,11 +226,11 @@ export class LLMAnalyzer {
       analysis.name = request.menuItem.text;
       analysis.emit = request.menuItem.emit || '';
 
-      this.logger.info(`Successfully analyzed menu: ${request.menuItem.text}`);
+      this.logger.info(`Successfully analyzed menu with DeepSeek: ${request.menuItem.text}`);
       return analysis;
 
     } catch (error) {
-      this.logger.error(`Failed to analyze menu ${request.menuItem.text}:`, error);
+      this.logger.error(`Failed to analyze menu ${request.menuItem.text} with DeepSeek:`, error);
 
       // Return fallback analysis
       return this.createFallbackAnalysis(request.menuItem, request.pageContent);
@@ -351,7 +390,7 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
       throw new Error('Image analysis is not enabled');
     }
 
-    this.logger.info(`Analyzing image: ${imagePath}`);
+    this.logger.info(`Analyzing image: ${imagePath} using OpenAI`);
 
     try {
       // 读取图片文件并转换为base64
@@ -361,21 +400,21 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
       
       const prompt = config.prompt || this.getDefaultImagePrompt();
       
-      // 根据provider选择不同的分析方法
-      let analysis = '';
+      // 强制使用OpenAI进行图像分析
+      const imageConfig = (this.config as any).imageAnalysis || {};
+      const imageProvider = imageConfig.provider || 'openai';
+      let analysis = await this.analyzeImageWithOpenAI(base64Image, mimeType, prompt, config);
       
-      switch (config.provider || this.config.provider) {
+      switch (imageProvider) {
         case 'openai':
           analysis = await this.analyzeImageWithOpenAI(base64Image, mimeType, prompt, config);
           break;
         case 'deepseek':
           analysis = await this.analyzeImageWithDeepSeek(base64Image, mimeType, prompt, config);
           break;
-        case 'claude':
-          analysis = await this.analyzeImageWithClaude(base64Image, mimeType, prompt, config);
-          break;
         default:
-          throw new Error(`Unsupported AI provider: ${config.provider || this.config.provider}`);
+          // 默认使用OpenAI
+          analysis = await this.analyzeImageWithOpenAI(base64Image, mimeType, prompt, config);
       }
 
       const result: ImageAnalysisResult = {
@@ -422,7 +461,6 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
 4. **交互元素**：用户可以进行哪些操作？
 5. **视觉层次**：页面的信息重要性和视觉引导
 6. **数据内容**：如果有图表或数据展示，请描述其内容
-7. **可用性问题**：是否发现任何界面设计或用户体验问题
 
 请用中文回答，并提供具体的观察和分析。
     `.trim();
@@ -435,7 +473,7 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
     config: ImageAnalysisConfig
   ): Promise<string> {
     try {
-      const response = await this.client.chat.completions.create({
+      const response = await this.imageAnalysisClient.chat.completions.create({
         model: config.model || 'gpt-4o',
         messages: [
           {
@@ -503,25 +541,6 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
       this.logger.error('DeepSeek image analysis failed:', error);
       throw error;
     }
-  }
-
-  private async analyzeImageWithClaude(
-    base64Image: string, 
-    mimeType: string, 
-    prompt: string, 
-    config: ImageAnalysisConfig
-  ): Promise<string> {
-    // Claude vision API implementation
-    // 注意：这需要使用 @anthropic-ai/sdk 而不是 openai
-    this.logger.warn('Claude image analysis not implemented yet. Using placeholder.');
-    return `Claude图像分析结果占位符
-    
-图片路径分析：基于图片内容的分析
-- 这是一个占位符实现
-- 需要集成 @anthropic-ai/sdk
-- 将在实际部署时完成集成
-
-请实现真实的Claude Vision API调用。`;
   }
 
   private extractVisualElementsFromAnalysis(analysis: string): string[] {
