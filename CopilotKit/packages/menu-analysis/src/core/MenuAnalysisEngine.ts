@@ -198,7 +198,7 @@ export class MenuAnalysisEngine {
       await this.ensureInitializedAndLoggedIn();
 
       const page = await this.menuCrawler.getPage();
-      const pageAnalyzer = new PageAnalyzer(page, this.logger, this.llmAnalyzer, this.config.onMenuOpen, (this.config as any).onExtractContent);
+      const pageAnalyzer = new PageAnalyzer(page, this.logger, this.llmAnalyzer, this.config.onMenuOpen, this.config.onExtractContent, this.config.onMenuClose);
 
       let menuItem: MenuItem;
       let actualMenuName: string;
