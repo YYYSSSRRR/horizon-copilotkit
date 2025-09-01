@@ -49,17 +49,13 @@ export class NCEMenuTransformer {
         level,
         parentId,
         hasSubmenu: !!(rawItem.subs || rawItem.actions),
-        emit: rawItem.emit ? [...rawItem.emit] : []
+        emit: rawItem.emit ? [...rawItem.emit] : [],
+        href: rawItem.href
       };
       
       // 添加 preferNewWindow 字段支持
       if (typeof rawItem.preferNewWindow === 'boolean') {
         menuItem.preferNewWindow = rawItem.preferNewWindow;
-      }
-      
-      // 如果有href但没有emit，自动生成emit
-      if (rawItem.href && (!menuItem.emit || menuItem.emit.length === 0)) {
-        menuItem.emit = ['jumpSPAPage', `{'Href': '${rawItem.href}'}`];
       }
       
       menuItems.push(menuItem);

@@ -45,22 +45,27 @@ async function handleMenuOpen(page: Page, emit: string[], menuItem: MenuItem): P
 
   try {
     // 先初始化，再执行跳转，预期会有导航发生
-    await page.evaluate(({ emit }) => {
+    await page.evaluate(({ emit, href }) => {
       console.log('into page.evaluate...');
-      // 初始化 PIU
-      if (!(window as any).isInitPIU) {
-        (window as any).Prel.define({ 'abc@1.0.0': { config: { base: '/invgrpwebsite' } } });
-        (window as any).Prel.start('abc', '1.0.0', [], (piu, st) => {
-          (window as any).abcPiu = piu;
+      if (emit && emit.length) {
+        // 初始化 PIU
+        if (!(window as any).isInitPIU) {
+          (window as any).Prel.define({ 'abc@1.0.0': { config: { base: '/invgrpwebsite' } } });
+          (window as any).Prel.start('abc', '1.0.0', [], (piu, st) => {
+            (window as any).abcPiu = piu;
+            // 执行跳转（这会导致页面跳转和上下文销毁）
+            (window as any).abcPiu.emit('userAction', ...emit);
+          });
+          (window as any).isInitPIU = true;
+        } else {
           // 执行跳转（这会导致页面跳转和上下文销毁）
           (window as any).abcPiu.emit('userAction', ...emit);
-        });
-        (window as any).isInitPIU = true;
-      } else {
-        // 执行跳转（这会导致页面跳转和上下文销毁）
-        (window as any).abcPiu.emit('userAction', ...emit);
+        }
+      } else if (href !== ''){
+        // 修改页面url为href
+        (window as any).location.href = href;
       }
-    }, { emit });
+    }, { emit, href: menuItem.href });
 
   } catch (e) {
     // 预期的错误 - 执行上下文被销毁意味着跳转成功
@@ -99,7 +104,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
 
     console.log(`📊 加载完成: ${allMenuItems.length} 个菜单项，${menuItemsWithEmit.length} 个有emit动作`);
 
-    const selectedMenus = menuItemsWithEmit;
+    const selectedMenus = allMenuItems;
 
     // 创建分析配置
     const config = createDefaultConfig();
