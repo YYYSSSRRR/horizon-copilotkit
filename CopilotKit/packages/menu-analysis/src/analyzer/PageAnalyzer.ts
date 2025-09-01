@@ -16,7 +16,8 @@ export class PageAnalyzer {
     logger: Logger,
     llmAnalyzer?: LLMAnalyzer,
     private onMenuOpen?: (page: Page, emit: string[]) => Promise<void>,
-    private onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>
+    private onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>,
+    private onMenuClose?: (page: Page) => Promise<void>,
   ) {
     this.page = page;
     this.logger = logger;
@@ -76,6 +77,10 @@ export class PageAnalyzer {
       } else {
         this.logger.info('Using HTML content extraction');
         content = await this.extractPageContent(windowContent.html, windowContent.url);
+      }
+
+      if (this.onMenuClose) {
+        await this.onMenuClose(this.page);
       }
 
       return {

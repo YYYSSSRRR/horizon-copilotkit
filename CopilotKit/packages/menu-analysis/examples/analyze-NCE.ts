@@ -152,6 +152,35 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
       console.log(`  ⚠️ 未找到当前分析的菜单项`);
     };
 
+    // 配置菜单关闭回调
+    config.onMenuClose = async (page: Page): Promise<void> => {
+      try {
+        console.log('🔍 查找最后一个关闭按钮...');
+        
+        // 查找所有匹配的关闭按钮
+        const closeButtons = await page.locator('#homepage-wrapper .ev_tab_header_normal div span.ev_tab_closeSpan').all();
+        
+        if (closeButtons.length > 0) {
+          // 获取最后一个关闭按钮
+          const lastCloseButton = closeButtons[closeButtons.length - 1];
+          
+          console.log(`📍 找到 ${closeButtons.length} 个关闭按钮，点击最后一个...`);
+          
+          // 点击最后一个关闭按钮
+          await lastCloseButton.click();
+          
+          console.log('✅ 成功点击关闭按钮');
+          
+          // 等待一小段时间让界面更新
+          await page.waitForTimeout(1000);
+        } else {
+          console.log('⚠️ 未找到任何关闭按钮');
+        }
+      } catch (error) {
+        console.error('❌ 点击关闭按钮失败:', error.message);
+      }
+    };
+
     // 配置自定义内容提取回调
     config.onExtractContent = async (page: Page, menuItem: any) => {
       let windowContent: any = { html: '', title: '', url: '' };
