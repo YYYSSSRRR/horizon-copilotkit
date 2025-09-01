@@ -17,6 +17,3 @@ export { createDefaultConfig, createMenuConfig, validateConfig, loadConfigFromEn
 
 // Menu transformers
 export { NCEMenuTransformer, type MenuStatistics } from './menu-transformers';
-
-// CLI
-export { runCLI } from './cli/CLI';

@@ -35,7 +35,6 @@ function filterWithEmit(menuItems: MenuItem[]): MenuItem[] {
   return NCEMenuTransformer.filterWithEmit(menuItems);
 }
 
-
 /**
  * 菜单打开回调函数 - 这是核心的函数式导航实现
  */
@@ -86,7 +85,6 @@ async function handleMenuOpen(page: Page, emit: string[], menuItem: MenuItem): P
   }
 }
 
-
 /**
  * 使用 MenuAnalysisEngine 完整分析所有菜单
  */
@@ -105,29 +103,13 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
 
     // 创建分析配置
     const config = createDefaultConfig();
-    config.llm = {
-      ...config.llm,
-      provider: 'deepseek',
-      apiKey: process.env.DEEPSEEK_API_KEY || 'your-deepseek-api-key-here',
-      model: 'deepseek-chat',
-      baseUrl: 'https://api.deepseek.com',
-      temperature: 0.3
-    };
-
+    
     // 配置爬虫参数（MenuCrawler需要MenuConfig类型的配置）
     config.crawler = {
-      // CrawlerConfig 必需字段
-      concurrency: 1,
-      delay: 2000,
-      retries: 2,
-      timeout: 30000,
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      viewport: { width: 1920, height: 1080 },
-
       // MenuConfig 额外字段（通过 as any 传递）
-      baseUrl: process.env.BASE_URL || 'http://localhost:3000/dashboard',
+      baseUrl: process.env.BASE_URL || '',
       loginConfig: {
-        loginUrl: process.env.LOGIN_URL || 'http://localhost:3000/login',
+        loginUrl: process.env.LOGIN_URL || '',
         usernameSelector: process.env.USERNAME_SELECTOR || '#username',
         passwordSelector: process.env.PASSWORD_SELECTOR || '#password',
         submitSelector: process.env.LOGIN_BUTTON_SELECTOR || 'button[type="submit"]',
@@ -186,18 +168,13 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
           // 将截图转换为dataURL格式
           const dataURL = `data:image/png;base64,${screenshotBuffer.toString('base64')}`;
           
-          // 创建一个模拟的canvas对象，包含dataURL方法
-          const mockCanvas = {
-            toDataURL: () => dataURL
-          } as HTMLCanvasElement;
-          
           // 返回符合WindowContent接口的内容
           windowContent = {
             title: menuItem.text,
             html: `<div class="canvas-content"><h2>Canvas-based Menu Content</h2><p>Menu: ${menuItem.text}</p><p>Action: ${menuItem.emit[1]}</p></div>`,
             url: page.url(),
             type: 'screenshot' as const,
-            canvas: mockCanvas
+            dataURL: dataURL
           };
           
         } catch (e) {
@@ -205,9 +182,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
           // 回退到原有逻辑
           useScreenshot = false;
         }
-      }
-
-      if (!useScreenshot) {
+      } else {
         // 原有的内容提取逻辑
         if (menuItem.preferNewWindow) {
           await page.waitForSelector('iframe.spa_iframe');

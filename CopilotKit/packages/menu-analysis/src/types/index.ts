@@ -111,7 +111,7 @@ export interface WindowContent {
   title: string;
   url: string;
   type: 'html' | 'screenshot';
-  canvas?: HTMLCanvasElement;
+  dataURL?: string; // screenshot的时候需要有
 }
 
 export interface LLMAnalysisRequest {
@@ -158,7 +158,7 @@ export interface LLMConfig {
   maxTokens?: number;
   systemPrompt?: string;
   // 分离的配置选项
-  menuAnalysis?: {
+  htmlAnalysis?: {
     provider?: 'openai' | 'anthropic' | 'deepseek' | 'custom';
     model?: string;
     apiKey?: string;

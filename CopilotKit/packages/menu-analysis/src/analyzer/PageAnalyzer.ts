@@ -125,17 +125,14 @@ export class PageAnalyzer {
     };
 
     // 如果有 LLM 分析器且提供了 canvas 对象，进行 AI 分析
-    if (this.llmAnalyzer && windowContent.canvas) {
+    if (this.llmAnalyzer && windowContent.dataURL) {
       try {
-        // 将 canvas 转换为 dataURL 进行分析
-        const dataUrl = windowContent.canvas.toDataURL('image/png');
-
         // 创建临时图片文件用于分析
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const tempImagePath = `./screenshots/temp-${windowContent.title}-${timestamp}.png`;
 
         // 将 dataURL 转换为文件
-        const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+        const base64Data = windowContent.dataURL.replace(/^data:image\/png;base64,/, '');
         await fs.writeFile(tempImagePath, base64Data, 'base64');
 
         const imageAnalysisConfig: ImageAnalysisConfig = {};
