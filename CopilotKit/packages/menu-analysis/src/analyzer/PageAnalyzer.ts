@@ -15,7 +15,7 @@ export class PageAnalyzer {
     page: Page,
     logger: Logger,
     llmAnalyzer?: LLMAnalyzer,
-    private onMenuOpen?: (page: Page, emit: string[]) => Promise<void>,
+    private onMenuOpen?: (page: Page, emit: string[], menuItem: MenuItem) => Promise<void>,
     private onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>,
     private onMenuClose?: (page: Page) => Promise<void>,
   ) {
@@ -46,7 +46,7 @@ export class PageAnalyzer {
       if (menuItem.emit && this.onMenuOpen) {
         // Function-based navigation
         this.logger.info(`Opening page via function with emit: ${menuItem.emit.join(', ')}`);
-        await this.onMenuOpen(this.page, menuItem.emit);
+        await this.onMenuOpen(this.page, menuItem.emit, menuItem);
 
         // Wait for the page to load after function call
         await this.page.waitForTimeout(3000);

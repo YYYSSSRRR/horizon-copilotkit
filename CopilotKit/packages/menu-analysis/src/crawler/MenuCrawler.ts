@@ -86,6 +86,27 @@ export class MenuCrawler {
       await this.page.click(loginConfig.submitSelector);
       this.logger.info('Login form submitted');
 
+      // 等待导航完成（如果有的话）
+      try {
+        // 方法1：等待URL变化（如果登录后会跳转）
+        await this.page.waitForURL((url) => url.toString() !== beforeLoginUrl, { 
+          timeout: 10000, 
+          waitUntil: 'domcontentloaded' 
+        });
+        this.logger.info(`Navigation after login detected: ${this.page.url()}`);
+        
+        // 等待新页面完全加载
+        await this.page.waitForLoadState('networkidle', { timeout: 15000 });
+        this.logger.info('Post-login page fully loaded');
+        
+      } catch (navigationError) {
+        // 没有导航也是正常的，可能登录后停留在同一页面
+        this.logger.info('No navigation after login (staying on same page)');
+        
+        // 等待页面稳定（可能有AJAX请求）
+        await this.page.waitForLoadState('networkidle', { timeout: 10000 });
+      }
+
       // 执行登录后处理逻辑（如果配置了 loginPost）
       if (this.config.loginPost && typeof this.config.loginPost === 'function') {
         this.logger.info('Executing post-login processing...');
