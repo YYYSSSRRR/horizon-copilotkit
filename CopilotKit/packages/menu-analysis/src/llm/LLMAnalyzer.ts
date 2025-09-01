@@ -6,8 +6,7 @@ import * as fs from 'fs/promises';
 
 // 图片分析配置
 export interface ImageAnalysisConfig {
-  enabled: boolean;
-  provider?: 'openai' | 'deepseek' | 'claude';
+  provider?: 'openai';
   model?: string;
   maxTokens?: number;
   prompt?: string;
@@ -19,7 +18,6 @@ export interface ImageAnalysisResult {
   filePath: string;
   analysis: string;
   visualElements?: string[];
-  suggestions?: string[];
   confidence?: number;
 }
 
@@ -136,36 +134,10 @@ export class LLMAnalyzer {
         timeout: parseInt(process.env.PROXY_TIMEOUT || '60000'),
         keepAlive: true
       });
-
-      this.logger.info('Proxy configuration applied', {
-        proxy: this.maskProxyUrl(HUAWEI_PROXY),
-        noProxy,
-        sslVerification: rejectUnauthorized,
-        timeout: parseInt(process.env.PROXY_TIMEOUT || '60000')
-      });
-
     } catch (error) {
       this.logger.warn('Failed to setup proxy configuration:', error);
       // Continue without proxy if setup fails
       this.proxyAgent = undefined;
-    }
-  }
-
-  /**
-   * 遮掩代理URL中的敏感信息
-   */
-  private maskProxyUrl(proxyUrl: string): string {
-    try {
-      const url = new URL(proxyUrl);
-      if (url.username) {
-        // 只显示用户名的前3个字符，密码完全遮掩
-        const maskedUsername = url.username.substring(0, 3) + '*'.repeat(Math.max(0, url.username.length - 3));
-        const maskedPassword = url.password ? '*'.repeat(url.password.length) : '';
-        return `${url.protocol}//${maskedUsername}:${maskedPassword}@${url.host}`;
-      }
-      return proxyUrl;
-    } catch {
-      return proxyUrl.replace(/\/\/[^@]+@/, '//***:***@');
     }
   }
 
@@ -386,10 +358,6 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
   }
 
   async analyzeImage(imagePath: string, config: ImageAnalysisConfig): Promise<ImageAnalysisResult> {
-    if (!config.enabled) {
-      throw new Error('Image analysis is not enabled');
-    }
-
     this.logger.info(`Analyzing image: ${imagePath} using OpenAI`);
 
     try {
@@ -407,7 +375,6 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
         filePath: imagePath,
         analysis,
         visualElements: this.extractVisualElementsFromAnalysis(analysis),
-        suggestions: this.extractSuggestionsFromAnalysis(analysis),
         confidence: this.calculateConfidence(analysis)
       };
 
@@ -490,45 +457,6 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
     }
   }
 
-  private async analyzeImageWithDeepSeek(
-    base64Image: string, 
-    mimeType: string, 
-    prompt: string, 
-    config: ImageAnalysisConfig
-  ): Promise<string> {
-    // DeepSeek vision API implementation
-    // 注意：需要根据DeepSeek的实际API格式调整
-    try {
-      const response = await this.client.chat.completions.create({
-        model: config.model || 'deepseek-vl-67b-chat',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: prompt
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${mimeType};base64,${base64Image}`
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: config.maxTokens || 2000,
-        temperature: config.temperature || 0.3
-      });
-
-      return response.choices[0]?.message?.content || 'No analysis generated';
-    } catch (error) {
-      this.logger.error('DeepSeek image analysis failed:', error);
-      throw error;
-    }
-  }
-
   private extractVisualElementsFromAnalysis(analysis: string): string[] {
     const elements: string[] = [];
     const text = analysis.toLowerCase();
@@ -561,29 +489,6 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
     return [...new Set(elements)]; // 去重
   }
 
-  private extractSuggestionsFromAnalysis(analysis: string): string[] {
-    const suggestions: string[] = [];
-    const lines = analysis.split('\n');
-    
-    lines.forEach(line => {
-      const trimmedLine = line.trim();
-      // 寻找包含建议性词汇的行
-      if (trimmedLine && (
-        trimmedLine.includes('建议') || 
-        trimmedLine.includes('推荐') || 
-        trimmedLine.includes('可以') ||
-        trimmedLine.includes('应该') ||
-        trimmedLine.includes('优化') ||
-        trimmedLine.includes('改进') ||
-        trimmedLine.includes('问题')
-      )) {
-        suggestions.push(trimmedLine);
-      }
-    });
-    
-    return suggestions.slice(0, 5); // 限制建议数量
-  }
-
   private calculateConfidence(analysis: string): number {
     // 基于分析内容的长度和详细程度计算置信度
     let confidence = 0.5; // 基础置信度
@@ -609,44 +514,4 @@ ${pageContent.text?.substring(0, 500) || 'N/A'}
     return Math.min(confidence, 1.0);
   }
 
-  async batchAnalyzeImages(imagePaths: string[], config: ImageAnalysisConfig): Promise<ImageAnalysisResult[]> {
-    if (!config.enabled || imagePaths.length === 0) {
-      return [];
-    }
-
-    const results: ImageAnalysisResult[] = [];
-    const batchSize = 3; // 图片分析更耗费资源，使用更小的批次
-
-    this.logger.info(`Starting batch image analysis of ${imagePaths.length} images...`);
-
-    for (let i = 0; i < imagePaths.length; i += batchSize) {
-      const batch = imagePaths.slice(i, i + batchSize);
-
-      this.logger.info(`Processing image batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(imagePaths.length / batchSize)}`);
-
-      const batchPromises = batch.map(imagePath =>
-        this.analyzeImage(imagePath, config).catch(error => {
-          this.logger.error(`Failed to analyze image ${imagePath}:`, error);
-          return {
-            filePath: imagePath,
-            analysis: `分析失败: ${error.message}`,
-            visualElements: [],
-            suggestions: [],
-            confidence: 0
-          } as ImageAnalysisResult;
-        })
-      );
-
-      const batchResults = await Promise.all(batchPromises);
-      results.push(...batchResults);
-
-      // 图片分析间隔时间更长
-      if (i + batchSize < imagePaths.length) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
-
-    this.logger.info(`Completed batch image analysis. Processed ${results.length} images.`);
-    return results;
-  }
 }

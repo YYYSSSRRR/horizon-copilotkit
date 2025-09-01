@@ -110,7 +110,7 @@ export interface WindowContent {
   html: string;
   title: string;
   url: string;
-  type: 'html' | 'canvas';
+  type: 'html' | 'screenshot';
   canvas?: HTMLCanvasElement;
 }
 

@@ -178,16 +178,6 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
           // 等待canvas元素出现
           // await page.waitForSelector('.internal-frames-wrapper canvas', { timeout: 5000 });
           await page.waitForTimeout(5000);
-
-          // 获取canvas信息（尺寸）
-          // const canvasDimensions = await page.evaluate(() => {
-          //   const canvases = document.querySelectorAll('.internal-frames-wrapper canvas');
-          //   const lastCanvas = canvases[canvases.length - 1] as HTMLCanvasElement;
-          //   return {
-          //     width: lastCanvas.width,
-          //     height: lastCanvas.height
-          //   };
-          // });
           
           // 使用Playwright截图功能获取canvas内容
           const canvasElement = page.locator('.internal-frames-wrapper').last();
@@ -198,8 +188,6 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
           
           // 创建一个模拟的canvas对象，包含dataURL方法
           const mockCanvas = {
-            // width: canvasDimensions.width,
-            // height: canvasDimensions.height,
             toDataURL: () => dataURL
           } as HTMLCanvasElement;
           
@@ -208,7 +196,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
             title: menuItem.text,
             html: `<div class="canvas-content"><h2>Canvas-based Menu Content</h2><p>Menu: ${menuItem.text}</p><p>Action: ${menuItem.emit[1]}</p></div>`,
             url: page.url(),
-            type: 'canvas' as const,
+            type: 'screenshot' as const,
             canvas: mockCanvas
           };
           

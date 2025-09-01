@@ -29,10 +29,6 @@ export class PageAnalyzer {
       return null;
     }
 
-    if (!config.enabled) {
-      return null;
-    }
-
     try {
       return await this.llmAnalyzer.analyzeImage(imagePath, config);
     } catch (error) {
@@ -74,7 +70,7 @@ export class PageAnalyzer {
       // 根据 WindowContent 的 type 决定分析方式
       let content: PageContent;
 
-      if (windowContent.type === 'canvas') {
+      if (windowContent.type === 'screenshot') {
         this.logger.info('Using canvas-based analysis');
         content = await this.analyzeCanvasContent(windowContent);
       } else {
@@ -142,28 +138,23 @@ export class PageAnalyzer {
         const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
         await fs.writeFile(tempImagePath, base64Data, 'base64');
 
-        const imageAnalysisConfig: ImageAnalysisConfig = {
-          enabled: true,
-        };
-
-        const analysisResult = await this.analyzeImageWithLLM(tempImagePath, imageAnalysisConfig);
+        const imageAnalysisConfig: ImageAnalysisConfig = {};
+        
+        const analysisResult = await this.llmAnalyzer.analyzeImage(tempImagePath, imageAnalysisConfig);
 
         if (analysisResult) {
           content.text = analysisResult.analysis || 'Canvas content analyzed via AI';
           if (analysisResult.visualElements) {
             content.metadata.visualElements = analysisResult.visualElements;
           }
-          if (analysisResult.suggestions) {
-            content.metadata.aiSuggestions = analysisResult.suggestions;
-          }
         }
 
         // 清理临时文件
-        try {
-          await fs.unlink(tempImagePath);
-        } catch (error) {
-          this.logger.warn(`Failed to cleanup temp file: ${tempImagePath}`);
-        }
+        // try {
+        //   await fs.unlink(tempImagePath);
+        // } catch (error) {
+        //   this.logger.warn(`Failed to cleanup temp file: ${tempImagePath}`);
+        // }
 
       } catch (error) {
         this.logger.error('Failed to analyze canvas with LLM:', error);
