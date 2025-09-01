@@ -1,4 +1,4 @@
-import { AnalysisConfig, MenuConfig, LLMConfig, CrawlerConfig, OutputConfig } from '../types';
+import { AnalysisConfig, LLMConfig, CrawlerConfig, OutputConfig } from '../types';
 
 export function createDefaultConfig(): AnalysisConfig {
   return {
@@ -39,8 +39,16 @@ export function createDefaultConfig(): AnalysisConfig {
   };
 }
 
-export function createMenuConfig(baseUrl: string): MenuConfig {
+export function createCrawlerConfig(baseUrl: string): CrawlerConfig {
   return {
+    // 爬虫引擎配置
+    concurrency: 3,
+    delay: 1000,
+    retries: 3,
+    timeout: 30000,
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    viewport: { width: 1920, height: 1080 },
+    // 菜单发现配置
     baseUrl,
     menuSelectors: [
       '[role="navigation"] a',
@@ -57,8 +65,7 @@ export function createMenuConfig(baseUrl: string): MenuConfig {
       'mailto:',
       'tel:'
     ],
-    maxDepth: 3,
-    waitTimeout: 30000
+    maxDepth: 3
   };
 }
 

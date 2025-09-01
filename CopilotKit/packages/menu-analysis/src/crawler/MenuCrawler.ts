@@ -1,14 +1,14 @@
 import { Browser, Page, chromium } from 'playwright';
-import { MenuItem, MenuConfig } from '../types';
+import { MenuItem, CrawlerConfig } from '../types';
 import { Logger } from '../utils/Logger';
 
 export class MenuCrawler {
   private browser: Browser | null = null;
   private page: Page | null = null;
   private logger: Logger;
-  private config: MenuConfig;
+  private config: CrawlerConfig;
 
-  constructor(config: MenuConfig, logger: Logger) {
+  constructor(config: CrawlerConfig, logger: Logger) {
     this.config = config;
     this.logger = logger;
   }
@@ -29,13 +29,13 @@ export class MenuCrawler {
     });
     
     this.page = await this.browser.newPage({
-      viewport: { width: 1920, height: 1080 },
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      viewport: this.config.viewport || { width: 1920, height: 1080 },
+      userAgent: this.config.userAgent || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       javaScriptEnabled: true  // 启用JavaScript - 现代网页必需
     });
 
-    // Set longer timeout
-    this.page.setDefaultTimeout(this.config.waitTimeout || 30000);
+    // Set timeout from CrawlerConfig
+    this.page.setDefaultTimeout(this.config.timeout || 30000);
     
     // 添加一些有用的配置来提高稳定性
     await this.page.setExtraHTTPHeaders({
@@ -85,6 +85,18 @@ export class MenuCrawler {
       // 提交登录表单
       await this.page.click(loginConfig.submitSelector);
       this.logger.info('Login form submitted');
+
+      // 执行登录后处理逻辑（如果配置了 loginPost）
+      if (this.config.loginPost && typeof this.config.loginPost === 'function') {
+        this.logger.info('Executing post-login processing...');
+        try {
+          await this.config.loginPost(this.page);
+          this.logger.info('Post-login processing completed successfully');
+        } catch (loginPostError) {
+          this.logger.warn(`Post-login processing failed: ${loginPostError instanceof Error ? loginPostError.message : String(loginPostError)}`);
+          // Continue with login process even if loginPost fails
+        }
+      }
 
       // 等待导航完成（如果有的话）
       try {

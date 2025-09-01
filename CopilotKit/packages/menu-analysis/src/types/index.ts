@@ -14,16 +14,6 @@ export interface MenuItem {
 }
 
 
-export interface MenuConfig {
-  baseUrl?: string;
-  loginConfig?: LoginConfig;
-  menuSelectors?: string[];
-  excludePatterns?: string[];
-  maxDepth?: number;
-  waitTimeout?: number;
-  // New fields for function-based menu handling
-  // functionBased?: FunctionBasedMenuConfig;  // TODO: Define this interface if needed
-}
 
 export interface LoginConfig {
   loginUrl: string;
@@ -150,12 +140,6 @@ export interface AnalysisConfig {
 }
 
 export interface LLMConfig {
-  provider: 'openai' | 'anthropic' | 'deepseek' | 'custom';
-  model: string;
-  apiKey: string;
-  baseUrl?: string;
-  temperature?: number;
-  maxTokens?: number;
   systemPrompt?: string;
   // 分离的配置选项
   htmlAnalysis?: {
@@ -177,12 +161,21 @@ export interface LLMConfig {
 }
 
 export interface CrawlerConfig {
+  // 爬虫引擎配置
   concurrency: number;
   delay: number;
   retries: number;
   timeout: number;
   userAgent?: string;
   viewport?: { width: number; height: number };
+  // 菜单发现配置（从 MenuConfig 合并过来）
+  baseUrl?: string;
+  loginConfig?: LoginConfig;
+  menuSelectors?: string[];
+  excludePatterns?: string[];
+  maxDepth?: number;
+  // 登录后处理回调
+  loginPost?: (page: Page) => Promise<void>;
 }
 
 export interface OutputConfig {
@@ -191,3 +184,4 @@ export interface OutputConfig {
   includeScreenshots?: boolean;
   includeRawContent?: boolean;
 }
+

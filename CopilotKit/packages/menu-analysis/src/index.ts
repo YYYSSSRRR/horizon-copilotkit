@@ -13,7 +13,7 @@ export { ProgressTracker } from './utils/ProgressTracker';
 export * from './types';
 
 // Configuration helpers
-export { createDefaultConfig, createMenuConfig, validateConfig, loadConfigFromEnv, mergeConfigs } from './config/ConfigManager';
+export { createDefaultConfig, createCrawlerConfig, validateConfig, loadConfigFromEnv, mergeConfigs } from './config/ConfigManager';
 
 // Menu transformers
 export { NCEMenuTransformer, type MenuStatistics } from './menu-transformers';
