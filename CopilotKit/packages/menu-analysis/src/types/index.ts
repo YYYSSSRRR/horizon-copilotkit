@@ -137,6 +137,7 @@ export interface AnalysisConfig {
   onMenuOpen?: (page: Page, emit: string[]) => Promise<void>;
   // Optional callback for custom content extraction
   onExtractContent?: (page: Page, menuItem: MenuItem) => Promise<WindowContent>;
+  onMenuClose?: (page: Page) => Promise<void>;
 }
 
 export interface LLMConfig {

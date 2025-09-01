@@ -73,7 +73,7 @@ export class MenuAnalysisEngine {
     const pageAnalyses = new Map<string, PageAnalysis>();
     const page = await this.menuCrawler.getPage();
     // Pass the onMenuOpen callback to PageAnalyzer
-    const pageAnalyzer = new PageAnalyzer(page, this.logger, this.llmAnalyzer, this.config.onMenuOpen, (this.config as any).onExtractContent);
+    const pageAnalyzer = new PageAnalyzer(page, this.logger, this.llmAnalyzer, this.config.onMenuOpen, this.config.onExtractContent, this.config.onMenuClose);
 
     this.progressTracker.start(menuItems.length, 'Analyzing pages');
 
