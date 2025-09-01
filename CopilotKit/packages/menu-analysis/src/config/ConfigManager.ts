@@ -3,17 +3,29 @@ import { AnalysisConfig, MenuConfig, LLMConfig, CrawlerConfig, OutputConfig } fr
 export function createDefaultConfig(): AnalysisConfig {
   return {
     llm: {
-      provider: 'deepseek',
-      model: 'deepseek-chat',
-      apiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || '',
-      baseUrl: 'https://api.deepseek.com',
-      temperature: 0.3,
-      maxTokens: 2000
-    },
+      // HTML分析专用配置 (DeepSeek)
+      htmlAnalysis: {
+        provider: 'deepseek',
+        model: 'deepseek-chat',
+        apiKey: process.env.DEEPSEEK_API_KEY || '',
+        baseUrl: 'https://api.deepseek.com',
+        temperature: 0.3,
+        maxTokens: 2000
+      },
+      // 图像分析专用配置 (OpenAI)
+      imageAnalysis: {
+        provider: 'openai',
+        model: 'gpt-4o',
+        apiKey: process.env.OPENAI_API_KEY || '',
+        baseUrl: 'https://api.openai.com/v1',
+        temperature: 0.3,
+        maxTokens: 2000
+      }
+    } as any,
     crawler: {
-      concurrency: 3,
-      delay: 1000,
-      retries: 3,
+      concurrency: 1,
+      delay: 3000,
+      retries: 2,
       timeout: 30000,
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       viewport: { width: 1920, height: 1080 }
@@ -51,13 +63,31 @@ export function createMenuConfig(baseUrl: string): MenuConfig {
 }
 
 export function validateConfig(config: AnalysisConfig): void {
-  // Validate LLM config
-  if (!config.llm.apiKey) {
-    throw new Error('LLM API key is required');
+  // Validate separated LLM configs
+  const llmConfig = config.llm as any;
+  
+  // Validate HTML analysis config
+  if (llmConfig.htmlAnalysis) {
+    if (!llmConfig.htmlAnalysis.apiKey) {
+      throw new Error('HTML analysis API key is required');
+    }
+    if (!llmConfig.htmlAnalysis.model) {
+      throw new Error('HTML analysis model is required');
+    }
+  } else {
+    throw new Error('HTML analysis configuration is required');
   }
 
-  if (!config.llm.model) {
-    throw new Error('LLM model is required');
+  // Validate image analysis config
+  if (llmConfig.imageAnalysis) {
+    if (!llmConfig.imageAnalysis.apiKey) {
+      throw new Error('Image analysis API key is required');
+    }
+    if (!llmConfig.imageAnalysis.model) {
+      throw new Error('Image analysis model is required');
+    }
+  } else {
+    throw new Error('Image analysis configuration is required');
   }
 
   // Validate crawler config
@@ -82,13 +112,25 @@ export function validateConfig(config: AnalysisConfig): void {
 export function loadConfigFromEnv(): Partial<AnalysisConfig> {
   return {
     llm: {
-      provider: (process.env.LLM_PROVIDER as any) || 'deepseek',
-      model: process.env.LLM_MODEL || 'deepseek-chat',
-      apiKey: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY || process.env.LLM_API_KEY || '',
-      baseUrl: process.env.LLM_BASE_URL || (process.env.LLM_PROVIDER === 'deepseek' ? 'https://api.deepseek.com' : undefined),
-      temperature: process.env.LLM_TEMPERATURE ? parseFloat(process.env.LLM_TEMPERATURE) : 0.3,
-      maxTokens: process.env.LLM_MAX_TOKENS ? parseInt(process.env.LLM_MAX_TOKENS) : 2000
-    },
+      // HTML分析专用配置
+      htmlAnalysis: {
+        provider: (process.env.HTML_ANALYSIS_PROVIDER as any) || 'deepseek',
+        model: process.env.HTML_ANALYSIS_MODEL || 'deepseek-chat',
+        apiKey: process.env.HTML_ANALYSIS_API_KEY || process.env.DEEPSEEK_API_KEY || '',
+        baseUrl: process.env.HTML_ANALYSIS_BASE_URL || 'https://api.deepseek.com',
+        temperature: process.env.HTML_ANALYSIS_TEMPERATURE ? parseFloat(process.env.HTML_ANALYSIS_TEMPERATURE) : 0.3,
+        maxTokens: process.env.HTML_ANALYSIS_MAX_TOKENS ? parseInt(process.env.HTML_ANALYSIS_MAX_TOKENS) : 2000
+      },
+      // 图像分析专用配置
+      imageAnalysis: {
+        provider: (process.env.IMAGE_ANALYSIS_PROVIDER as any) || 'openai',
+        model: process.env.IMAGE_ANALYSIS_MODEL || 'gpt-4o',
+        apiKey: process.env.IMAGE_ANALYSIS_API_KEY || process.env.OPENAI_API_KEY || '',
+        baseUrl: process.env.IMAGE_ANALYSIS_BASE_URL || 'https://api.openai.com/v1',
+        temperature: process.env.IMAGE_ANALYSIS_TEMPERATURE ? parseFloat(process.env.IMAGE_ANALYSIS_TEMPERATURE) : 0.3,
+        maxTokens: process.env.IMAGE_ANALYSIS_MAX_TOKENS ? parseInt(process.env.IMAGE_ANALYSIS_MAX_TOKENS) : 2000
+      }
+    } as any,
     crawler: {
       concurrency: process.env.CRAWLER_CONCURRENCY ? parseInt(process.env.CRAWLER_CONCURRENCY) : 3,
       delay: process.env.CRAWLER_DELAY ? parseInt(process.env.CRAWLER_DELAY) : 1000,
@@ -105,8 +147,21 @@ export function loadConfigFromEnv(): Partial<AnalysisConfig> {
 }
 
 export function mergeConfigs(base: AnalysisConfig, override: Partial<AnalysisConfig>): AnalysisConfig {
+  const baseLLM = base.llm as any;
+  const overrideLLM = override.llm as any;
+  
   return {
-    llm: { ...base.llm, ...override.llm },
+    llm: { 
+      // 深度合并分离配置
+      htmlAnalysis: {
+        ...baseLLM?.htmlAnalysis,
+        ...overrideLLM?.htmlAnalysis
+      },
+      imageAnalysis: {
+        ...baseLLM?.imageAnalysis,
+        ...overrideLLM?.imageAnalysis
+      }
+    } as any,
     crawler: { ...base.crawler, ...override.crawler },
     output: { ...base.output, ...override.output }
   };

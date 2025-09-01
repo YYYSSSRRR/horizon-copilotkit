@@ -381,8 +381,6 @@ src/
 │   └── ProgressTracker.ts
 ├── config/               # 配置管理
 │   └── ConfigManager.ts
-├── cli/                  # 命令行接口
-│   └── CLI.ts
 └── types/                # 类型定义
     └── index.ts
 ```

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { HttpsProxyAgent } from 'https-proxy-agent';
-import { LLMConfig, PageAnalysis, MenuFunctionality, MenuItem, LLMAnalysisRequest } from '../types';
+import { LLMConfig, MenuFunctionality, MenuItem, LLMAnalysisRequest } from '../types';
 import { Logger } from '../utils/Logger';
 import * as fs from 'fs/promises';
 
@@ -22,8 +22,7 @@ export interface ImageAnalysisResult {
 }
 
 export class LLMAnalyzer {
-  private client: OpenAI; // 默认客户端
-  private menuAnalysisClient: OpenAI; // DeepSeek客户端用于菜单分析
+  private htmlAnalysisClient: OpenAI; // DeepSeek客户端用于菜单分析
   private imageAnalysisClient: OpenAI; // OpenAI客户端用于图像分析
   private config: LLMConfig;
   private logger: Logger;
@@ -33,42 +32,26 @@ export class LLMAnalyzer {
     this.config = config;
     this.logger = logger;
 
-    // 华为企业代理配置
+    // 内网代理配置
     this.setupProxy();
 
-    // 创建默认客户端 (兼容性)
-    const defaultBaseURL = config.baseUrl ||
-      (config.provider === 'deepseek' ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
-    
-    const defaultClientConfig: any = {
-      apiKey: config.apiKey,
-      baseURL: defaultBaseURL
-    };
-    
-    if (this.proxyAgent) {
-      defaultClientConfig.httpAgent = this.proxyAgent;
-      defaultClientConfig.httpsAgent = this.proxyAgent;
-    }
-    
-    this.client = new OpenAI(defaultClientConfig);
-
-    // 创建菜单分析客户端 (DeepSeek)
-    const menuConfig = (config as any).menuAnalysis || {};
+    // 创建HTML分析客户端 (DeepSeek)
+    const menuConfig = (config as any).htmlAnalysis || {};
     const menuProvider = menuConfig.provider || 'deepseek';
     const menuBaseURL = menuConfig.baseUrl || 
       (menuProvider === 'deepseek' ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
     
-    const menuClientConfig: any = {
+    const htmlClientConfig: any = {
       apiKey: menuConfig.apiKey || process.env.DEEPSEEK_API_KEY || config.apiKey,
       baseURL: menuBaseURL
     };
     
     if (this.proxyAgent) {
-      menuClientConfig.httpAgent = this.proxyAgent;
-      menuClientConfig.httpsAgent = this.proxyAgent;
+      htmlClientConfig.httpAgent = this.proxyAgent;
+      htmlClientConfig.httpsAgent = this.proxyAgent;
     }
     
-    this.menuAnalysisClient = new OpenAI(menuClientConfig);
+    this.htmlAnalysisClient = new OpenAI(htmlClientConfig);
 
     // 创建图像分析客户端 (OpenAI)
     const imageConfig = (config as any).imageAnalysis || {};
@@ -87,16 +70,6 @@ export class LLMAnalyzer {
     }
     
     this.imageAnalysisClient = new OpenAI(imageClientConfig);
-
-    this.logger.info('LLMAnalyzer initialized with separated clients', {
-      defaultProvider: config.provider,
-      defaultModel: config.model,
-      menuProvider: menuProvider,
-      menuModel: menuConfig.model || 'deepseek-chat',
-      imageProvider: imageProvider,
-      imageModel: imageConfig.model || 'gpt-4o',
-      proxyEnabled: !!this.proxyAgent
-    });
   }
 
   private setupProxy(): void {
@@ -147,9 +120,12 @@ export class LLMAnalyzer {
     const prompt = this.buildAnalysisPrompt(request);
 
     try {
+      // Get HTML analysis config
+      const htmlConfig = (this.config as any).htmlAnalysis || {};
+      
       // Prepare request options
       const requestOptions: any = {
-        model: this.config.model,
+        model: htmlConfig.model || 'deepseek-chat',
         messages: [
           {
             role: 'system',
@@ -160,16 +136,16 @@ export class LLMAnalyzer {
             content: prompt
           }
         ],
-        temperature: this.config.temperature || 0.3,
-        max_tokens: this.config.maxTokens || 2000
+        temperature: htmlConfig.temperature || 0.3,
+        max_tokens: htmlConfig.maxTokens || 2000
       };
 
       // DeepSeek doesn't support response_format parameter yet
-      if (this.config.provider !== 'deepseek') {
+      if (htmlConfig.provider !== 'deepseek') {
         requestOptions.response_format = { type: 'json_object' };
       }
 
-      const response = await this.menuAnalysisClient.chat.completions.create(requestOptions);
+      const response = await this.htmlAnalysisClient.chat.completions.create(requestOptions);
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
@@ -179,7 +155,7 @@ export class LLMAnalyzer {
       // For DeepSeek, we need to extract JSON from the response
       let analysis: MenuFunctionality;
       try {
-        if (this.config.provider === 'deepseek') {
+        if (htmlConfig.provider === 'deepseek') {
           // Extract JSON from markdown code blocks or direct JSON
           const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) ||
                            content.match(/(\{[\s\S]*\})/);
@@ -210,7 +186,8 @@ export class LLMAnalyzer {
   }
 
   private getSystemPrompt(): string {
-    return this.config.systemPrompt || `
+    const htmlConfig = (this.config as any).htmlAnalysis || {};
+    return htmlConfig.systemPrompt || `
 你是一个专业的系统功能分析师，擅长分析网页内容并总结菜单功能。你需要基于提供的页面内容，生成结构化的菜单功能描述。
 
 请严格按照以下JSON格式返回分析结果：
