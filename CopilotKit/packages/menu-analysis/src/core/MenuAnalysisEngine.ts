@@ -9,7 +9,8 @@ import {
   MenuItem, 
   PageAnalysis, 
   MenuFunctionality, 
-  LLMAnalysisRequest 
+  LLMAnalysisRequest,
+  CrawlerConfig
 } from '../types';
 
 export class MenuAnalysisEngine {
@@ -27,7 +28,7 @@ export class MenuAnalysisEngine {
     this.logger = new Logger('info', 'menu-analysis.log');
     this.progressTracker = new ProgressTracker(this.logger);
     
-    this.menuCrawler = new MenuCrawler(config.crawler as any, this.logger);
+    this.menuCrawler = new MenuCrawler(config.crawler, this.logger);
     this.llmAnalyzer = new LLMAnalyzer(config.llm, this.logger);
     this.outputManager = new OutputManager(config.output, this.logger);
   }

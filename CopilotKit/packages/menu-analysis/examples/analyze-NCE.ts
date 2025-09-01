@@ -103,7 +103,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
 
     // 创建分析配置
     const config = createDefaultConfig();
-    
+
     // 配置爬虫参数（MenuCrawler需要MenuConfig类型的配置）
     config.crawler = {
       // MenuConfig 额外字段（通过 as any 传递）
@@ -115,6 +115,30 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
         submitSelector: process.env.LOGIN_BUTTON_SELECTOR || 'button[type="submit"]',
         username: process.env.LOGIN_USERNAME || 'admin',
         password: process.env.LOGIN_PASSWORD || 'password'
+      },
+      // 登录后处理逻辑
+      loginPost: async (page: Page) => {
+        console.log('🔍 检查登录后页面...');
+        const currentUrl = page.url();
+        console.log(`   当前页面URL: ${currentUrl}`);
+        
+        if (currentUrl.includes('licenseChooseMenu.html')) {
+          console.log('📄 检测到许可证选择页面，点击登录链接...');
+          try {
+            // 等待并点击 #loginLink 元素
+            await page.waitForSelector('#loginLink', { timeout: 5000 });
+            await page.click('#loginLink');
+            console.log('✅ 成功点击 #loginLink');
+            
+            // 等待页面跳转完成
+            await page.waitForLoadState('networkidle', { timeout: 10000 });
+            console.log(`✅ 跳转完成，新页面URL: ${page.url()}`);
+          } catch (error) {
+            console.warn(`⚠️ 点击 #loginLink 失败: ${error.message}`);
+          }
+        } else {
+          console.log('ℹ️  页面不包含 licenseChooseMenu.html，跳过额外处理');
+        }
       }
     } as any;
 
@@ -129,7 +153,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
     };
 
     // 配置自定义内容提取回调
-    (config as any).onExtractContent = async (page: Page, menuItem: any) => {
+    config.onExtractContent = async (page: Page, menuItem: any) => {
       let windowContent: any = { html: '', title: '', url: '' };
 
       // 检查第二个参数是否包含Action属性
@@ -138,9 +162,9 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
         try {
           const correctedJson = menuItem.emit[1].replace(/'/g, '"');
           const secondParam = JSON.parse(correctedJson);
-          if (secondParam && typeof secondParam === 'object' && 'Action' in secondParam) {
+          if (secondParam && typeof secondParam === 'object' && ('Action' in secondParam) || ('CmdId' in secondParam)) {
             useScreenshot = true;
-            console.log(`   📸 检测到Action属性，将使用截图方式: ${secondParam.Action}`);
+            console.log(`   📸 检测到Action或者CmdId属性，将使用截图方式: ${secondParam.Action} - ${secondParam.CmdId}`);
           }
         } catch (e) {
           // 如果解析失败，继续使用原有逻辑
@@ -152,22 +176,22 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
         // 使用截图方式处理
         try {
           console.log(`   📸 使用截图方式提取内容...`);
-          
+
           // 确保截图目录存在
           const screenshotDir = path.join(__dirname, 'screenshots');
           await fs.ensureDir(screenshotDir);
-          
+
           // 等待canvas元素出现
           // await page.waitForSelector('.internal-frames-wrapper canvas', { timeout: 5000 });
-          await page.waitForTimeout(5000);
-          
+          await page.waitForTimeout(10000);
+
           // 使用Playwright截图功能获取canvas内容
-          const canvasElement = page.locator('.internal-frames-wrapper').last();
+          const canvasElement = page.locator('#root').last();
           const screenshotBuffer = await canvasElement.screenshot({ type: 'png' });
-          
+
           // 将截图转换为dataURL格式
           const dataURL = `data:image/png;base64,${screenshotBuffer.toString('base64')}`;
-          
+
           // 返回符合WindowContent接口的内容
           windowContent = {
             title: menuItem.text,
@@ -176,7 +200,7 @@ async function analyzeFullMenuTree(): Promise<MenuFunctionality[]> {
             type: 'screenshot' as const,
             dataURL: dataURL
           };
-          
+
         } catch (e) {
           console.error(`   ❌ 截图处理失败:`, e.message);
           // 回退到原有逻辑
