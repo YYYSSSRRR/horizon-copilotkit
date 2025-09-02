@@ -50,7 +50,7 @@ export class NCEMenuTransformer {
         parentId,
         hasSubmenu: !!(rawItem.subs || rawItem.actions),
         emit: rawItem.emit ? [...rawItem.emit] : [],
-        url: rawItem.href
+        href: rawItem.href
       };
       
       // 添加 preferNewWindow 字段支持
