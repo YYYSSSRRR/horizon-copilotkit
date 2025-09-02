@@ -53,7 +53,7 @@ export class PageAnalyzer {
       } else if (menuItem.url) {
         // Traditional URL-based navigation
         await this.page.goto(menuItem.url, { waitUntil: 'networkidle' });
-        await this.page.waitForTimeout(2000);
+        await this.page.waitForTimeout(3000);
       } else {
         throw new Error(`MenuItem ${menuItem.text} has neither URL nor emit actions`);
       }
