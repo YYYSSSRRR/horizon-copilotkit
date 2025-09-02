@@ -55,14 +55,37 @@ def load_js_definition_file(file_path: Path) -> Dict[str, Any]:
                     'required': []
                 }
                 
-                # 尝试提取一些基本的属性名（用于展示目的）
-                prop_matches = re.findall(r'(\w+):\s*{[^}]*type:\s*["\'](\w+)["\']', content)
-                for prop_name, prop_type in prop_matches:
-                    if prop_name != 'properties' and prop_name != 'type':
-                        definition['parameters']['properties'][prop_name] = {
-                            'type': prop_type,
-                            'description': f'{prop_name}参数'
-                        }
+                # 先提取 properties 块，然后在其中查找属性
+                properties_section = re.search(r'properties:\s*{(.*?)}(?=\s*,\s*required)', content, re.DOTALL)
+                if properties_section:
+                    props_content = properties_section.group(1)
+                    
+                    # 使用改进的正则表达式，分别匹配简单属性和复杂属性
+                    
+                    # 1. 先匹配所有顶级属性名（不管是否有嵌套）
+                    top_level_props = re.findall(r'(\w+):\s*{', props_content)
+                    
+                    for prop_name in top_level_props:
+                        if prop_name not in ['properties', 'type']:
+                            # 为每个属性单独提取其定义块
+                            prop_pattern = rf'{re.escape(prop_name)}:\s*{{(.*?)(?=\n\s*\w+:\s*{{|\n\s*}}\s*$)'
+                            prop_match = re.search(prop_pattern, props_content, re.DOTALL)
+                            
+                            if prop_match:
+                                prop_block = prop_match.group(1)
+                                
+                                # 提取类型（优先使用直接的 type 定义）
+                                type_match = re.search(r'type:\s*["\']([^"\']+)["\']', prop_block)
+                                prop_type = type_match.group(1) if type_match else 'object'
+                                
+                                # 提取描述（优先使用直接的 description）
+                                desc_match = re.search(r'description:\s*["\']([^"\']*)["\']', prop_block)
+                                prop_description = desc_match.group(1) if desc_match else f'{prop_name}参数'
+                                
+                                definition['parameters']['properties'][prop_name] = {
+                                    'type': prop_type,
+                                    'description': prop_description
+                                }
             else:
                 definition['parameters'] = {'type': 'object', 'properties': {}}
         
@@ -298,6 +321,8 @@ async def import_script_actions_to_rag(definitions_dir: Path, script_names: List
     if not actions_data:
         print("❌ 没有找到可用的动作定义")
         return
+
+    print(f"actions_data: {actions_data}")
     
     # 2. 初始化RAG系统
     print("\n2. 初始化 RAG 系统...")
@@ -329,10 +354,9 @@ async def import_script_actions_to_rag(definitions_dir: Path, script_names: List
                     function_request = convert_action_to_function(action_def)
                     
                     # 添加到RAG
-                    function_id = await rag_system.add_function(function_request)
+                    await rag_system.add_function(function_request)
                     
                     action_name = action_def.get("name", "未命名动作")
-                    print(f"  ✅ {action_name} -> {function_id}")
                     success_count += 1
                     
                 except Exception as e:
