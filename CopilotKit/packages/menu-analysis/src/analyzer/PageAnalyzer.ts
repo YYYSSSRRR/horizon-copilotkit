@@ -68,7 +68,7 @@ export class PageAnalyzer {
 
       // Extract page content using custom callback or default method
       let windowContent: WindowContent;
-      if (this.onExtractContent) {
+      if (menuItem.emit && menuItem.emit.length && this.onExtractContent) {
         // Use custom content extraction provided by user
         windowContent = await this.onExtractContent(this.page, menuItem);
       } else {
@@ -87,7 +87,7 @@ export class PageAnalyzer {
         content = await this.extractPageContent(windowContent.html, windowContent.url);
       }
 
-      if (this.onMenuClose) {
+      if (menuItem.emit && menuItem.emit.length && this.onMenuClose) {
         await this.onMenuClose(this.page);
       }
 
