@@ -45,7 +45,7 @@ async function handleMenuOpen(page: Page, emit: string[], menuItem: MenuItem): P
 
   try {
     // 先初始化，再执行跳转，预期会有导航发生
-    await page.evaluate(({ emit, href }) => {
+    await page.evaluate(({ emit }) => {
       console.log('into page.evaluate...');
       if (emit && emit.length) {
         // 初始化 PIU
@@ -61,11 +61,8 @@ async function handleMenuOpen(page: Page, emit: string[], menuItem: MenuItem): P
           // 执行跳转（这会导致页面跳转和上下文销毁）
           (window as any).abcPiu.emit('userAction', ...emit);
         }
-      } else if (href !== ''){
-        // 修改页面url为href
-        (window as any).location.href = href;
       }
-    }, { emit, href: menuItem.href });
+    }, { emit });
 
   } catch (e) {
     // 预期的错误 - 执行上下文被销毁意味着跳转成功
