@@ -20,6 +20,7 @@ from app.models import AddFunctionRequest, FunctionExample, Parameter, Parameter
 def load_js_definition_file(file_path: Path) -> Dict[str, Any]:
     """
     从 JavaScript 定义文件中提取动作定义
+    简化版本：手动创建基本的定义结构，避免复杂的JavaScript解析
     
     Args:
         file_path: JS 定义文件路径
@@ -31,26 +32,50 @@ def load_js_definition_file(file_path: Path) -> Dict[str, Any]:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # 解析 JavaScript 对象定义
-        # 提取 export const xxxDefinition = { ... }; 中的对象
-        pattern = r'export\s+const\s+\w+Definition\s*=\s*({[\s\S]*?});'
-        match = re.search(pattern, content)
+        # 使用正则表达式提取关键信息
+        definition = {}
         
-        if not match:
-            print(f"⚠️  无法解析文件: {file_path.name}")
+        # 提取 name
+        name_match = re.search(r'name:\s*["\']([^"\']+)["\']', content)
+        if name_match:
+            definition['name'] = name_match.group(1)
+        
+        # 提取 description
+        desc_match = re.search(r'description:\s*["\']([^"\']*)["\']', content)
+        if desc_match:
+            definition['description'] = desc_match.group(1)
+        
+        # 提取参数结构 - 创建一个简化的参数对象
+        if 'parameters:' in content:
+            # 检查是否有 properties 部分
+            if 'properties:' in content:
+                definition['parameters'] = {
+                    'type': 'object',
+                    'properties': {},
+                    'required': []
+                }
+                
+                # 尝试提取一些基本的属性名（用于展示目的）
+                prop_matches = re.findall(r'(\w+):\s*{[^}]*type:\s*["\'](\w+)["\']', content)
+                for prop_name, prop_type in prop_matches:
+                    if prop_name != 'properties' and prop_name != 'type':
+                        definition['parameters']['properties'][prop_name] = {
+                            'type': prop_type,
+                            'description': f'{prop_name}参数'
+                        }
+            else:
+                definition['parameters'] = {'type': 'object', 'properties': {}}
+        
+        # 添加源文件信息
+        definition['_source_file'] = file_path.name
+        definition['_simplified_parsing'] = True
+        
+        if definition.get('name'):
+            print(f"✅ 成功解析: {file_path.name} (简化模式)")
+            return definition
+        else:
+            print(f"⚠️  未能提取名称: {file_path.name}")
             return {}
-        
-        obj_str = match.group(1)
-        
-        # 简单的 JavaScript 对象转 JSON 处理
-        # 替换单引号为双引号，处理属性名
-        json_str = re.sub(r"(\w+):", r'"\1":', obj_str)  # 属性名加双引号
-        json_str = re.sub(r"'([^']*)'", r'"\1"', json_str)  # 单引号转双引号
-        
-        # 尝试解析为 JSON
-        definition = json.loads(json_str)
-        print(f"✅ 成功解析: {file_path.name}")
-        return definition
         
     except Exception as e:
         print(f"❌ 解析文件失败 {file_path.name}: {e}")
@@ -327,36 +352,6 @@ async def import_script_actions_to_rag(definitions_dir: Path, script_names: List
         if len(actions_data) > 0:
             print(f"  📈 成功率: {success_count/len(actions_data)*100:.1f}%")
         
-        # 5. 验证导入结果
-        print("\n5. 验证导入结果...")
-        stats = await rag_system.get_system_stats()
-        total_functions = stats.get('total_functions', 0)
-        print(f"  当前RAG系统中共有 {total_functions} 个函数")
-        
-        # 6. 示例搜索测试
-        print("\n6. 示例搜索测试...")
-        from app.models import SearchRequest
-        
-        test_queries = [
-            "表单填写",
-            "发送消息",
-            "自动化测试",
-            "用户交互"
-        ]
-        
-        for query in test_queries:
-            print(f"\n🔍 搜索: '{query}'")
-            search_request = SearchRequest(query=query, limit=3, include_scores=True)
-            results = await rag_system.search_functions(search_request)
-            
-            if results:
-                for i, result in enumerate(results, 1):
-                    print(f"  {i}. {result.function.name}")
-                    print(f"     描述: {result.function.description}")
-                    print(f"     评分: {result.score:.3f}")
-            else:
-                print("     没有找到匹配的函数")
-        
         print("\n✅ Playwright 脚本动作导入完成！")
 
 
@@ -364,8 +359,7 @@ def main():
     """主函数"""
     # 用户可指定的脚本名称列表
     script_names_to_import = [
-        "ask-llm",
-        "fill-form",
+        "alarm-search-all",
         # 可以在此添加更多脚本名称
         # "other-script",
     ]
