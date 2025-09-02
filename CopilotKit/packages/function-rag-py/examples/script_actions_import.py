@@ -17,10 +17,58 @@ from app.core import ConfigManager, FunctionRAGSystem
 from app.models import AddFunctionRequest, FunctionExample, Parameter, ParameterType
 
 
+def convert_js_to_json(js_str: str) -> str:
+    """
+    将JavaScript对象字符串转换为JSON字符串
+    
+    Args:
+        js_str: JavaScript对象字符串
+        
+    Returns:
+        JSON字符串
+    """
+    try:
+        # 1. 移除JavaScript注释
+        # 移除单行注释 //
+        js_str = re.sub(r'//.*?$', '', js_str, flags=re.MULTILINE)
+        # 移除多行注释 /* */
+        js_str = re.sub(r'/\*.*?\*/', '', js_str, flags=re.DOTALL)
+        
+        # 2. 处理属性名：给没有引号的属性名加上双引号
+        # 匹配冒号前的属性名，但要避免影响字符串值中的内容
+        js_str = re.sub(r'(\n\s*)([a-zA-Z_$][a-zA-Z0-9_$]*)\s*:', r'\1"\2":', js_str)
+        
+        # 3. 处理字符串值：将单引号字符串转为双引号（但不影响双引号字符串内部的单引号）
+        # 先保护已经存在的双引号字符串
+        protected_strings = []
+        def protect_double_quoted(match):
+            protected_strings.append(match.group(0))
+            return f"__PROTECTED_STRING_{len(protected_strings)-1}__"
+        
+        # 保护双引号字符串
+        js_str = re.sub(r'"([^"\\]*(?:\\.[^"\\]*)*)"', protect_double_quoted, js_str)
+        
+        # 现在可以安全地转换单引号字符串
+        js_str = re.sub(r"'([^'\\]*(?:\\.[^'\\]*)*)'", r'"\1"', js_str)
+        
+        # 恢复保护的双引号字符串
+        for i, protected in enumerate(protected_strings):
+            js_str = js_str.replace(f"__PROTECTED_STRING_{i}__", protected)
+        
+        # 4. 移除尾随逗号
+        js_str = re.sub(r',(\s*[}\]])', r'\1', js_str)
+        
+        return js_str
+        
+    except Exception as e:
+        print(f"转换JS到JSON时出错: {e}")
+        return ""
+
+
 def load_js_definition_file(file_path: Path) -> Dict[str, Any]:
     """
     从 JavaScript 定义文件中提取动作定义
-    简化版本：手动创建基本的定义结构，避免复杂的JavaScript解析
+    将JavaScript对象转换为JSON后解析
     
     Args:
         file_path: JS 定义文件路径
@@ -32,73 +80,29 @@ def load_js_definition_file(file_path: Path) -> Dict[str, Any]:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # 使用正则表达式提取关键信息
-        definition = {}
+        # 提取 export const xxxDefinition = { ... }; 中的对象
+        pattern = r'export\s+const\s+\w+Definition\s*=\s*({[\s\S]*?});'
+        match = re.search(pattern, content)
         
-        # 提取 name
-        name_match = re.search(r'name:\s*["\']([^"\']+)["\']', content)
-        if name_match:
-            definition['name'] = name_match.group(1)
-        
-        # 提取 description
-        desc_match = re.search(r'description:\s*["\']([^"\']*)["\']', content)
-        if desc_match:
-            definition['description'] = desc_match.group(1)
-        
-        # 提取参数结构 - 创建一个简化的参数对象
-        if 'parameters:' in content:
-            # 检查是否有 properties 部分
-            if 'properties:' in content:
-                definition['parameters'] = {
-                    'type': 'object',
-                    'properties': {},
-                    'required': []
-                }
-                
-                # 先提取 properties 块，然后在其中查找属性
-                properties_section = re.search(r'properties:\s*{(.*?)}(?=\s*,\s*required)', content, re.DOTALL)
-                if properties_section:
-                    props_content = properties_section.group(1)
-                    
-                    # 使用改进的正则表达式，分别匹配简单属性和复杂属性
-                    
-                    # 1. 先匹配所有顶级属性名（不管是否有嵌套）
-                    top_level_props = re.findall(r'(\w+):\s*{', props_content)
-                    
-                    for prop_name in top_level_props:
-                        if prop_name not in ['properties', 'type']:
-                            # 为每个属性单独提取其定义块
-                            prop_pattern = rf'{re.escape(prop_name)}:\s*{{(.*?)(?=\n\s*\w+:\s*{{|\n\s*}}\s*$)'
-                            prop_match = re.search(prop_pattern, props_content, re.DOTALL)
-                            
-                            if prop_match:
-                                prop_block = prop_match.group(1)
-                                
-                                # 提取类型（优先使用直接的 type 定义）
-                                type_match = re.search(r'type:\s*["\']([^"\']+)["\']', prop_block)
-                                prop_type = type_match.group(1) if type_match else 'object'
-                                
-                                # 提取描述（优先使用直接的 description）
-                                desc_match = re.search(r'description:\s*["\']([^"\']*)["\']', prop_block)
-                                prop_description = desc_match.group(1) if desc_match else f'{prop_name}参数'
-                                
-                                definition['parameters']['properties'][prop_name] = {
-                                    'type': prop_type,
-                                    'description': prop_description
-                                }
-            else:
-                definition['parameters'] = {'type': 'object', 'properties': {}}
-        
-        # 添加源文件信息
-        definition['_source_file'] = file_path.name
-        definition['_simplified_parsing'] = True
-        
-        if definition.get('name'):
-            print(f"✅ 成功解析: {file_path.name} (简化模式)")
-            return definition
-        else:
-            print(f"⚠️  未能提取名称: {file_path.name}")
+        if not match:
+            print(f"⚠️  无法找到定义对象: {file_path.name}")
             return {}
+        
+        obj_str = match.group(1)
+        
+        # 转换JavaScript对象为JSON
+        json_str = convert_js_to_json(obj_str)
+        
+        if not json_str:
+            print(f"⚠️  转换JSON失败: {file_path.name}")
+            return {}
+        
+        # 解析JSON
+        definition = json.loads(json_str)
+        definition['_source_file'] = file_path.name
+        
+        print(f"✅ 成功解析: {file_path.name}")
+        return definition
         
     except Exception as e:
         print(f"❌ 解析文件失败 {file_path.name}: {e}")
@@ -134,7 +138,6 @@ def load_script_actions(definitions_dir: Path, script_names: List[str]) -> List[
             
         definition = load_js_definition_file(file_path)
         if definition:
-            definition['_source_file'] = file_path.name
             actions.append(definition)
             print(f"  ✅ 已加载: {script_name}")
         else:
@@ -207,24 +210,23 @@ def convert_action_to_function(action_def: Dict[str, Any]) -> AddFunctionRequest
     """
     name = action_def.get("name", "unknown_action")
     description = action_def.get("description", "脚本动作")
+    source_file = action_def.get("_source_file", "unknown.js")
     
-    category = "action"
-    subcategory = ""
+    category = "playwright-script"
+    subcategory = "ui-automation"
     
     # 转换参数
     js_parameters = action_def.get("parameters", {})
     parameters = convert_js_parameters_to_rag(js_parameters)
     
     # 生成使用场景
-    # use_cases = generate_action_use_cases(name, description)
-    use_cases = []
+    use_cases = generate_action_use_cases(name, description)
     
     # 生成示例
-    # examples = generate_action_examples(name, description, parameters)
-    examples = []
+    examples = generate_action_examples(name, description, parameters)
     
     # 生成标签
-    tags = []
+    tags = generate_action_tags(name, description, source_file)
     
     # 生成实现说明
     implementation = generate_action_implementation(action_def)
@@ -291,13 +293,39 @@ def generate_action_examples(name: str, description: str, parameters: Dict[str, 
     return examples
 
 
+def generate_action_tags(name: str, description: str, source_file: str) -> List[str]:
+    """生成动作标签"""
+    tags = ["playwright", "automation", "ui-test"]
+    
+    # 基于名称添加标签
+    if "form" in name.lower():
+        tags.extend(["form", "input", "填表"])
+    if "llm" in name.lower() or "chat" in name.lower():
+        tags.extend(["llm", "chat", "对话"])
+    if "fill" in name.lower():
+        tags.append("填充")
+    if "ask" in name.lower():
+        tags.append("询问")
+    
+    # 基于描述添加标签
+    if "用户" in description:
+        tags.append("用户交互")
+    if "表单" in description:
+        tags.append("表单处理")
+    if "消息" in description:
+        tags.append("消息处理")
+    
+    return list(set(tags))  # 去重
+
+
 def generate_action_implementation(action_def: Dict[str, Any]) -> str:
     """生成动作实现说明"""
     implementation = {
-        "action_type": "action",
+        "action_type": "playwright_script",
         "function_name": action_def.get("name"),
+        "source_file": action_def.get("_source_file"),
         "parameters_schema": action_def.get("parameters", {}),
-        "usage": f"调用 action 脚本执行 {action_def.get('name')} 动作"
+        "usage": f"调用 Playwright 脚本执行 {action_def.get('name')} 动作"
     }
     
     return json.dumps(implementation, ensure_ascii=False, indent=2)
@@ -321,7 +349,6 @@ async def import_script_actions_to_rag(definitions_dir: Path, script_names: List
     if not actions_data:
         print("❌ 没有找到可用的动作定义")
         return
-
     print(f"actions_data: {actions_data}")
     
     # 2. 初始化RAG系统
@@ -354,7 +381,7 @@ async def import_script_actions_to_rag(definitions_dir: Path, script_names: List
                     function_request = convert_action_to_function(action_def)
                     
                     # 添加到RAG
-                    await rag_system.add_function(function_request)
+                    # function_id = await rag_system.add_function(function_request)
                     
                     action_name = action_def.get("name", "未命名动作")
                     success_count += 1
@@ -384,6 +411,8 @@ def main():
     # 用户可指定的脚本名称列表
     script_names_to_import = [
         "alarm-search-all",
+        "ask-llm",
+        "fill-form",
         # 可以在此添加更多脚本名称
         # "other-script",
     ]
