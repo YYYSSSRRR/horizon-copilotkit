@@ -356,10 +356,6 @@ async def import_script_actions_to_rag(definitions_dir: Path, script_names: List
     config_manager = ConfigManager()
     rag_config = config_manager.get_rag_config()
     
-    if not config_manager.validate_config():
-        print("❌ 配置验证失败！请检查 .env 文件")
-        return
-    
     async with FunctionRAGSystem(rag_config) as rag_system:
         # 3. 批量转换和导入
         print(f"\n3. 开始批量导入 {len(actions_data)} 个脚本动作...")
@@ -381,7 +377,7 @@ async def import_script_actions_to_rag(definitions_dir: Path, script_names: List
                     function_request = convert_action_to_function(action_def)
                     
                     # 添加到RAG
-                    # function_id = await rag_system.add_function(function_request)
+                    await rag_system.add_function(function_request)
                     
                     action_name = action_def.get("name", "未命名动作")
                     success_count += 1
@@ -411,8 +407,6 @@ def main():
     # 用户可指定的脚本名称列表
     script_names_to_import = [
         "alarm-search-all",
-        "ask-llm",
-        "fill-form",
         # 可以在此添加更多脚本名称
         # "other-script",
     ]
