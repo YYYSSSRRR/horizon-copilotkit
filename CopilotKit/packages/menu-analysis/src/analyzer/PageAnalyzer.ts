@@ -43,7 +43,7 @@ export class PageAnalyzer {
 
     try {
       // Navigate to the page using URL or function call
-      if (menuItem.emit && this.onMenuOpen) {
+      if (menuItem.emit && menuItem.emit.length && this.onMenuOpen) {
         // Function-based navigation
         this.logger.info(`Opening page via function with emit: ${menuItem.emit.join(', ')}`);
         await this.onMenuOpen(this.page, menuItem.emit, menuItem);
