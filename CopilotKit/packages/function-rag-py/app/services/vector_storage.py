@@ -293,63 +293,6 @@ class VectorStorageService:
             logger.error(f"Failed to search by category: {e}")
             raise StorageError(f"Failed to search by category: {str(e)}")
     
-    async def search_by_tags(
-        self,
-        tags: List[str],
-        limit: int = 10,
-        match_all: bool = False
-    ) -> List[ScoredPoint]:
-        """Search functions by tags using manual filtering (Qdrant client compatibility issue)."""
-        try:
-            # Use scroll without filter and manually filter results
-            results = await self.client.scroll(
-                collection_name=self.collection_name,
-                limit=1000,  # Get more results to filter manually
-                with_payload=True,
-            )
-            
-            # Manually filter by tags in Python
-            scored_results = []
-            for point in results[0]:
-                payload = point.payload
-                point_tags = payload.get('tags', [])
-                
-                # Check if tags match
-                if match_all:
-                    # All tags must be present
-                    if all(tag in point_tags for tag in tags):
-                        match = True
-                    else:
-                        match = False
-                else:
-                    # Any tag can be present
-                    if any(tag in point_tags for tag in tags):
-                        match = True
-                    else:
-                        match = False
-                
-                if match:
-                    # Create a simple compatible object
-                    class MockScoredPoint:
-                        def __init__(self, point_data):
-                            self.id = point_data.id
-                            self.version = getattr(point_data, 'version', 0)
-                            self.score = 1.0
-                            self.payload = point_data.payload
-                            self.vector = getattr(point_data, 'vector', {})
-                    
-                    scored_results.append(MockScoredPoint(point))
-                    
-                    # Stop if we have enough results
-                    if len(scored_results) >= limit:
-                        break
-            
-            return scored_results[:limit]
-            
-        except Exception as e:
-            logger.error(f"Failed to search by tags: {e}")
-            raise StorageError(f"Failed to search by tags: {str(e)}")
-    
     async def get_function_by_id(self, function_id: str) -> Optional[ScoredPoint]:
         """Get a specific function by ID."""
         try:
