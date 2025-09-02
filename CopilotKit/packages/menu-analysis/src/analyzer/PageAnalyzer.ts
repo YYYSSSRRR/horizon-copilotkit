@@ -54,6 +54,14 @@ export class PageAnalyzer {
         // Traditional URL-based navigation
         await this.page.goto(menuItem.url, { waitUntil: 'networkidle' });
         await this.page.waitForTimeout(3000);
+      } else if (menuItem.href) {
+        // Navigate using href path
+        const currentUrl = this.page.url();
+        const baseUrl = new URL(currentUrl).origin;
+        const fullUrl = `${baseUrl}${menuItem.href}`;
+        
+        await this.page.goto(fullUrl, { waitUntil: 'networkidle' });
+        await this.page.waitForTimeout(3000);
       } else {
         throw new Error(`MenuItem ${menuItem.text} has neither URL nor emit actions`);
       }

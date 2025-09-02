@@ -11,6 +11,7 @@ export interface MenuItem {
   // New fields for function-based navigation
   emit?: string[];
   preferNewWindow?: boolean;  // Whether the menu should open in a new window
+  href?: string;
 }
 
 export interface LoginConfig {
