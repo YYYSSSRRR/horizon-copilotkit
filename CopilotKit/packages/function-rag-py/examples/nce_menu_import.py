@@ -51,10 +51,7 @@ def convert_menu_to_function(menu_item: Dict[str, Any]) -> AddFunctionRequest:
     primary_function = menu_item.get("primaryFunction", "")
     emit_actions = menu_item.get("emit", [])
     
-    # 确定功能类别
-    # category = determine_category(name, primary_function)
     category = "menu"
-    # subcategory = determine_subcategory(name, primary_function)
     subcategory = ""
     
     # 构建参数（基于emit动作）
@@ -86,45 +83,6 @@ def convert_menu_to_function(menu_item: Dict[str, Any]) -> AddFunctionRequest:
         tags=tags,
         implementation=implementation
     )
-
-
-def determine_category(name: str, primary_function: str) -> str:
-    """根据名称和功能描述确定类别"""
-    text = (name + " " + primary_function).lower()
-    
-    if any(keyword in text for keyword in ["网络", "网元", "通信", "配置"]):
-        return "network"
-    elif any(keyword in text for keyword in ["管理", "用户", "权限", "登录"]):
-        return "management"
-    elif any(keyword in text for keyword in ["安全", "防盗", "锁定", "认证", "授权"]):
-        return "security"
-    elif any(keyword in text for keyword in ["监控", "日志", "审计", "统计"]):
-        return "monitoring"
-    elif any(keyword in text for keyword in ["策略", "工单", "流程"]):
-        return "workflow"
-    elif any(keyword in text for keyword in ["分析", "报告", "数据"]):
-        return "analytics"
-    else:
-        return "system"
-
-
-def determine_subcategory(name: str, primary_function: str) -> str:
-    """根据名称和功能描述确定子类别"""
-    text = (name + " " + primary_function).lower()
-    
-    if "配置" in text:
-        return "configuration"
-    elif "管理" in text:
-        return "administration"
-    elif "监控" in text:
-        return "monitoring"
-    elif "安全" in text:
-        return "security"
-    elif "策略" in text:
-        return "policy"
-    else:
-        return "general"
-
 
 def build_parameters_from_emit(emit_actions: List[str]) -> Dict[str, Parameter]:
     """基于emit动作构建参数"""
