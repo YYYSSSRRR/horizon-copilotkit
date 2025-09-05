@@ -1,4 +1,4 @@
-import { CopilotKit } from '@copilotkit/react-core-next'
+import { CopilotKit } from '../../../CopilotKit/packages/react-core-next/src'
 import './App.css'
 import { HomePage } from './components/HomePage'
 
@@ -15,4 +15,4 @@ function App() {
   )
 }
 
-export default App 
+export default App;

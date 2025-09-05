@@ -129,24 +129,24 @@ export function useCopilotChatSuggestions() {
   };
 }
 
-export function useCopilotDocumentPointers() {
-  const { documentPointers, setDocumentPointer, removeDocumentPointer } = useCopilotContext();
-  return {
-    documentPointers,
-    setDocumentPointer,
-    removeDocumentPointer,
-  };
-}
+// export function useCopilotDocumentPointers() {
+//   const { documentPointers, setDocumentPointer, removeDocumentPointer } = useCopilotContext();
+//   return {
+//     documentPointers,
+//     setDocumentPointer,
+//     removeDocumentPointer,
+//   };
+// }
 
-export function useCopilotCoAgentStateRenders() {
-  const { coAgentStateRenders, setCoAgentStateRender, removeCoAgentStateRender, getCoAgentStateRender } = useCopilotContext();
-  return {
-    coAgentStateRenders,
-    setCoAgentStateRender,
-    removeCoAgentStateRender,
-    getCoAgentStateRender,
-  };
-}
+// export function useCopilotCoAgentStateRenders() {
+//   const { coAgentStateRenders, setCoAgentStateRender, removeCoAgentStateRender, getCoAgentStateRender } = useCopilotContext();
+//   return {
+//     coAgentStateRenders,
+//     setCoAgentStateRender,
+//     removeCoAgentStateRender,
+//     getCoAgentStateRender,
+//   };
+// }
 
 export function useCopilotScriptActions() {
   const { scriptActions, setScriptAction, removeScriptAction, executeScriptAction } = useCopilotContext();

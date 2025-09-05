@@ -23,6 +23,7 @@ from ...api.handlers.copilot_handler import CopilotHandlerComplete
 from ...api.models.responses import CopilotResponse
 from ...lib.runtime.copilot_runtime import CopilotRuntime
 from ...lib.events import RuntimeEventSource as NewRuntimeEventSource, RuntimeEventSubject, create_fastapi_event_data, observable_to_async_generator
+from ...lib.approval import ApprovalManager, ApprovalRequest, ApprovalResponse
 
 logger = structlog.get_logger(__name__)
 
@@ -243,8 +244,6 @@ class CopilotRuntimeServer:
                 provider=provider,
                 model=model
             )
-        
-        
         @self.app.get(f"{self.prefix}/copilotkit/agents")
         async def available_agents():
             """获取可用代理"""
@@ -362,21 +361,84 @@ class CopilotRuntimeServer:
                     }
                 )
         
+        # ================================
+        # 审批系统API端点
+        # ================================
+
+        @self.app.get(f"{self.prefix}/api/approvals/pending")
+        async def get_pending_approvals():
+            """获取所有待审批的工具调用"""
+            approval_manager = ApprovalManager.get_instance()
+            pending_requests = approval_manager.get_pending_requests()
+            
+            return {
+                "pending_count": len(pending_requests),
+                "pending_requests": pending_requests
+            }
+
+        @self.app.post(f"{self.prefix}/api/approvals/approve", response_model=ApprovalResponse)
+        async def approve_tool_call(request: ApprovalRequest):
+            """审批工具调用"""
+            try:
+                approval_manager = ApprovalManager.get_instance()
+                response = await approval_manager.process_approval(request)
+                return response
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e))
+            except Exception as e:
+                logger.error(f"审批处理错误: {e}")
+                raise HTTPException(status_code=500, detail="审批处理失败")
+
+        @self.app.delete(f"{self.prefix}/api/approvals/{{approval_id}}")
+        async def cancel_approval(approval_id: str):
+            """取消待审批请求"""
+            try:
+                approval_manager = ApprovalManager.get_instance()
+                result = approval_manager.cancel_approval(approval_id)
+                return result
+            except ValueError as e:
+                raise HTTPException(status_code=404, detail=str(e))
+            except Exception as e:
+                logger.error(f"取消审批错误: {e}")
+                raise HTTPException(status_code=500, detail="取消审批失败")
+
+        @self.app.get(f"{self.prefix}/api/approvals/status")
+        async def get_approval_status():
+            """获取审批系统状态"""
+            approval_manager = ApprovalManager.get_instance()
+            status = approval_manager.get_system_status()
+            return status.dict()
+
         @self.app.get(f"{self.prefix}/" if self.prefix else "/")
         async def root():
             """根端点"""
+            endpoints = {
+                "health": "/api/health",
+                "chat": "/api/chat",
+                "chat_stream": "/api/chat/stream",
+                "actions": "/api/actions",
+                "execute_action": "/api/actions/execute",
+                "copilotkit_hello": "/copilotkit/hello",
+                "copilotkit_agents": "/copilotkit/agents"
+            }
+            
+            # 如果启用了审批系统，添加审批端点
+            if self.runtime.approval_middleware:
+                endpoints.update({
+                    "approvals_pending": "/api/approvals/pending",
+                    "approvals_approve": "/api/approvals/approve",
+                    "approvals_cancel": "/api/approvals/{approval_id}",
+                    "approvals_status": "/api/approvals/status"
+                })
+            
             return {
                 "name": "CopilotKit Runtime",
                 "version": self.version,
-                "description": "Python runtime for CopilotKit",
-                "endpoints": {
-                    "health": "/api/health",
-                    "chat": "/api/chat",
-                    "chat_stream": "/api/chat/stream",
-                    "actions": "/api/actions",
-                    "execute_action": "/api/actions/execute",
-                    "copilotkit_hello": "/copilotkit/hello",
-                    "copilotkit_agents": "/copilotkit/agents"
+                "description": "Python runtime for CopilotKit with Human-in-the-Loop approval system",
+                "endpoints": endpoints,
+                "features": {
+                    "approval_system": self.runtime.approval_middleware is not None,
+                    "approval_status": self.runtime.approval_middleware.get_configuration() if self.runtime.approval_middleware else None
                 }
             }
     

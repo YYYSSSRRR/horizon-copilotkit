@@ -1,5 +1,5 @@
 import React, { ReactNode, useMemo, useState, useCallback, useEffect } from "react";
-import { randomId } from "@copilotkit/shared";
+import { randomId } from "../../../../shared/src/utils/random-id";
 import { CopilotContextProvider, CopilotContextValue, CopilotReadable } from "../../context/copilot-context";
 import { MessagesContextProvider, MessagesContextValue } from "../../context/messages-context";
 import { createCopilotRuntimeClient } from "../../client";
@@ -9,7 +9,7 @@ import { SystemMessageFunction } from "../../types/system-message";
 import { 
   Message, 
   TextMessage, 
-  ActionExecutionMessage, 
+  ActionExecutionMessage,
   ResultMessage, 
   AgentStateMessage 
 } from "../../client";

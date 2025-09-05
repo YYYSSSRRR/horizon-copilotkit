@@ -485,7 +485,7 @@ class CopilotHandlerComplete:
                         })
                     )
                 else:
-                    # Skip other event types (including ACTION_EXECUTION_END)
+                    # Skip other event types
                     handler_logger.debug(f"Skipping event type: {event.type}")
                     pass
             

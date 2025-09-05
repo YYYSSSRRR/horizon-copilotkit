@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CopilotKit 审批管理面板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        .status-info {
+            display: flex;
+            gap: 20px;
+            margin-top: 15px;
+        }
+        
+        .status-card {
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .status-card.pending {
+            border-left-color: #ffc107;
+        }
+        
+        .status-card.running {
+            border-left-color: #28a745;
+        }
+        
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-right: 10px;
+            font-size: 14px;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+        }
+        
+        .btn.success {
+            background: #28a745;
+        }
+        
+        .btn.success:hover {
+            background: #1e7e34;
+        }
+        
+        .btn.danger {
+            background: #dc3545;
+        }
+        
+        .btn.danger:hover {
+            background: #c82333;
+        }
+        
+        .pending-requests {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .pending-requests h2 {
+            padding: 20px 20px 0;
+            color: #333;
+        }
+        
+        .request-item {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            position: relative;
+        }
+        
+        .request-item:last-child {
+            border-bottom: none;
+        }
+        
+        .request-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        
+        .tool-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .approval-id {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        
+        .arguments {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        
+        .timestamp {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 15px;
+        }
+        
+        .request-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+        
+        .log {
+            margin-top: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .log h3 {
+            padding: 15px 20px 0;
+            color: #333;
+        }
+        
+        .log-entry {
+            padding: 10px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        
+        .log-entry.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .log-entry.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .log-entry.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 CopilotKit 审批管理面板</h1>
+            <p>管理AI工具调用的人工审批请求</p>
+            <div class="status-info">
+                <div class="status-card running">
+                    <div>系统状态: <span id="system-status">加载中...</span></div>
+                </div>
+                <div class="status-card pending">
+                    <div>待审批: <span id="pending-count">0</span> 个</div>
+                </div>
+                <div class="status-card">
+                    <div>最后更新: <span id="last-update">-</span></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button class="btn" onclick="refreshData()">🔄 刷新</button>
+            <button class="btn" onclick="enableAutoRefresh()">⚡ 自动刷新</button>
+            <button class="btn" onclick="clearLog()">🗑️ 清空日志</button>
+            <span id="auto-refresh-status" style="margin-left: 10px; color: #666;"></span>
+        </div>
+        
+        <div class="pending-requests">
+            <h2>待审批请求</h2>
+            <div id="requests-list">
+                <div class="empty-state">
+                    <p>🔄 正在加载审批请求...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="log">
+            <h3>操作日志</h3>
+            <div id="log-entries"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8005';
+        let autoRefreshInterval = null;
+        
+        function addLog(message, type = 'info') {
+            const logEntries = document.getElementById('log-entries');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logEntries.insertBefore(entry, logEntries.firstChild);
+            
+            // 保持最多50条日志
+            while (logEntries.children.length > 50) {
+                logEntries.removeChild(logEntries.lastChild);
+            }
+        }
+        
+        async function fetchStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/approvals/status`);
+                const data = await response.json();
+                document.getElementById('system-status').textContent = data.status;
+                document.getElementById('pending-count').textContent = data.pending_count;
+                return data;
+            } catch (error) {
+                addLog(`获取状态失败: ${error.message}`, 'error');
+                document.getElementById('system-status').textContent = '连接失败';
+                return null;
+            }
+        }
+        
+        async function fetchPendingRequests() {
+            try {
+                const response = await fetch(`${API_BASE}/api/approvals/pending`);
+                const data = await response.json();
+                displayRequests(data.pending_requests);
+                return data;
+            } catch (error) {
+                addLog(`获取待审批请求失败: ${error.message}`, 'error');
+                return null;
+            }
+        }
+        
+        function displayRequests(requests) {
+            const requestsList = document.getElementById('requests-list');
+            
+            if (requests.length === 0) {
+                requestsList.innerHTML = `
+                    <div class="empty-state">
+                        <p>✅ 暂无待审批请求</p>
+                        <p style="font-size: 14px; color: #888; margin-top: 10px;">
+                            与AI对话并让它调用需要审批的工具（如计算或状态检查）来生成审批请求
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+            
+            requestsList.innerHTML = requests.map(req => `
+                <div class="request-item">
+                    <div class="request-header">
+                        <div class="tool-name">${req.tool_name}</div>
+                        <div class="approval-id">${req.approval_id}</div>
+                    </div>
+                    <div class="timestamp">
+                        📅 ${new Date(req.timestamp).toLocaleString()}
+                        | 🔗 会话: ${req.session_id}
+                    </div>
+                    <div class="arguments">
+                        <strong>参数:</strong><br>
+                        ${JSON.stringify(req.arguments, null, 2)}
+                    </div>
+                    <div class="request-actions">
+                        <button class="btn success" onclick="approveRequest('${req.approval_id}', true)">
+                            ✅ 批准
+                        </button>
+                        <button class="btn danger" onclick="approveRequest('${req.approval_id}', false)">
+                            ❌ 拒绝
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        async function approveRequest(approvalId, approved) {
+            try {
+                addLog(`${approved ? '批准' : '拒绝'}请求: ${approvalId}`, 'info');
+                
+                const response = await fetch(`${API_BASE}/api/approvals/approve`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        approval_id: approvalId,
+                        approved: approved
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    addLog(`审批成功: ${result.status}`, 'success');
+                    if (result.result) {
+                        addLog(`执行结果: ${result.result}`, 'success');
+                    }
+                    if (result.error) {
+                        addLog(`执行错误: ${result.error}`, 'error');
+                    }
+                    refreshData();
+                } else {
+                    addLog(`审批失败: ${result.detail || response.statusText}`, 'error');
+                }
+            } catch (error) {
+                addLog(`审批请求失败: ${error.message}`, 'error');
+            }
+        }
+        
+        async function refreshData() {
+            document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+            await Promise.all([fetchStatus(), fetchPendingRequests()]);
+            addLog('数据已刷新', 'info');
+        }
+        
+        function enableAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+                document.getElementById('auto-refresh-status').textContent = '';
+                addLog('自动刷新已关闭', 'info');
+            } else {
+                autoRefreshInterval = setInterval(refreshData, 5000);
+                document.getElementById('auto-refresh-status').textContent = '⚡ 每5秒自动刷新';
+                addLog('自动刷新已开启（每5秒）', 'success');
+            }
+        }
+        
+        function clearLog() {
+            document.getElementById('log-entries').innerHTML = '';
+            addLog('日志已清空', 'info');
+        }
+        
+        // 页面加载完成后立即刷新数据
+        window.onload = function() {
+            addLog('审批管理面板已加载', 'success');
+            refreshData();
+        };
+    </script>
+</body>
+</html>

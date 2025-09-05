@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useLangGraphInterrupt } from "@copilotkit/react-core";
 import { CopilotSidebar } from "@copilotkit/react-ui";
-import { CheckSquare, Square, Plus, Play } from "lucide-react";
+import { Plus } from "lucide-react";
 
 const HumanInTheLoopPage: React.FC = () => {
   // 直接复用demo-viewer的useLangGraphInterrupt实现

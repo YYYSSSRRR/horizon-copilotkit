@@ -3,8 +3,10 @@
 from .base import ServiceAdapter, CopilotServiceAdapter
 from .deepseek import DeepSeekAdapter
 
+
 __all__ = [
     "ServiceAdapter",
     "CopilotServiceAdapter", 
     "DeepSeekAdapter",
+    "OpenAIAdapter"
 ]

@@ -62,6 +62,7 @@ from ...lib.mcp import (
 )
 from ..state_manager import StateManager
 from ..events import RuntimeEventSource as EventSource
+from ..approval import ApprovalManager, ApprovalMiddleware
 
 
 logger = structlog.get_logger(__name__)
@@ -125,6 +126,9 @@ class CopilotRuntimeConstructorParams(BaseModel):
     observability: Optional[CopilotObservabilityConfig] = None
     mcp_servers: Optional[List[MCPEndpointConfig]] = None
     create_mcp_client: Optional[CreateMCPClientFunction] = None
+    # 审批系统配置
+    approval_required_actions: Optional[List[str]] = None
+    enable_approval_system: Optional[bool] = False
 
     class Config:
         arbitrary_types_allowed = True
@@ -207,6 +211,18 @@ class CopilotRuntime:
         # Initialize state management components
         self.state_manager = StateManager()
         self.event_source = EventSource()
+        
+        # 初始化审批系统
+        self.approval_middleware: Optional[ApprovalMiddleware] = None
+        if params.enable_approval_system:
+            approval_required_actions = set(params.approval_required_actions or [])
+            self.approval_middleware = ApprovalMiddleware(
+                approval_required_tools=approval_required_actions
+            )
+            self.logger.info(
+                "审批系统已启用",
+                approval_required_actions=list(approval_required_actions)
+            )
     
     def _inject_mcp_tool_instructions(
         self, 
@@ -1072,12 +1088,23 @@ class CopilotRuntime:
                 request_specific_mcp_actions.extend(actions_for_endpoint or [])
         
         # Combine all action sources
-        return [
+        all_actions = [
             *configured_actions,
             *langserve_functions,
             *remote_actions,
             *request_specific_mcp_actions
         ]
+        
+        # 应用审批中间件
+        if self.approval_middleware:
+            all_actions = self.approval_middleware.wrap_actions(all_actions)
+            self.logger.info(
+                "审批中间件已应用",
+                total_actions=len(all_actions),
+                approval_config=self.approval_middleware.get_configuration()
+            )
+        
+        return all_actions
     
     # Helper methods
     def _convert_gql_input_to_messages(self, message_inputs: List[Any]) -> List[Message]:

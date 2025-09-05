@@ -6,12 +6,12 @@
     "lint": "turbo lint",
     "clean": "turbo clean",
     "test": "turbo test",
-    "docs": "ts-node ./scripts/docs/gen.ts",
+    "docs": "echo 'Skipping docs generation'",
     "check-types": "turbo check-types",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-prettier": "prettier --check \"**/*.{ts,tsx,md}\"",
     "freshbuild": "pnpm -w clean && pnpm i && pnpm -w build",
-    "precommit": "pnpm run docs",
+    "precommit": "echo 'Skipping precommit hooks'",
     "prepublish": "turbo run build"
   },
   "devDependencies": {

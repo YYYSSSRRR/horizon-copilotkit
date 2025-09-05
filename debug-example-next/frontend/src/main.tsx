@@ -4,5 +4,5 @@ import App from './App.tsx'
 import './index.css'
 
 render(<React.StrictMode>
-  <App />
+    <App />
 </React.StrictMode>, document.getElementById('root'))

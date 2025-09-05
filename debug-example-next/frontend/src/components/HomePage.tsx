@@ -5,7 +5,8 @@ import {
   useCopilotScriptAction, 
   useCopilotReadable,
   useToast,
-  TextMessage 
+  TextMessage, 
+  FrontendAction
 } from '@copilotkit/react-core-next'
 import { askLlmAction, fillFormAction } from '../../playwright-scripts/index.js'
 
@@ -13,7 +14,6 @@ import { askLlmAction, fillFormAction } from '../../playwright-scripts/index.js'
 export function HomePage() {
   const [backendStatus, setBackendStatus] = useState<string>('检查中...')
   const [currentTime, setCurrentTime] = useState<string>('')
-  const [calculation, setCalculation] = useState<string>('')
   const [userInfo, setUserInfo] = useState<string>('')
   const [systemStatus, setSystemStatus] = useState<string>('')
   
@@ -75,7 +75,7 @@ export function HomePage() {
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const response = await fetch('/health')
+        const response = await fetch('/api/copilotkit/api/health')
         if (response.ok) {
           const data = await response.json()
           setBackendStatus(`✅ 后端正常运行 (${data.adapter?.provider}: ${data.adapter?.model})`)
@@ -83,6 +83,7 @@ export function HomePage() {
           setBackendStatus('❌ 后端连接失败')
         }
       } catch (error) {
+        console.log(error,"后端不可用");
         setBackendStatus('❌ 后端不可用')
       }
     }
@@ -94,11 +95,13 @@ export function HomePage() {
     const { timezone } = args || {}
     const result = `当前时间: ${new Date().toLocaleString('zh-CN', { 
       timeZone: timezone || 'Asia/Shanghai' 
+
     })}`
     setCurrentTime(result)
     toast('时间查询成功！', 'success')
     return result
   }, [setCurrentTime, toast])
+
 
   // 定义Copilot动作 - 时间查询
   const timeAction = useMemo(() => ({
@@ -115,45 +118,48 @@ export function HomePage() {
     handler: timeHandler
   }), [timeHandler])
 
-  // useCopilotAction(timeAction)
+  useCopilotAction(timeAction)
 
-  const calculateHandler = useCallback(async (args: any) => {
-    const { expression } = args || {}
-    try {
-      // 简单的安全计算（仅支持基本运算）
-      const allowedChars = /^[0-9+\-*/(). ]+$/
-      if (!allowedChars.test(expression)) {
-        throw new Error('表达式包含不支持的字符')
-      }
-      
-      const result = eval(expression)
-      const resultText = `计算结果: ${expression} = ${result}`
-      setCalculation(resultText)
-      toast('计算完成！', 'success')
-      return resultText
-    } catch (error) {
-      const errorText = `计算错误: ${error instanceof Error ? error.message : '未知错误'}`
-      setCalculation(errorText)
-      toast('计算失败！', 'error')
-      return errorText
-    }
-  }, [setCalculation, toast])
+  // 移除前端计算处理器，使用后端审批系统
+  // const calculateHandler = useCallback(async (args: any) => {
+  //   const { expression } = args || {}
+  //   try {
+  //     // 简单的安全计算（仅支持基本运算）
+  //     const allowedChars = /^[0-9+\-*/(). ]+$/
+  //     if (!allowedChars.test(expression)) {
+  //       throw new Error('表达式包含不支持的字符')
+  //     }
+  //     
+  //     const result = eval(expression)
+  //     const resultText = `计算结果: ${expression} = ${result}`
+  //     setCalculation(resultText)
+  //     toast('计算完成！', 'success')
+  //     console.log(resultText)
+  //     return resultText
+  //   } catch (error) {
+  //     const errorText = `计算错误: ${error instanceof Error ? error.message : '未知错误'}`
+  //     setCalculation(errorText)
+  //     toast('计算失败！', 'error')
+  //     return errorText
+  //   }
+  // }, [setCalculation, toast])
 
-  // 定义Copilot动作 - 数学计算
-  const calculateAction = useMemo(() => ({
-    name: "calculate",
-    description: "执行数学计算",
-    parameters: [
-      {
-        name: "expression",
-        type: "string", 
-        description: "数学表达式 (如: 2+3*4)",
-        required: true
-      }
-    ],
-    handler: calculateHandler
-  }), [calculateHandler])
+  // 注释掉计算工具，使用后端审批系统
+  // const calculateAction = useMemo(() => ({
+  //   name: "calculate",
+  //   description: "执行数学计算",
+  //   parameters: [
+  //     {
+  //       name: "expression",
+  //       type: "string", 
+  //       description: "数学表达式 (如: 2+3*4)",
+  //       required: true
+  //     }
+  //   ],
+  //   handler: calculateHandler
+  // }), [calculateHandler])
 
+  // 禁用前端计算工具，使用后端审批系统
   // useCopilotAction(calculateAction)
 
   const userInfoHandler = useCallback(async (args: any) => {
@@ -224,10 +230,20 @@ export function HomePage() {
     handler: statusHandler
   }), [statusHandler])
 
-  // useCopilotAction(statusAction)
+  useCopilotAction(statusAction)
 
   // 注册前端 Action 来测试工具调用
-  const notificationAction = useMemo(() => ({
+  
+  const notificationHandler=useCallback(async (args:{ message: string; type?: string })=>{
+      const { message, type = "info" } = args || {};
+      alert(`${type.toUpperCase()}: ${message}`);
+      return `已显示通知: ${message}`;
+  },[])
+
+  const notificationAction = useMemo<FrontendAction<[
+    { name: "message"; type: "string"; description: string; required: true },
+    { name: "type"; type: "string"; description: string; required: false }
+  ]>>(() => ({
     name: "showNotification",
     description: "显示前端通知消息",
     parameters: [
@@ -244,11 +260,8 @@ export function HomePage() {
         required: false,
       },
     ],
-    handler: ({ message, type = "info" }: { message: string; type?: string }) => {
-      alert(`${type.toUpperCase()}: ${message}`);
-      return `已显示通知: ${message}`;
-    },
-  }), []);
+    handler: notificationHandler
+  }), [notificationHandler]);
 
   useCopilotAction(notificationAction);
 
@@ -272,16 +285,16 @@ export function HomePage() {
     当前状态:
     - 后端状态: ${backendStatus}
     - 最新时间查询: ${currentTime}
-    - 最新计算结果: ${calculation}
     - 用户信息: ${userInfo}
     - 系统状态: ${systemStatus}
     
     可用功能:
-    1. 获取当前时间 (get_current_time)
-    2. 数学计算 (calculate)
-    3. 查询用户信息 (get_user_info) 
-    4. 检查系统状态 (check_status)
-  `, [backendStatus, currentTime, calculation, userInfo, systemStatus])
+    1. 获取当前时间 (get_current_time) - 前端处理
+    2. 数学计算 (calculate) - 后端审批系统处理
+    3. 查询用户信息 (get_user_info) - 后端审批系统处理
+    4. 检查系统状态 (check_status) - 前端处理
+    5. 显示通知消息 (showNotification) - 前端处理
+  `, [backendStatus, currentTime, userInfo, systemStatus])
 
   useCopilotReadable({
     description: readableDescription,
@@ -291,6 +304,7 @@ export function HomePage() {
 
   const handleSendMessage = (message: string) => {
     if (message.trim()) {
+      console.log("发送消息前")
       appendMessage(new TextMessage({ content: message, role: 'user' }))
     }
   }
@@ -335,29 +349,47 @@ export function HomePage() {
             
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {visibleMessages.map((message, index) => {
-                // 只显示文本消息
-                if (!message.isTextMessage()) {
+                console.log("Message:", message, message.status?.code);
+                
+                // 显示文本消息和工具执行结果
+                let content = '';
+                let role = 'assistant'; // 默认为助手角色
+                
+                if (message.isTextMessage()) {
+                  const textMsg = message as any;
+                  content = textMsg.content;
+                  role = textMsg.role || 'assistant';
+                } else if (message.isResultMessage?.()) {
+                  const resultMsg = message as any;
+                  content = resultMsg.result || '工具执行完成';
+                  role = 'assistant'; // 工具结果显示为助手消息
+                } else if (message.isActionExecutionMessage?.()) {
+                  // 跳过工具执行消息，只显示结果
                   return null;
+                } else {
+                  // 尝试显示其他类型的消息
+                  const anyMsg = message as any;
+                  content = anyMsg.content || anyMsg.result || JSON.stringify(message, null, 2);
+                  role = anyMsg.role || 'assistant';
                 }
 
-                console.log(message.status.code, message.content);
+                if (!content) return null;
                 
-                const textMessage = message;
                 return (
                   <div
                     key={index}
                     className={`flex ${
-                      textMessage.role === 'user' ? 'justify-end' : 'justify-start'
+                      role === 'user' ? 'justify-end' : 'justify-start'
                     }`}
                   >
                     <div
                       className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        textMessage.role === 'user'
+                        role === 'user'
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-200 text-gray-800'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{textMessage.content}</p>
+                      <p className="text-sm whitespace-pre-wrap">{content}</p>
                     </div>
                   </div>
                 );
@@ -440,12 +472,6 @@ export function HomePage() {
                 </div>
               )}
               
-              {calculation && (
-                <div>
-                  <span className="font-medium text-green-600">🧮 计算:</span>
-                  <p className="text-gray-700 mt-1">{calculation}</p>
-                </div>
-              )}
               
               {userInfo && (
                 <div>
@@ -483,6 +509,7 @@ export function HomePage() {
           </div>
         </div>
       </div>
+
     </div>
   )
 }

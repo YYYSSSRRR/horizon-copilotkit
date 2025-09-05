@@ -14,12 +14,19 @@ console.log("📁 [DEBUG] __dirname:", __dirname);
 import { 
   CopilotRuntime, 
   copilotRuntimeNodeHttpEndpoint,
-  DeepSeekAdapter
+  OpenAIAdapter
 } from "@copilotkit/runtime";
+import OpenAI from "openai";
+
 
 // 🤖 使用 DeepSeek 适配器 - 修复配置
-const serviceAdapter = new DeepSeekAdapter({
-  apiKey: process.env.DEEPSEEK_API_KEY!,
+const openai = new OpenAI({
+  apiKey: "sk-IGmFA9jyH2mlwcpelXbarOuipa3I55tF4We1fFYiYCElBXhS",
+  baseURL: "https://api.chatanywhere.tech/v1"
+}) as any; // 添加类型断言解决类型不匹配问题
+
+const serviceAdapter = new OpenAIAdapter({
+  openai: openai,
   model: "deepseek-chat",
   // 🔧 关键修复：禁用并行工具调用以提高稳定性
   disableParallelToolCalls: true,
@@ -211,11 +218,15 @@ app.use("/api/copilotkit", (req, res, next) => {
     currentRuntime = runtime;
   }
   
-  copilotRuntimeNodeHttpEndpoint({
+  // 正确使用 copilotRuntimeNodeHttpEndpoint
+  const yoga = copilotRuntimeNodeHttpEndpoint({
     endpoint: "/api/copilotkit",
     runtime: currentRuntime,
     serviceAdapter,
-  })(req, res, next);
+  });
+  
+  // 将请求传递给 Yoga 服务器处理
+  return yoga(req, res);
 });
 
 // 🔧 添加超时处理中间件

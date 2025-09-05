@@ -13,6 +13,7 @@ from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
+import uuid
 
 # 添加 runtime-python 到路径
 current_dir = Path(__file__).parent
@@ -27,7 +28,9 @@ try:
         DeepSeekAdapter,
         create_copilot_app,
         Action,
-        Parameter
+        Parameter,
+        ConversationalApprovalManager,
+        ApprovalMiddleware
     )
 except ImportError as e:
     print(f"错误: 无法导入 runtime-python 模块: {e}")
@@ -48,6 +51,21 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# ================================
+# 审批系统相关定义
+# ================================
+
+# 全局对话式审批管理器实例
+conversational_approval_manager = None
+
+def get_approval_manager():
+    """获取对话式审批管理器实例"""
+    global conversational_approval_manager
+    if conversational_approval_manager is None:
+        conversational_approval_manager = ConversationalApprovalManager()
+    return conversational_approval_manager
+
 
 
 def create_demo_actions() -> List[Action]:
@@ -130,6 +148,7 @@ def create_demo_actions() -> List[Action]:
             })
             
             if "message" in service_status:
+
                 result = service_status["message"]
             else:
                 status_info = ", ".join([f"{k}: {v}" for k, v in service_status.items()])
@@ -141,11 +160,24 @@ def create_demo_actions() -> List[Action]:
             logger.error(f"状态检查失败: {e}")
             return f"状态检查失败: {str(e)}"
     
-    # 创建动作列表
+    async def handle_approval(arguments: Dict[str, Any]) -> str:
+        """处理用户的审批决定"""
+        decision = arguments.get("decision", "").lower().strip()
+        approval_id_partial = arguments.get("approval_id", "").strip()
+        
+        # 使用对话式审批管理器处理审批
+        approval_manager = get_approval_manager()
+        return await approval_manager.handle_conversational_approval(
+            decision=decision,
+            approval_id_partial=approval_id_partial
+        )
+    
+    # 创建动作列表（部分需要审批）
     actions = [
+        # 直接执行的工具（无需审批）
         Action(
             name="get_current_time",
-            description="获取当前时间，可指定时区",
+            description="获取当前时间，可指定时区（无需审批）",
             parameters=[
                 Parameter(
                     name="timezone",
@@ -157,8 +189,44 @@ def create_demo_actions() -> List[Action]:
             handler=get_current_time
         ),
         Action(
+            name="get_user_info",
+            description="获取用户信息（无需审批）",
+            parameters=[
+                Parameter(
+                    name="user_id",
+                    type="string",
+                    description="用户ID，可选值: default, admin, user1",
+                    required=False
+                )
+            ],
+            handler=get_user_info
+        ),
+        
+        # 审批决定处理工具
+        Action(
+            name="handle_approval",
+            description="【重要】只有当用户在最新消息中明确输入了'y'、'yes'、'同意'、'是'、'n'、'no'、'拒绝'、'否'等审批决定时，才能调用此工具。绝对不要在显示审批消息后立即调用此工具，必须等待用户的实际回复。如果用户没有明确输入审批决定，就不要调用此工具。",
+            parameters=[
+                Parameter(
+                    name="decision",
+                    type="string",
+                    description="用户在最新消息中明确输入的审批决定，必须是以下值之一: 'y', 'yes', '同意', '是', 'n', 'no', '拒绝', '否'。只有用户真正输入了这些词时才使用。",
+                    required=True
+                ),
+                Parameter(
+                    name="approval_id",
+                    type="string",
+                    description="可选的审批ID（部分即可），如果不提供则处理最新的审批请求",
+                    required=False
+                )
+            ],
+            handler=handle_approval
+        ),
+        
+        # 需要审批的工具
+        Action(
             name="calculate",
-            description="计算数学表达式，支持基本的四则运算",
+            description="计算数学表达式，支持基本的四则运算。注意：此工具需要人工审批，执行前会显示审批提示。",
             parameters=[
                 Parameter(
                     name="expression",
@@ -170,21 +238,8 @@ def create_demo_actions() -> List[Action]:
             handler=calculate
         ),
         Action(
-            name="get_user_info",
-            description="获取用户信息",
-            parameters=[
-                Parameter(
-                    name="user_id",
-                    type="string",
-                    description="用户ID，可选值: default, admin, user1",
-                    required=False
-                )
-            ],
-            handler=get_user_info
-        ),
-        Action(
             name="check_status",
-            description="检查系统或服务状态",
+            description="检查系统或服务状态。注意：此工具需要人工审批，执行前会显示审批提示。",
             parameters=[
                 Parameter(
                     name="service",
@@ -229,6 +284,16 @@ def main():
             )
         )
         
+        # 配置对话式审批系统
+        conversational_approval_manager = get_approval_manager()
+        approval_middleware = ApprovalMiddleware(
+            approval_required_tools={"check_status", "calculate"},
+            approval_manager=conversational_approval_manager
+        )
+        runtime.approval_middleware = approval_middleware
+        
+        logger.info("🔐 已配置对话式审批系统，需要审批的工具: check_status, calculate")
+        
         # 使用 create_copilot_app API 创建应用
         app = create_copilot_app(
             runtime=runtime,
@@ -252,8 +317,58 @@ def main():
                 "actions": [action.name for action in demo_actions],
                 "timestamp": datetime.utcnow().isoformat()
             }
+
+        # ================================
+        # 审批系统API端点（对话式审批）
+        # ================================
+
+        @app.get("/api/approvals/pending")
+        async def get_pending_approvals():
+            """获取所有待审批的工具调用"""
+            approval_manager = get_approval_manager()
+            pending = approval_manager.get_pending_approvals()
+            return {
+                "pending_count": len(pending),
+                "pending_requests": [
+                    {
+                        "approval_id": pending_call.approval_id,
+                        "session_id": pending_call.session_id,
+                        "tool_name": pending_call.tool_name,
+                        "arguments": pending_call.arguments,
+                        "timestamp": pending_call.timestamp,
+                    }
+                    for pending_call in pending.values()
+                ]
+            }
+
+        @app.get("/api/approvals/status")
+        async def get_approval_status():
+            """获取审批系统状态"""
+            approval_manager = get_approval_manager()
+            pending = approval_manager.get_pending_approvals()
+            return {
+                "status": "running",
+                "pending_count": len(pending),
+                "total_capacity": 100,  # 假设最大支持100个待审批
+                "uptime": "running since server start",
+                "approval_type": "conversational",
+                "features": {
+                    "conversational_approval": True,
+                    "chat_based_decisions": True,
+                    "approval_timeout": None
+                }
+            }
         
         logger.info(f"✅ 创建CopilotRuntime成功，注册了 {len(demo_actions)} 个动作")
+        for action in demo_actions:
+            logger.info(f"   - {action.name}: {type(action.handler).__name__}")
+        
+        # 检查审批中间件是否正确配置
+        if runtime.approval_middleware:
+            logger.info(f"🔐 审批中间件配置:")
+            logger.info(f"   - 需要审批的工具: {list(runtime.approval_middleware.approval_required_tools)}")
+            logger.info(f"   - 审批管理器类型: {type(runtime.approval_middleware.approval_manager).__name__}")
+        
         logger.info(f"🔧 配置DeepSeek适配器: {deepseek_adapter.model}")
         logger.info("🌐 使用 create_copilot_app API 创建FastAPI应用")
         
@@ -267,6 +382,11 @@ def main():
         logger.info(f"   - 健康检查: http://{host}:{port}/api/health")
         logger.info(f"   - 新API调试: http://{host}:{port}/debug/new-api")
         logger.info(f"   - CopilotKit Hello: http://{host}:{port}/copilotkit/hello")
+        logger.info(f"🔐 审批系统API端点:")
+        logger.info(f"   - 待审批列表: http://{host}:{port}/api/approvals/pending")
+        logger.info(f"   - 审批工具调用: POST http://{host}:{port}/api/approvals/approve")
+        logger.info(f"   - 取消审批: DELETE http://{host}:{port}/api/approvals/{{approval_id}}")
+        logger.info(f"   - 审批系统状态: http://{host}:{port}/api/approvals/status")
         
         uvicorn.run(
             app,

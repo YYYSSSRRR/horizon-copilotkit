@@ -22,6 +22,7 @@ export const fillFormExecutor = async (formData) => {
   } = formData;
 
   try {
+    console.log("表单数据：",formData);
     // 填写姓名
     if (name) {
       await page.getByRole('textbox', { name: '姓名输入框' }).click();
@@ -92,7 +93,7 @@ export const fillFormExecutor = async (formData) => {
     if (submit) {
       await page.getByRole('button', { name: '提交表单' }).click();
     }
-
+    
     return `表单填写完成。${submit ? '已提交表单。' : '未提交表单，可手动点击提交按钮。'}`;
 
   } catch (error) {
