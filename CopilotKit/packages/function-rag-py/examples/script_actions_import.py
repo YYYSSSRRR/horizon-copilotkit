@@ -210,23 +210,25 @@ def convert_action_to_function(action_def: Dict[str, Any]) -> AddFunctionRequest
     """
     name = action_def.get("name", "unknown_action")
     description = action_def.get("description", "脚本动作")
-    source_file = action_def.get("_source_file", "unknown.js")
+    # source_file = action_def.get("_source_file", "unknown.js")
     
-    category = "playwright-script"
-    subcategory = "ui-automation"
+    category = "script-action"
+    subcategory = ""
     
     # 转换参数
     js_parameters = action_def.get("parameters", {})
     parameters = convert_js_parameters_to_rag(js_parameters)
     
     # 生成使用场景
-    use_cases = generate_action_use_cases(name, description)
+    # use_cases = generate_action_use_cases(name, description)
+    use_cases = []
     
     # 生成示例
     examples = generate_action_examples(name, description, parameters)
     
     # 生成标签
-    tags = generate_action_tags(name, description, source_file)
+    # tags = generate_action_tags(name, description, source_file)
+    tags = []
     
     # 生成实现说明
     implementation = generate_action_implementation(action_def)
