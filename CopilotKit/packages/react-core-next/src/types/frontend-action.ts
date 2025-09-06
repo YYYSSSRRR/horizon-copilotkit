@@ -158,7 +158,6 @@ export type FrontendAction<
 
 export interface ScriptAction<T extends Parameter[] | [] = []> extends Action<T> {
   executeOnClient?: boolean;
-  script?: string;
 }
 
 // 新的动作可用性枚举，不依赖 GraphQL

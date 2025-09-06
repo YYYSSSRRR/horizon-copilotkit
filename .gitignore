@@ -32,3 +32,5 @@ venv
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+*.pkl
