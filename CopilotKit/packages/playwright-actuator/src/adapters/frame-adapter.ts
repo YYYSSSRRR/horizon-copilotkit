@@ -1,6 +1,9 @@
 /// <reference path="../types/global.d.ts" />
 import type { 
-  LocatorOptions 
+  LocatorOptions,
+  BaseLocator,
+  FrameAdapter as FrameAdapterType,
+  EventSimulator
 } from '../../types/index.js';
 import { BasePageContext, type PageContext } from './base-page-context.js';
 import FrameLocatorAdapter from './frame-locator-adapter.js';
@@ -11,8 +14,9 @@ import FrameLocatorAdapter from './frame-locator-adapter.js';
  */
 export class FrameAdapter extends BasePageContext {
   private readonly frameElement: HTMLIFrameElement;
-  private readonly frameDocument: Document;
+  public readonly frameDocument: Document;
   private readonly frameWindow: Window;
+  public readonly eventSimulator: EventSimulator;
 
   constructor(frameElement: HTMLIFrameElement) {
     super();
@@ -31,6 +35,7 @@ export class FrameAdapter extends BasePageContext {
     
     this.frameWindow = frameWindow;
     this.frameDocument = frameDocument;
+    this.eventSimulator = new window.PlaywrightEventSimulator();
   }
 
   /**
@@ -125,7 +130,7 @@ export class FrameAdapter extends BasePageContext {
   /**
    * 创建 Locator（在 frame 上下文中）- 重写基类方法
    */
-  locator(selector: string, options: LocatorOptions = {}): any {
+  locator(selector: string, options: LocatorOptions = {}): BaseLocator {
     // 创建一个特殊的 locator，它在 frame 上下文中工作
     const LocatorAdapterClass = window.PlaywrightLocatorAdapter;
     if (!LocatorAdapterClass) {
@@ -157,7 +162,7 @@ export class FrameAdapter extends BasePageContext {
   /**
    * 根据 URL 或 name 查找子 frame
    */
-  frame(options: { url?: string | RegExp; name?: string }): any {
+  frame(options: { url?: string | RegExp; name?: string }): FrameAdapterType | null {
     const frames = this.frames();
     
     if (options.url) {
@@ -209,7 +214,7 @@ export class FrameAdapter extends BasePageContext {
   /**
    * 创建嵌套 FrameAdapter 实例
    */
-  private createNestedFrameAdapter(frameElement: HTMLIFrameElement): any {
+  private createNestedFrameAdapter(frameElement: HTMLIFrameElement): FrameAdapterType | null {
     const FrameAdapterClass = window.PlaywrightFrameAdapter;
     if (!FrameAdapterClass) {
       throw new Error('PlaywrightFrameAdapter not found in global scope');

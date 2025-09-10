@@ -1,7 +1,13 @@
 /// <reference path="../types/global.d.ts" />
 import type { 
   PageGotoOptions, 
-  ViewportSize
+  ViewportSize,
+  ClickOptions,
+  FillOptions, 
+  TypeOptions,
+  WaitManager,
+  EventSimulator,
+  FrameAdapter as FrameAdapterType
 } from '../../types/index.js';
 import { BasePageContext, type PageContext } from './base-page-context.js';
 import FrameLocatorAdapter from './frame-locator-adapter.js';
@@ -11,13 +17,13 @@ import FrameLocatorAdapter from './frame-locator-adapter.js';
  * 继承 BasePageContext，避免与 FrameAdapter 的代码重复
  */
 class PageAdapter extends BasePageContext {
-  private readonly waitManager: any; // TODO: Type this properly
-  private readonly eventSimulator: any; // TODO: Type this properly
+  private readonly waitManager: WaitManager;
+  private readonly eventSimulator: EventSimulator;
 
   constructor() {
     super();
-    this.waitManager = new (window.PlaywrightWaitManager as any)();
-    this.eventSimulator = new (window.PlaywrightEventSimulator as any)();
+    this.waitManager = new window.PlaywrightWaitManager();
+    this.eventSimulator = new window.PlaywrightEventSimulator();
   }
 
   /**
@@ -96,7 +102,7 @@ class PageAdapter extends BasePageContext {
   /**
    * 点击元素（使用事件模拟器）
    */
-  async click(selector: string, options: any = {}): Promise<void> {
+  async click(selector: string, options: ClickOptions = {}): Promise<void> {
     const element = await this.waitForSelector(selector);
     await this.scrollIntoViewIfNeeded(element);
     
@@ -107,7 +113,7 @@ class PageAdapter extends BasePageContext {
   /**
    * 双击元素（使用事件模拟器）
    */
-  async dblclick(selector: string, options: any = {}): Promise<void> {
+  async dblclick(selector: string, options: ClickOptions = {}): Promise<void> {
     const element = await this.waitForSelector(selector);
     await this.scrollIntoViewIfNeeded(element);
     
@@ -118,7 +124,7 @@ class PageAdapter extends BasePageContext {
   /**
    * 按键操作（使用事件模拟器）
    */
-  async press(selector: string, key: string, options: any = {}): Promise<void> {
+  async press(selector: string, key: string, options: TypeOptions = {}): Promise<void> {
     const element = await this.waitForSelector(selector) as HTMLElement;
     element.focus();
     
@@ -129,8 +135,8 @@ class PageAdapter extends BasePageContext {
   /**
    * 输入文本（使用事件模拟器）
    */
-  async type(selector: string, text: string, options: any = {}): Promise<void> {
-    const element = await this.waitForSelector(selector);
+  async type(selector: string, text: string, options: TypeOptions = {}): Promise<void> {
+    const element = await this.waitForSelector(selector) as HTMLInputElement | HTMLTextAreaElement;
     await this.eventSimulator.simulateTyping(element, text, options);
     this.logger.debug(`输入: ${selector} -> \"${text}\"`);
   }
@@ -205,15 +211,23 @@ class PageAdapter extends BasePageContext {
    */
   async waitForXPath(xpath: string, options: { timeout?: number } = {}): Promise<Element> {
     const { timeout = 30000 } = options;
+    let foundElement: Element | null = null;
     
-    return this.waitManager.waitForCondition(
+    await this.waitManager.waitForCondition(
       () => {
         const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        return result.singleNodeValue;
+        foundElement = result.singleNodeValue as Element | null;
+        return foundElement !== null;
       },
       timeout,
       `XPath 元素等待超时: ${xpath}`
     );
+    
+    if (!foundElement) {
+      throw new Error(`XPath element not found: ${xpath}`);
+    }
+    
+    return foundElement;
   }
 
   /**
@@ -232,22 +246,25 @@ class PageAdapter extends BasePageContext {
   }
 
   /**
-   * 等待超时（重写使用 waitManager）
-   */
-  async waitForTimeout(ms: number): Promise<void> {
-    return this.waitManager.waitForTimeout(ms);
-  }
-
-  /**
    * 等待函数（重写使用 waitManager）
    */
   async waitForFunction<T>(fn: () => T, options: { timeout?: number } = {}): Promise<T> {
     const { timeout = 30000 } = options;
     return this.waitManager.waitForCondition(
-      () => fn(),
+      () => {
+        const result = fn();
+        return Boolean(result);
+      },
       timeout,
       '等待函数条件超时'
-    );
+    ) as Promise<T>;
+  }
+
+  /**
+   * 等待超时（重写使用 waitManager）
+   */
+  async waitForTimeout(ms: number): Promise<void> {
+    return this.waitManager.waitForTimeout(ms);
   }
 
   // 现代定位器方法现在继承自 BasePageContext
@@ -322,7 +339,15 @@ class PageAdapter extends BasePageContext {
    * 创建 FrameLocator
    */
   frameLocator(selector: string): FrameLocatorAdapter {
-    return new FrameLocatorAdapter(selector, this);
+    return new FrameLocatorAdapter(selector, {
+      frameDocument: undefined,
+      waitForSelector: this.waitForSelector.bind(this),
+      scrollIntoViewIfNeeded: this.scrollIntoViewIfNeeded.bind(this),
+      waitForTimeout: this.waitForTimeout.bind(this),
+      logger: this.logger,
+      eventSimulator: this.eventSimulator,
+      createFrameAdapter: this.createFrameAdapter.bind(this)
+    });
   }
 
   /**
@@ -342,7 +367,7 @@ class PageAdapter extends BasePageContext {
   /**
    * 根据 URL 或 name 查找 frame
    */
-  frame(options: { url?: string | RegExp; name?: string }): any {
+  frame(options: { url?: string | RegExp; name?: string }): FrameAdapterType | null {
     const frames = this.frames();
     
     if (options.url) {
@@ -401,7 +426,7 @@ class PageAdapter extends BasePageContext {
   /**
    * 创建 FrameAdapter 实例
    */
-  private createFrameAdapter(frameElement: HTMLIFrameElement): any {
+  private createFrameAdapter(frameElement: HTMLIFrameElement): FrameAdapterType | null {
     const FrameAdapterClass = window.PlaywrightFrameAdapter;
     if (!FrameAdapterClass) {
       throw new Error('PlaywrightFrameAdapter not found in global scope');

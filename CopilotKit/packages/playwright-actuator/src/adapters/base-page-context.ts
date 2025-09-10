@@ -5,7 +5,8 @@ import type {
   TypeOptions,
   BoundingBox,
   ViewportSize,
-  Logger 
+  Logger,
+  BaseLocator 
 } from '../../types/index.js';
 import { 
   getRoleSelector, 
@@ -29,7 +30,7 @@ export interface PageContext {
  * 基础页面操作类 - Page 和 Frame 的共同基类
  */
 export abstract class BasePageContext {
-  protected readonly logger: Logger;
+  public readonly logger: Logger;
   protected abstract getContext(): PageContext;
 
   constructor() {
@@ -412,7 +413,7 @@ export abstract class BasePageContext {
   /**
    * 创建 Locator
    */
-  locator(selector: string, options: Record<string, any> = {}): any {
+  locator(selector: string, options: Record<string, any> = {}): BaseLocator {
     const LocatorAdapterClass = window.PlaywrightLocatorAdapter;
     if (!LocatorAdapterClass) {
       throw new Error('PlaywrightLocatorAdapter not found in global scope');
@@ -423,7 +424,7 @@ export abstract class BasePageContext {
   /**
    * 根据角色定位
    */
-  getByRole(role: string, options: { name?: string; exact?: boolean; level?: number } = {}): any {
+  getByRole(role: string, options: { name?: string; exact?: boolean; level?: number } = {}): BaseLocator {
     const { name, exact = false, level } = options;
     const roleOptions: RoleOptions = { exact, level };
     
@@ -442,7 +443,7 @@ export abstract class BasePageContext {
   /**
    * 根据文本定位
    */
-  getByText(text: string, options: { exact?: boolean } = {}): any {
+  getByText(text: string, options: { exact?: boolean } = {}): BaseLocator {
     const { exact = false } = options;
     const selector = buildGetByTextSelector(text, exact);
     return this.locator(selector);
@@ -451,7 +452,7 @@ export abstract class BasePageContext {
   /**
    * 根据标签定位
    */
-  getByLabel(text: string, options: { exact?: boolean } = {}): any {
+  getByLabel(text: string, options: { exact?: boolean } = {}): BaseLocator {
     const { exact = false } = options;
     const selector = buildGetByLabelSelector(text, exact);
     return this.locator(selector);
@@ -460,7 +461,7 @@ export abstract class BasePageContext {
   /**
    * 根据占位符定位
    */
-  getByPlaceholder(text: string, options: { exact?: boolean } = {}): any {
+  getByPlaceholder(text: string, options: { exact?: boolean } = {}): BaseLocator {
     const { exact = false } = options;
     const selector = buildGetByPlaceholderSelector(text, exact);
     return this.locator(selector);
@@ -469,7 +470,7 @@ export abstract class BasePageContext {
   /**
    * 根据测试 ID 定位
    */
-  getByTestId(testId: string): any {
+  getByTestId(testId: string): BaseLocator {
     const selector = buildGetByTestIdSelector(testId);
     return this.locator(selector);
   }
@@ -477,7 +478,7 @@ export abstract class BasePageContext {
   /**
    * 根据标题定位
    */
-  getByTitle(text: string, options: { exact?: boolean } = {}): any {
+  getByTitle(text: string, options: { exact?: boolean } = {}): BaseLocator {
     const { exact = false } = options;
     const selector = buildGetByTitleSelector(text, exact);
     return this.locator(selector);
