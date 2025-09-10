@@ -132,18 +132,8 @@ export class FrameAdapter extends BasePageContext {
       throw new Error('PlaywrightLocatorAdapter not found in global scope');
     }
     
-    // 创建一个模拟的 page 对象，它使用 frame 的上下文
-    const framePage = {
-      waitForSelector: (sel: string, opts?: any) => this.waitForSelector(sel, opts),
-      scrollIntoViewIfNeeded: (el: Element) => this.scrollIntoViewIfNeeded(el),
-      waitForTimeout: (ms: number) => this.waitForTimeout(ms),
-      logger: this.logger
-    };
-    
-    const locator = new LocatorAdapterClass(selector, framePage, options);
-    
-    // 重写 locator 的文档上下文
-    (locator as any)._getContextDocument = () => this.frameDocument;
+    // 直接使用 this，因为 FrameAdapter 已经实现了所需的接口
+    const locator = new LocatorAdapterClass(selector, this, options);
     
     return locator;
   }

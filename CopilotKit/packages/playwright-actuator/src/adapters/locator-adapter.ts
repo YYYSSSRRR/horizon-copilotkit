@@ -119,6 +119,18 @@ class LocatorAdapter {
   }
 
   /**
+   * 获取正确的文档对象（支持 iframe 场景）
+   */
+  private getDocument(): Document {
+    // 如果 page 有 frameDocument 属性，说明是在 iframe 中
+    if (this.page && this.page.frameDocument) {
+      return this.page.frameDocument;
+    }
+    // 否则使用主页面的 document
+    return document;
+  }
+
+  /**
    * 基于已解析元素创建新的 locator（保留用于内部使用）
    */
   static fromElements(elements: Element[], page: any, queryStrategy: QueryStrategy): LocatorAdapter {
@@ -1021,7 +1033,8 @@ class LocatorAdapter {
         
         if (selector.startsWith('xpath=')) {
           const xpath = selector.substring(6);
-          const result = document.evaluate(xpath, parentElement, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          const doc = this.getDocument();
+          const result = doc.evaluate(xpath, parentElement, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
           for (let i = 0; i < result.snapshotLength; i++) {
             const element = result.snapshotItem(i);
             if (element) childElements.push(element as Element);
@@ -1037,9 +1050,10 @@ class LocatorAdapter {
     }
     
     // 全局查询 - 如果没有父元素或父元素为空数组
+    const doc = this.getDocument();
     if (selector.startsWith('xpath=')) {
       const xpath = selector.substring(6);
-      const result = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      const result = doc.evaluate(xpath, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
       const elements: Element[] = [];
       for (let i = 0; i < result.snapshotLength; i++) {
         const element = result.snapshotItem(i);
@@ -1047,7 +1061,7 @@ class LocatorAdapter {
       }
       return elements;
     } else {
-      return Array.from(document.querySelectorAll(selector));
+      return Array.from(doc.querySelectorAll(selector));
     }
   }
 
@@ -1168,12 +1182,12 @@ class LocatorAdapter {
             }
             break;
           case 'attached':
-            if (document.contains(element)) {
+            if (this.getDocument().contains(element)) {
               return element;
             }
             break;
           case 'detached':
-            if (!document.contains(element)) {
+            if (!this.getDocument().contains(element)) {
               throw new Error('元素已分离');
             }
             break;
@@ -1315,7 +1329,7 @@ class LocatorAdapter {
    * 立即获取元素（不等待）
    */
   private async getElementImmediate(): Promise<Element> {
-    if (this._element && document.contains(this._element)) {
+    if (this._element && this.getDocument().contains(this._element)) {
       return this._element;
     }
 
@@ -1397,7 +1411,7 @@ class LocatorAdapter {
     const path: string[] = [];
     let current: Element | null = element;
     
-    while (current && current !== document.body) {
+    while (current && current !== this.getDocument().body) {
       let selector = current.tagName.toLowerCase();
       
       if (current.className) {
