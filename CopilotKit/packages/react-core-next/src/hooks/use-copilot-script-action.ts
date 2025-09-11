@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { randomId } from "@copilotkit/shared";
-import { useCopilotScriptActions } from "../context/copilot-context";
+import { useCopilotScriptActions, useFrontendApprovalManager } from "../context/copilot-context";
 import { ScriptAction } from "../types/frontend-action";
 
 /**
@@ -14,6 +14,7 @@ export function useCopilotScriptAction(
   dependencies?: React.DependencyList
 ) {
   const { setScriptAction, removeScriptAction } = useCopilotScriptActions();
+  const approvalManager = useFrontendApprovalManager();
   const scriptActionIdRef = useRef<string>();
 
   useEffect(() => {
@@ -24,18 +25,51 @@ export function useCopilotScriptAction(
 
     const scriptActionId = scriptActionIdRef.current;
 
+    // 如果脚本动作需要审批且有审批管理器，则包装处理器
+    let wrappedScriptAction = scriptAction;
+    
+    if (scriptAction.requireApproval && scriptAction.handler && approvalManager) {
+      const originalHandler = scriptAction.handler;
+      
+      wrappedScriptAction = {
+        ...scriptAction,
+        handler: async (args: any) => {
+          try {
+            // 请求审批
+            const approvalRequest = approvalManager.requestApproval(scriptAction.name, args);
+            
+            // 生成审批消息
+            const approvalMessage = approvalManager.generateApprovalMessage(approvalRequest);
+            
+            // 返回审批提示消息，而不是直接执行脚本动作
+            return approvalMessage;
+          } catch (error) {
+            console.error("脚本动作审批请求失败:", error);
+            throw error;
+          }
+        }
+      };
+      
+      // 将需要审批的脚本动作添加到审批管理器
+      approvalManager.addApprovalRequiredAction(scriptAction.name);
+    }
+
     // 注册脚本动作
-    setScriptAction(scriptActionId, scriptAction);
+    setScriptAction(scriptActionId, wrappedScriptAction);
 
     // 清理函数：移除脚本动作
     return () => {
       removeScriptAction(scriptActionId);
+      if (scriptAction.requireApproval && approvalManager) {
+        approvalManager.removeApprovalRequiredAction(scriptAction.name);
+      }
     };
   }, dependencies ? [...dependencies, scriptAction.name] : [
     scriptAction.name, 
     scriptAction.description, 
     scriptAction.handler,
-    scriptAction.executeOnClient
+    scriptAction.executeOnClient,
+    scriptAction.requireApproval
   ]);
 
   // 返回脚本动作 ID，用于可能的手动控制

@@ -14,6 +14,7 @@ from ..exceptions import ApprovalRequiredError
 logger = structlog.get_logger(__name__)
 
 
+
 class ConversationalApprovalManager(ApprovalManager):
     """
     对话式审批管理器 - 扩展基础审批管理器，支持通过对话进行审批

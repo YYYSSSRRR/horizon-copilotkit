@@ -190,7 +190,7 @@ def create_demo_actions() -> List[Action]:
         ),
         Action(
             name="get_user_info",
-            description="获取用户信息（无需审批）",
+            description="获取用户信息 注意：此工具需要人工审批，执行前会显示审批提示。",
             parameters=[
                 Parameter(
                     name="user_id",
@@ -287,12 +287,12 @@ def main():
         # 配置对话式审批系统
         conversational_approval_manager = get_approval_manager()
         approval_middleware = ApprovalMiddleware(
-            approval_required_tools={"check_status", "calculate"},
+            approval_required_tools={"calculate", "get_user_info","check_status"},
             approval_manager=conversational_approval_manager
         )
         runtime.approval_middleware = approval_middleware
         
-        logger.info("🔐 已配置对话式审批系统，需要审批的工具: check_status, calculate")
+        logger.info("🔐 已配置对话式审批系统，需要审批的工具: check_status, calculate, get_user_info")
         
         # 使用 create_copilot_app API 创建应用
         app = create_copilot_app(

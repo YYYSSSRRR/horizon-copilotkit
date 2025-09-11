@@ -132,6 +132,11 @@ export type FrontendAction<
   available?: FrontendActionAvailability;
   pairedAction?: string;
   followUp?: boolean;
+  /**
+   * 是否需要用户审批才能执行此动作
+   * 当设置为 true 时，动作执行前会显示审批提示，等待用户确认
+   */
+  requireApproval?: boolean;
 } & (
     | {
         render?:
@@ -158,6 +163,12 @@ export type FrontendAction<
 
 export interface ScriptAction<T extends Parameter[] | [] = []> extends Action<T> {
   executeOnClient?: boolean;
+  script?: string;
+  /**
+   * 是否需要用户审批才能执行此脚本动作
+   * 当设置为 true 时，脚本动作执行前会显示审批提示，等待用户确认
+   */
+  requireApproval?: boolean;
 }
 
 // 新的动作可用性枚举，不依赖 GraphQL

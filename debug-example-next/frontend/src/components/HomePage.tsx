@@ -5,6 +5,7 @@ import {
   useCopilotScriptAction, 
   useCopilotReadable,
   useToast,
+  useFrontendApprovalManager,
   TextMessage, 
   FrontendAction
 } from '@copilotkit/react-core-next'
@@ -33,6 +34,7 @@ export function HomePage() {
   })
 
   const { toast } = useToast()
+  const approvalManager = useFrontendApprovalManager()
   
   // 表单处理函数
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -120,117 +122,7 @@ export function HomePage() {
 
   useCopilotAction(timeAction)
 
-  // 移除前端计算处理器，使用后端审批系统
-  // const calculateHandler = useCallback(async (args: any) => {
-  //   const { expression } = args || {}
-  //   try {
-  //     // 简单的安全计算（仅支持基本运算）
-  //     const allowedChars = /^[0-9+\-*/(). ]+$/
-  //     if (!allowedChars.test(expression)) {
-  //       throw new Error('表达式包含不支持的字符')
-  //     }
-  //     
-  //     const result = eval(expression)
-  //     const resultText = `计算结果: ${expression} = ${result}`
-  //     setCalculation(resultText)
-  //     toast('计算完成！', 'success')
-  //     console.log(resultText)
-  //     return resultText
-  //   } catch (error) {
-  //     const errorText = `计算错误: ${error instanceof Error ? error.message : '未知错误'}`
-  //     setCalculation(errorText)
-  //     toast('计算失败！', 'error')
-  //     return errorText
-  //   }
-  // }, [setCalculation, toast])
 
-  // 注释掉计算工具，使用后端审批系统
-  // const calculateAction = useMemo(() => ({
-  //   name: "calculate",
-  //   description: "执行数学计算",
-  //   parameters: [
-  //     {
-  //       name: "expression",
-  //       type: "string", 
-  //       description: "数学表达式 (如: 2+3*4)",
-  //       required: true
-  //     }
-  //   ],
-  //   handler: calculateHandler
-  // }), [calculateHandler])
-
-  // 禁用前端计算工具，使用后端审批系统
-  // useCopilotAction(calculateAction)
-
-  const userInfoHandler = useCallback(async (args: any) => {
-    const { type } = args || {}
-    let result = ''
-    if (type === 'system') {
-      result = `系统信息:\n- 浏览器: ${navigator.userAgent}\n- 平台: ${navigator.platform}\n- 语言: ${navigator.language}`
-    } else {
-      result = '用户: 调试用户\n状态: 在线\n权限: 标准用户'
-    }
-    setUserInfo(result)
-    toast('信息获取成功！', 'info')
-    return result
-  }, [setUserInfo, toast])
-
-  // 定义Copilot动作 - 用户信息
-  const userInfoAction = useMemo(() => ({
-    name: "get_user_info",
-    description: "获取用户或系统信息",
-    parameters: [
-      {
-        name: "type",
-        type: "string",
-        description: "信息类型: basic(基本信息) 或 system(系统信息)",
-        required: false
-      }
-    ],
-    handler: userInfoHandler
-  }), [userInfoHandler])
-
-  // useCopilotAction(userInfoAction)
-
-  const statusHandler = useCallback(async (args: any) => {
-    const { component } = args || {}
-    const status = {
-      frontend: "✅ React 前端运行中",
-      backend: backendStatus,
-      copilotkit: "✅ CopilotKit 已连接",
-      actions: "✅ 4 个动作可用"
-    }
-    
-    let result = ''
-    if (component === 'all' || !component) {
-      result = Object.entries(status).map(([k, v]) => `${k}: ${v}`).join('\n')
-    } else if (component in status) {
-      result = `${component}: ${status[component as keyof typeof status]}`
-    } else {
-      result = `未知组件: ${component}。可用组件: ${Object.keys(status).join(', ')}`
-    }
-    
-    setSystemStatus(result)
-    toast('状态检查完成！', 'info')
-    return result
-  }, [backendStatus, setSystemStatus, toast])
-
-  // 定义Copilot动作 - 状态检查
-  const statusAction = useMemo(() => ({
-    name: "check_status", 
-    description: "检查系统状态",
-    parameters: [
-      {
-        name: "component",
-        type: "string",
-        description: "要检查的组件 (frontend, backend, all)",
-        required: false
-      }
-    ],
-    handler: statusHandler
-  }), [statusHandler])
-
-  useCopilotAction(statusAction)
 
   // 注册前端 Action 来测试工具调用
   
@@ -265,6 +157,161 @@ export function HomePage() {
 
   useCopilotAction(notificationAction);
 
+  // 需要审批的表单提交动作
+  const submitFormHandler = useCallback(async (args: { formData?: any }) => {
+    const { formData: submittedData } = args || {};
+    const dataToSubmit = submittedData || formData;
+    
+    // 模拟表单提交
+    console.log('提交表单数据:', dataToSubmit);
+    toast(`表单提交成功！用户: ${dataToSubmit.name || '未知'}`, 'success');
+    
+    // 模拟提交到服务器
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    return `表单提交成功！已提交用户 ${dataToSubmit.name || '未知'} 的信息。`;
+  }, [formData, toast]);
+
+  const submitFormAction = useMemo<FrontendAction<[
+    { name: "formData"; type: "object"; description: string; required: false }
+  ]>>(() => ({
+    name: "submitForm",
+    description: "提交用户表单数据（需要审批）",
+    requireApproval: true, // 启用审批
+    parameters: [
+      {
+        name: "formData",
+        type: "object",
+        description: "要提交的表单数据，如果不提供则使用当前表单内容",
+        required: false,
+      },
+    ],
+    handler: submitFormHandler
+  }), [submitFormHandler]);
+
+  useCopilotAction(submitFormAction);
+
+  // 需要审批的表单重置动作
+  const resetFormHandler = useCallback(async (args: { confirm?: boolean }) => {
+    const { confirm = false } = args || {};
+    
+    if (confirm) {
+      resetForm();
+      return '表单已重置为默认值。';
+    } else {
+      return '请确认是否要重置表单。使用 confirm: true 参数来确认操作。';
+    }
+  }, [resetForm]);
+
+  const resetFormAction = useMemo<FrontendAction<[
+    { name: "confirm"; type: "boolean"; description: string; required: false }
+  ]>>(() => ({
+    name: "resetFormData",
+    description: "重置表单数据（需要审批）",
+    requireApproval: true, // 启用审批
+    parameters: [
+      {
+        name: "confirm",
+        type: "boolean",
+        description: "确认重置表单，设为 true 来确认操作",
+        required: false,
+      },
+    ],
+    handler: resetFormHandler
+  }), [resetFormHandler]);
+
+  useCopilotAction(resetFormAction);
+
+  // 前端审批决定处理动作
+  const frontendApprovalHandler = useCallback(async (args: { decision: string; approval_id?: string }) => {
+    const { decision, approval_id } = args || {};
+    
+    if (!approvalManager) {
+      return `❌ 审批管理器未初始化，无法处理审批请求。`;
+    }
+    
+    const normalizedDecision = decision?.toLowerCase()?.trim() || '';
+    const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
+    const isRejected = ['n', 'no', '拒绝', '否', 'reject', 'rejected'].includes(normalizedDecision);
+    
+    if (!isApproved && !isRejected) {
+      return `❌ 无效的审批决定: "${decision}"。请输入 'y'/'yes'/'同意'/'是' 批准，或 'n'/'no'/'拒绝'/'否' 拒绝。`;
+    }
+    
+    // 查找审批请求
+    const request = approvalManager.findApprovalByPartialId(approval_id || "");
+    if (!request) {
+      const pending = approvalManager.getPendingApprovals();
+      return pending.length > 0
+        ? `❌ 找不到匹配的审批请求。当前有 ${pending.length} 个待处理的审批。`
+        : '❌ 没有找到待审批的请求。';
+    }
+    
+    if (request.resolved) {
+      return `❌ 审批请求 ${request.approvalId.slice(-8)} 已经被处理过了。`;
+    }
+    
+    // 标记为已解决
+    request.resolved = true;
+    
+    if (isApproved) {
+      // 批准后，根据动作名称执行相应的操作
+      try {
+        if (request.actionName === 'submitForm') {
+          // 执行表单提交，使用审批请求中保存的参数
+          const result = await submitFormHandler(request.parameters);
+          return `✅ 批准 - ${result}`;
+        } else if (request.actionName === 'resetFormData') {
+          // 执行表单重置
+          const result = await resetFormHandler({ confirm: true });
+          return `✅ 批准 - ${result}`;
+        } else if (request.actionName === 'fill-form') {
+          // 执行表单填写脚本动作
+          try {
+            const module: { fillFormExecutor: (formData: any) => Promise<string> } = 
+              await import('../../playwright-scripts/executors/fill-form.executor.js');
+            const { fillFormExecutor } = module;
+            const result = await fillFormExecutor(request.parameters);
+            return `✅ 批准 - 脚本动作执行完成: ${result}`;
+          } catch (error) {
+            return `❌ 脚本动作执行失败: ${error}`;
+          }
+        } else {
+          return `✅ 批准 - 前端动作 "${request.actionName}" 已获批准，但暂未实现执行逻辑。`;
+        }
+      } catch (error) {
+        return `❌ 执行失败 - 审批已通过，但操作执行时出错: ${error}`;
+      }
+    } else {
+      return `❌ 拒绝 - 前端动作 "${request.actionName}" 已被拒绝，操作已取消。`;
+    }
+  }, [approvalManager, submitFormHandler, resetFormHandler]);
+
+  const frontendApprovalAction = useMemo<FrontendAction<[
+    { name: "decision"; type: "string"; description: string; required: true },
+    { name: "approval_id"; type: "string"; description: string; required: false }
+  ]>>(() => ({
+    name: "handleFrontendApproval",
+    description: "【重要】只有当用户在最新消息中明确输入了'y'、'yes'、'同意'、'是'、'n'、'no'、'拒绝'、'否'等审批决定时，才能调用此工具。绝对不要在显示审批消息后立即调用此工具，必须等待用户的实际回复。如果用户没有明确输入审批决定，就不要调用此工具。",
+    parameters: [
+      {
+        name: "decision",
+        type: "string",
+        description: "用户在最新消息中明确输入的审批决定，必须是以下值之一: 'y', 'yes', '同意', '是', 'n', 'no', '拒绝', '否'。只有用户真正输入了这些词时才使用。",
+        required: true,
+      },
+      {
+        name: "approval_id",
+        type: "string", 
+        description: "可选的审批ID（部分即可），如果不提供则处理最新的审批请求",
+        required: false,
+      },
+    ],
+    handler: frontendApprovalHandler
+  }), [frontendApprovalHandler]);
+
+  useCopilotAction(frontendApprovalAction);
+
   useCopilotScriptAction(askLlmAction);
   useCopilotScriptAction(fillFormAction);
 
@@ -289,11 +336,14 @@ export function HomePage() {
     - 系统状态: ${systemStatus}
     
     可用功能:
-    1. 获取当前时间 (get_current_time) - 前端处理
+    1. 获取当前时间 (get_current_time) - 前端处理，无需审批
     2. 数学计算 (calculate) - 后端审批系统处理
     3. 查询用户信息 (get_user_info) - 后端审批系统处理
-    4. 检查系统状态 (check_status) - 前端处理
-    5. 显示通知消息 (showNotification) - 前端处理
+    4. 检查系统状态 (check_status) - 后端审批系统处理
+    5. 显示通知消息 (showNotification) - 前端处理，无需审批
+    6. 提交表单数据 (submitForm) - 前端处理，需要审批
+    7. 重置表单数据 (resetFormData) - 前端处理，需要审批
+    8. 处理审批决定 (handleFrontendApproval) - 用于前端审批流程
   `, [backendStatus, currentTime, userInfo, systemStatus])
 
   useCopilotReadable({
@@ -457,6 +507,18 @@ export function HomePage() {
                   className="w-full px-3 py-2 text-sm bg-red-500 text-white rounded hover:bg-red-600"
                 >
                   显示通知
+                </button>
+                <button
+                  onClick={() => handleSendMessage("提交当前表单数据")}
+                  className="w-full px-3 py-2 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600"
+                >
+                  提交表单 (需审批)
+                </button>
+                <button
+                  onClick={() => handleSendMessage("重置表单数据")}
+                  className="w-full px-3 py-2 text-sm bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                >
+                  重置表单 (需审批)
                 </button>
             </div>
           </div>
