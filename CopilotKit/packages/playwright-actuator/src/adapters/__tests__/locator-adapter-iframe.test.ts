@@ -128,7 +128,20 @@ describe('LocatorAdapter iframe document context', () => {
     const mainPageMock = {
       scrollIntoViewIfNeeded: jest.fn(),
       eventSimulator: {
-        simulateClick: jest.fn()
+        simulateClick: jest.fn(),
+        simulateDoubleClick: jest.fn(),
+        simulateHover: jest.fn(),
+        simulateKeyPress: jest.fn(),
+        simulateTyping: jest.fn()
+      },
+      waitForSelector: jest.fn(),
+      waitForTimeout: jest.fn(),
+      logger: {
+        debug: jest.fn(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        success: jest.fn()
       }
       // No frameDocument property - this should trigger fallback to global document
     };
@@ -180,7 +193,22 @@ describe('LocatorAdapter iframe document context', () => {
     const nestedPage = {
       frameDocument: nestedFrameDocument,
       scrollIntoViewIfNeeded: jest.fn(),
-      eventSimulator: { simulateClick: jest.fn() }
+      eventSimulator: {
+        simulateClick: jest.fn(),
+        simulateDoubleClick: jest.fn(),
+        simulateHover: jest.fn(),
+        simulateKeyPress: jest.fn(),
+        simulateTyping: jest.fn()
+      },
+      waitForSelector: jest.fn(),
+      waitForTimeout: jest.fn(),
+      logger: {
+        debug: jest.fn(),
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        success: jest.fn()
+      }
     };
 
     const locator = new LocatorAdapter('.nested-selector', nestedPage);

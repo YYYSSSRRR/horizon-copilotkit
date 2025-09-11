@@ -60,6 +60,13 @@ Object.assign(window, {
 // Mock console
 (global as any).console = MockConsole;
 
+// Mock MutationObserver for tests
+global.MutationObserver = jest.fn().mockImplementation((callback) => ({
+  observe: jest.fn(),
+  disconnect: jest.fn(),
+  takeRecords: jest.fn()
+}));
+
 // Import PageAdapter after mocks are set up
 import PageAdapter from '../page-adapter';
 
@@ -68,6 +75,14 @@ describe('PageAdapter Tests', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    
+    // Mock window.getComputedStyle for visibility checks
+    window.getComputedStyle = jest.fn().mockReturnValue({
+      display: 'block',
+      visibility: 'visible',
+      opacity: '1'
+    });
+    
     pageAdapter = new PageAdapter();
   });
 
@@ -88,26 +103,28 @@ describe('PageAdapter Tests', () => {
 
     test('should handle goBack', async () => {
       const historyBackSpy = jest.spyOn(window.history, 'back').mockImplementation();
-      mockWaitManager.waitForLoadState.mockResolvedValue(undefined);
+      const waitForLoadStateSpy = jest.spyOn(pageAdapter, 'waitForLoadState').mockResolvedValue(undefined);
 
       await pageAdapter.goBack();
 
       expect(historyBackSpy).toHaveBeenCalled();
-      expect(mockWaitManager.waitForLoadState).toHaveBeenCalledWith('load');
+      expect(waitForLoadStateSpy).toHaveBeenCalledWith('load');
       
       historyBackSpy.mockRestore();
+      waitForLoadStateSpy.mockRestore();
     });
 
     test('should handle goForward', async () => {
       const historyForwardSpy = jest.spyOn(window.history, 'forward').mockImplementation();
-      mockWaitManager.waitForLoadState.mockResolvedValue(undefined);
+      const waitForLoadStateSpy = jest.spyOn(pageAdapter, 'waitForLoadState').mockResolvedValue(undefined);
 
       await pageAdapter.goForward();
 
       expect(historyForwardSpy).toHaveBeenCalled();
-      expect(mockWaitManager.waitForLoadState).toHaveBeenCalledWith('load');
+      expect(waitForLoadStateSpy).toHaveBeenCalledWith('load');
       
       historyForwardSpy.mockRestore();
+      waitForLoadStateSpy.mockRestore();
     });
   });
 
@@ -120,11 +137,12 @@ describe('PageAdapter Tests', () => {
           width: 100, height: 100
         })
       };
-      mockWaitManager.waitForElement.mockResolvedValue(mockElement);
+      // Mock querySelector to return element immediately
+      document.querySelector = jest.fn().mockReturnValue(mockElement);
 
       await pageAdapter.click('#button');
 
-      expect(mockWaitManager.waitForElement).toHaveBeenCalledWith('#button', 30000);
+      expect(document.querySelector).toHaveBeenCalledWith('#button');
       expect(mockEventSimulator.simulateClick).toHaveBeenCalledWith(mockElement, {});
       expect(mockLogger.debug).toHaveBeenCalledWith('点击: #button');
     });
@@ -139,7 +157,8 @@ describe('PageAdapter Tests', () => {
           width: 100, height: 100
         })
       };
-      mockWaitManager.waitForElement.mockResolvedValue(mockInput);
+      // Mock querySelector to return element immediately
+      document.querySelector = jest.fn().mockReturnValue(mockInput);
 
       await pageAdapter.fill('#input', 'test value');
 
@@ -159,7 +178,8 @@ describe('PageAdapter Tests', () => {
           width: 100, height: 100
         })
       };
-      mockWaitManager.waitForElement.mockResolvedValue(mockCheckbox);
+      // Mock querySelector to return element immediately
+      document.querySelector = jest.fn().mockReturnValue(mockCheckbox);
 
       await pageAdapter.check('#checkbox');
 
@@ -176,11 +196,12 @@ describe('PageAdapter Tests', () => {
           width: 100, height: 100
         })
       };
-      mockWaitManager.waitForElement.mockResolvedValue(mockElement);
+      // Mock querySelector to return element immediately
+      document.querySelector = jest.fn().mockReturnValue(mockElement);
 
       await pageAdapter.hover('#element');
 
-      expect(mockWaitManager.waitForElement).toHaveBeenCalledWith('#element', 30000);
+      expect(document.querySelector).toHaveBeenCalledWith('#element');
       expect(mockEventSimulator.simulateHover).toHaveBeenCalledWith(mockElement);
       expect(mockLogger.debug).toHaveBeenCalledWith('悬停: #element');
     });
@@ -194,7 +215,8 @@ describe('PageAdapter Tests', () => {
           width: 100, height: 100
         })
       };
-      mockWaitManager.waitForElement.mockResolvedValue(mockElement);
+      // Mock querySelector to return element immediately
+      document.querySelector = jest.fn().mockReturnValue(mockElement);
 
       await pageAdapter.focus('#input');
 
@@ -213,7 +235,8 @@ describe('PageAdapter Tests', () => {
           width: 100, height: 100
         })
       };
-      mockWaitManager.waitForElement.mockResolvedValue(mockCheckbox);
+      // Mock querySelector to return element immediately
+      document.querySelector = jest.fn().mockReturnValue(mockCheckbox);
 
       await pageAdapter.uncheck('#checkbox');
 
@@ -231,7 +254,8 @@ describe('PageAdapter Tests', () => {
           width: 100, height: 100
         })
       };
-      mockWaitManager.waitForElement.mockResolvedValue(mockElement);
+      // Mock querySelector to return element immediately
+      document.querySelector = jest.fn().mockReturnValue(mockElement);
 
       await pageAdapter.press('#input', 'Enter');
 
@@ -246,7 +270,7 @@ describe('PageAdapter Tests', () => {
       const locator = pageAdapter.locator('#selector');
 
       expect(MockLocatorAdapter).toHaveBeenCalledWith('#selector', pageAdapter, {});
-      expect(locator.selector).toBe('#selector');
+      // Note: selector property is not part of BaseLocator interface
     });
 
     test('should handle getByRole', () => {
@@ -266,28 +290,54 @@ describe('PageAdapter Tests', () => {
 
   describe('Wait Methods', () => {
     test('should waitForSelector', async () => {
-      const mockElement = {};
-      mockWaitManager.waitForElement.mockResolvedValue(mockElement);
+      const mockElement = {
+        getBoundingClientRect: jest.fn().mockReturnValue({
+          width: 100,
+          height: 50,
+          top: 0,
+          left: 0
+        })
+      };
+      
+      // Mock querySelector to first return null, then return element
+      let callCount = 0;
+      document.querySelector = jest.fn().mockImplementation(() => {
+        callCount++;
+        return callCount === 1 ? null : mockElement;
+      });
 
-      const result = await pageAdapter.waitForSelector('#element');
+      const elementPromise = pageAdapter.waitForSelector('#element');
+      
+      // Simulate element appearing by triggering MutationObserver callback
+      setTimeout(() => {
+        const mutationObserverCall = (global.MutationObserver as jest.Mock).mock.calls[0];
+        if (mutationObserverCall) {
+          const callback = mutationObserverCall[0];
+          // Simulate a DOM mutation
+          callback([{ type: 'childList', addedNodes: [mockElement] }]);
+        }
+      }, 50);
 
-      expect(mockWaitManager.waitForElement).toHaveBeenCalledWith('#element', 30000);
+      const result = await elementPromise;
       expect(result).toBe(mockElement);
     });
 
     test('should waitForTimeout', async () => {
-      await pageAdapter.waitForTimeout(1000);
-
-      expect(mockWaitManager.waitForTimeout).toHaveBeenCalledWith(1000);
+      const startTime = Date.now();
+      await pageAdapter.waitForTimeout(100); // Use shorter timeout for tests
+      const endTime = Date.now();
+      
+      // Verify that it actually waited approximately the right amount of time
+      expect(endTime - startTime).toBeGreaterThanOrEqual(90);
+      expect(endTime - startTime).toBeLessThan(200);
     });
 
     test('should waitForFunction', async () => {
       const testFn = jest.fn().mockReturnValue(true);
-      mockWaitManager.waitForCondition.mockResolvedValue(true);
 
       const result = await pageAdapter.waitForFunction(testFn);
 
-      expect(mockWaitManager.waitForCondition).toHaveBeenCalled();
+      expect(testFn).toHaveBeenCalled();
       expect(result).toBe(true);
     });
   });
@@ -349,7 +399,8 @@ describe('PageAdapter Tests', () => {
         }),
         scrollIntoView: jest.fn()
       };
-      mockWaitManager.waitForElement.mockResolvedValue(mockElement);
+      // Mock querySelector to return element immediately
+      document.querySelector = jest.fn().mockReturnValue(mockElement);
 
       const result = await pageAdapter.boundingBox('#element');
 

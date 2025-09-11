@@ -3,7 +3,7 @@ import type {
   LocatorOptions,
   BaseLocator,
   FrameAdapter as FrameAdapterType,
-  EventSimulator
+  EventSimulator,
 } from '../../types/index.js';
 import { BasePageContext, type PageContext } from './base-page-context.js';
 import FrameLocatorAdapter from './frame-locator-adapter.js';
@@ -36,6 +36,8 @@ export class FrameAdapter extends BasePageContext {
     this.frameWindow = frameWindow;
     this.frameDocument = frameDocument;
     this.eventSimulator = new window.PlaywrightEventSimulator();
+    
+    // 不再需要创建专门的 WaitManager，使用基类的通用方法
   }
 
   /**
@@ -46,24 +48,6 @@ export class FrameAdapter extends BasePageContext {
       document: this.frameDocument,
       window: this.frameWindow
     };
-  }
-
-  /**
-   * 实现抽象方法：等待元素在 frame 中出现
-   */
-  protected async waitForElementInContext(selector: string, timeout: number = 30000): Promise<Element> {
-    const startTime = Date.now();
-    const interval = 100;
-
-    while (Date.now() - startTime < timeout) {
-      const element = this.frameDocument.querySelector(selector);
-      if (element) {
-        return element;
-      }
-      await this.waitForTimeout(interval);
-    }
-    
-    throw new Error(`Element not found in frame: ${selector}`);
   }
 
   // =============== Frame 特有方法 ===============
@@ -123,24 +107,6 @@ export class FrameAdapter extends BasePageContext {
         this.frameDocument.addEventListener('DOMContentLoaded', () => resolve(), { once: true });
       }
     });
-  }
-
-  // =============== Frame 特有的 Locator 重写 ===============
-
-  /**
-   * 创建 Locator（在 frame 上下文中）- 重写基类方法
-   */
-  locator(selector: string, options: LocatorOptions = {}): BaseLocator {
-    // 创建一个特殊的 locator，它在 frame 上下文中工作
-    const LocatorAdapterClass = window.PlaywrightLocatorAdapter;
-    if (!LocatorAdapterClass) {
-      throw new Error('PlaywrightLocatorAdapter not found in global scope');
-    }
-    
-    // 直接使用 this，因为 FrameAdapter 已经实现了所需的接口
-    const locator = new LocatorAdapterClass(selector, this, options);
-    
-    return locator;
   }
 
   // =============== Frame 嵌套支持 ===============

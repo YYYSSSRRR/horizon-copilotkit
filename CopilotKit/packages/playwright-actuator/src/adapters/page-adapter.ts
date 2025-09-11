@@ -3,9 +3,7 @@ import type {
   PageGotoOptions, 
   ViewportSize,
   ClickOptions,
-  FillOptions, 
   TypeOptions,
-  WaitManager,
   EventSimulator,
   FrameAdapter as FrameAdapterType
 } from '../../types/index.js';
@@ -17,12 +15,11 @@ import FrameLocatorAdapter from './frame-locator-adapter.js';
  * 继承 BasePageContext，避免与 FrameAdapter 的代码重复
  */
 class PageAdapter extends BasePageContext {
-  private readonly waitManager: WaitManager;
   private readonly eventSimulator: EventSimulator;
 
   constructor() {
     super();
-    this.waitManager = new window.PlaywrightWaitManager();
+    // 不再需要创建 waitManager，使用基类的通用方法
     this.eventSimulator = new window.PlaywrightEventSimulator();
   }
 
@@ -34,13 +31,6 @@ class PageAdapter extends BasePageContext {
       document: document,
       window: window
     };
-  }
-
-  /**
-   * 实现抽象方法：等待元素出现
-   */
-  protected async waitForElementInContext(selector: string, timeout: number): Promise<Element> {
-    return await this.waitManager.waitForElement(selector, timeout);
   }
 
   // =============== 页面特有方法 ===============
@@ -155,67 +145,16 @@ class PageAdapter extends BasePageContext {
   // =============== 等待方法重写 ===============
 
   /**
-   * 等待元素（重写以支持更多功能）
-   */
-  async waitForSelector(selector: string, options: { timeout?: number; state?: string } = {}): Promise<Element> {
-    const { timeout = 30000, state = 'visible' } = options;
-    
-    // 如果是 xpath，需要特殊处理
-    if (selector.startsWith('xpath=')) {
-      return this.waitForXPath(selector.substring(6), { timeout });
-    }
-    
-    // 处理 :visible 和 :hidden 伪类选择器
-    let actualSelector = selector;
-    let requiredState = state;
-    
-    if (selector.includes(':visible')) {
-      actualSelector = selector.replace(':visible', '');
-      requiredState = 'visible';
-    } else if (selector.includes(':hidden')) {
-      actualSelector = selector.replace(':hidden', '');
-      requiredState = 'hidden';
-    }
-    
-    const element = await this.waitManager.waitForElement(actualSelector, timeout);
-    
-    if (requiredState === 'visible') {
-      await this.waitManager.waitForCondition(
-        () => {
-          const rect = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          return rect.width > 0 && rect.height > 0 && 
-                 style.visibility !== 'hidden' && style.display !== 'none';
-        },
-        timeout,
-        `元素 "${actualSelector}" 等待可见超时`
-      );
-    } else if (requiredState === 'hidden') {
-      await this.waitManager.waitForCondition(
-        () => {
-          const rect = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          return rect.width === 0 || rect.height === 0 || 
-                 style.visibility === 'hidden' || style.display === 'none';
-        },
-        timeout,
-        `元素 "${actualSelector}" 等待隐藏超时`
-      );
-    }
-    
-    return element;
-  }
-
-  /**
    * 等待 XPath 元素
    */
   async waitForXPath(xpath: string, options: { timeout?: number } = {}): Promise<Element> {
     const { timeout = 30000 } = options;
     let foundElement: Element | null = null;
     
-    await this.waitManager.waitForCondition(
+    await this.waitForConditionInDocument(
       () => {
-        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        const context = this.getContext();
+        const result = context.document.evaluate(xpath, context.document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
         foundElement = result.singleNodeValue as Element | null;
         return foundElement !== null;
       },
@@ -235,22 +174,22 @@ class PageAdapter extends BasePageContext {
    */
   async waitForURL(url: string | RegExp, options: { timeout?: number } = {}): Promise<void> {
     const { timeout = 30000 } = options;
-    return this.waitManager.waitForURL(url, timeout);
+    await this.waitForURLInDocument(url, timeout);
   }
 
   /**
    * 等待加载状态
    */
   async waitForLoadState(state: 'load' | 'domcontentloaded' | 'networkidle' = 'load'): Promise<void> {
-    return this.waitManager.waitForLoadState(state);
+    return this.waitForLoadStateInDocument(state);
   }
 
   /**
-   * 等待函数（重写使用 waitManager）
+   * 等待函数（使用基类通用方法）
    */
   async waitForFunction<T>(fn: () => T, options: { timeout?: number } = {}): Promise<T> {
     const { timeout = 30000 } = options;
-    return this.waitManager.waitForCondition(
+    return this.waitForConditionInDocument(
       () => {
         const result = fn();
         return Boolean(result);
@@ -261,13 +200,11 @@ class PageAdapter extends BasePageContext {
   }
 
   /**
-   * 等待超时（重写使用 waitManager）
+   * 等待超时（使用基类通用方法）
    */
   async waitForTimeout(ms: number): Promise<void> {
-    return this.waitManager.waitForTimeout(ms);
+    return this.waitForTimeoutInDocument(ms);
   }
-
-  // 现代定位器方法现在继承自 BasePageContext
 
   // =============== 脚本相关方法 ===============
 

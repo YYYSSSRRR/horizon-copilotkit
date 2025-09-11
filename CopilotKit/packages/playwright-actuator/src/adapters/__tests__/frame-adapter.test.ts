@@ -18,6 +18,13 @@ beforeAll(() => {
   (global as any).window = global.window || {};
   Object.assign(global.window, {
     PlaywrightLogger: jest.fn().mockImplementation(() => mockLogger),
+    PlaywrightEventSimulator: jest.fn().mockImplementation(() => ({
+      simulateClick: jest.fn(),
+      simulateDoubleClick: jest.fn(),
+      simulateHover: jest.fn(),
+      simulateKeyPress: jest.fn(),
+      simulateTyping: jest.fn()
+    })),
     PlaywrightLocatorAdapter: jest.fn().mockImplementation((selector: string, page: any, options: any) => ({
       selector,
       page,
@@ -27,6 +34,13 @@ beforeAll(() => {
       fill: jest.fn()
     }))
   });
+  
+  // Mock MutationObserver for tests
+  global.MutationObserver = jest.fn().mockImplementation((callback) => ({
+    observe: jest.fn(),
+    disconnect: jest.fn(),
+    takeRecords: jest.fn()
+  }));
 });
 
 describe('FrameAdapter Tests', () => {
@@ -43,13 +57,21 @@ describe('FrameAdapter Tests', () => {
     mockFrameDocument = {
       title: 'Test Frame Title',
       documentElement: {
-        outerHTML: '<html><body>Frame Content</body></html>'
+        outerHTML: '<html><body>Frame Content</body></html>',
+        tagName: 'HTML'
+      },
+      body: {
+        tagName: 'BODY',
+        appendChild: jest.fn(),
+        removeChild: jest.fn()
       },
       querySelector: jest.fn(),
       querySelectorAll: jest.fn(),
       readyState: 'complete',
       addEventListener: jest.fn(),
-      dispatchEvent: jest.fn()
+      dispatchEvent: jest.fn(),
+      createElement: jest.fn(),
+      createTextNode: jest.fn()
     } as any;
 
     // Create mock frame window
@@ -346,16 +368,33 @@ describe('FrameAdapter Tests', () => {
 
   describe('Wait Methods', () => {
     test('should wait for selector', async () => {
-      const mockElement = { id: 'test' };
-      mockFrameDocument.querySelector = jest.fn()
-        .mockReturnValueOnce(null)
-        .mockReturnValueOnce(mockElement);
+      const mockElement = { 
+        id: 'test',
+        getBoundingClientRect: jest.fn().mockReturnValue({
+          width: 100,
+          height: 50,
+          top: 0,
+          left: 0
+        })
+      };
+      
+      // Mock querySelector to first return null, then return element
+      let callCount = 0;
+      mockFrameDocument.querySelector = jest.fn().mockImplementation(() => {
+        callCount++;
+        return callCount === 1 ? null : mockElement;
+      });
 
       const elementPromise = frameAdapter.waitForSelector('.element');
       
-      // Fast forward time to simulate finding element
+      // Simulate element appearing by triggering MutationObserver callback
       setTimeout(() => {
-        // Element will be found on second call
+        const mutationObserverCall = (global.MutationObserver as jest.Mock).mock.calls[0];
+        if (mutationObserverCall) {
+          const callback = mutationObserverCall[0];
+          // Simulate a DOM mutation
+          callback([{ type: 'childList', addedNodes: [mockElement] }]);
+        }
       }, 50);
 
       const result = await elementPromise;
@@ -366,7 +405,7 @@ describe('FrameAdapter Tests', () => {
       mockFrameDocument.querySelector = jest.fn().mockReturnValue(null);
 
       await expect(frameAdapter.waitForSelector('.nonexistent', { timeout: 100 }))
-        .rejects.toThrow('Element not found in frame: .nonexistent');
+        .rejects.toThrow('等待元素超时: .nonexistent (100ms)');
     });
 
     test('should wait for function', async () => {
@@ -441,6 +480,21 @@ describe('FrameAdapter Tests', () => {
     });
 
     test('should detect hidden element', async () => {
+      const mockElement = {
+        getBoundingClientRect: jest.fn().mockReturnValue({
+          width: 100,
+          height: 50,
+          top: 0,
+          left: 0
+        })
+      };
+      
+      // Mock querySelector to return element immediately to avoid waitForSelector timeout
+      mockFrameDocument.querySelector = jest.fn().mockReturnValue(mockElement);
+      
+      // Override the waitForSelector method to skip visibility checks and return element directly
+      const waitForSelectorSpy = jest.spyOn(frameAdapter, 'waitForSelector').mockResolvedValue(mockElement as any);
+      
       mockFrameWindow.getComputedStyle = jest.fn().mockReturnValue({
         display: 'none',
         visibility: 'visible',
@@ -449,6 +503,8 @@ describe('FrameAdapter Tests', () => {
 
       const isVisible = await frameAdapter.isVisible('.element');
       expect(isVisible).toBe(false);
+      
+      waitForSelectorSpy.mockRestore();
     });
 
     test('should get bounding box', async () => {

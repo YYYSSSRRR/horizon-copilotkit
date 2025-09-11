@@ -87,7 +87,29 @@ describe('FrameLocatorAdapter Tests', () => {
     test('should work with FrameAdapter as parent', () => {
       const mockFrameParent = {
         frameDocument: {
-          querySelector: jest.fn().mockReturnValue(mockFrameElement)
+          querySelector: jest.fn().mockReturnValue(mockFrameElement),
+          querySelectorAll: jest.fn(),
+          createElement: jest.fn(),
+          createTextNode: jest.fn(),
+          body: { tagName: 'BODY' },
+          documentElement: { tagName: 'HTML' }
+        } as any,
+        waitForSelector: jest.fn(),
+        scrollIntoViewIfNeeded: jest.fn(),
+        waitForTimeout: jest.fn(),
+        logger: {
+          debug: jest.fn(),
+          info: jest.fn(),
+          warn: jest.fn(),
+          error: jest.fn(),
+          success: jest.fn()
+        },
+        eventSimulator: {
+          simulateClick: jest.fn(),
+          simulateDoubleClick: jest.fn(),
+          simulateHover: jest.fn(),
+          simulateKeyPress: jest.fn(),
+          simulateTyping: jest.fn()
         }
       };
 
@@ -170,10 +192,16 @@ describe('FrameLocatorAdapter Tests', () => {
 
   describe('Wait Methods', () => {
     test('should wait for selector', async () => {
+      const mockElement = { tagName: 'DIV', id: 'test' };
       const options = { timeout: 5000 };
-      await frameLocatorAdapter.waitForSelector('.element', options);
+      
+      // Configure the mock to return an element
+      mockFrameAdapter.waitForSelector.mockResolvedValue(mockElement);
+      
+      const result = await frameLocatorAdapter.waitForSelector('.element', options);
 
       expect(mockFrameAdapter.waitForSelector).toHaveBeenCalledWith('.element', options);
+      expect(result).toBe(mockElement);
     });
   });
 
@@ -353,7 +381,29 @@ describe('FrameLocatorAdapter Tests', () => {
     test('should use parent frame document when parent is FrameAdapter', async () => {
       const mockFrameParent = {
         frameDocument: {
-          querySelector: jest.fn().mockReturnValue(mockFrameElement)
+          querySelector: jest.fn().mockReturnValue(mockFrameElement),
+          querySelectorAll: jest.fn(),
+          createElement: jest.fn(),
+          createTextNode: jest.fn(),
+          body: { tagName: 'BODY' },
+          documentElement: { tagName: 'HTML' }
+        } as any,
+        waitForSelector: jest.fn(),
+        scrollIntoViewIfNeeded: jest.fn(),
+        waitForTimeout: jest.fn(),
+        logger: {
+          debug: jest.fn(),
+          info: jest.fn(),
+          warn: jest.fn(),
+          error: jest.fn(),
+          success: jest.fn()
+        },
+        eventSimulator: {
+          simulateClick: jest.fn(),
+          simulateDoubleClick: jest.fn(),
+          simulateHover: jest.fn(),
+          simulateKeyPress: jest.fn(),
+          simulateTyping: jest.fn()
         }
       };
 

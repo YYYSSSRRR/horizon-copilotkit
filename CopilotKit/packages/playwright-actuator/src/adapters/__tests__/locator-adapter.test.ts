@@ -60,7 +60,8 @@ const mockLogger = {
   info: jest.fn(),
   debug: jest.fn(),
   warn: jest.fn(),
-  error: jest.fn()
+  error: jest.fn(),
+  success: jest.fn() // 添加缺失的 success 方法
 };
 
 const mockWaitManager = {
@@ -82,7 +83,25 @@ const mockEventSimulator = {
 const mockPage = {
   waitManager: mockWaitManager,
   eventSimulator: mockEventSimulator,
-  scrollIntoViewIfNeeded: jest.fn()
+  scrollIntoViewIfNeeded: jest.fn(),
+  // 添加 BasePageContext 需要的方法
+  getContext: jest.fn().mockReturnValue({
+    document: document,
+    window: window
+  }),
+  waitForElementInContext: jest.fn(),
+  waitForConditionInContext: jest.fn(),
+  waitForSelector: jest.fn(),
+  waitForTimeout: jest.fn(), // 添加缺失的 waitForTimeout 方法
+  logger: mockLogger,
+  // 添加其他可能需要的方法
+  locator: jest.fn(),
+  getByRole: jest.fn(),
+  getByText: jest.fn(),
+  getByLabel: jest.fn(),
+  getByPlaceholder: jest.fn(),
+  getByTestId: jest.fn(),
+  getByTitle: jest.fn()
 };
 
 // Mock constructors
