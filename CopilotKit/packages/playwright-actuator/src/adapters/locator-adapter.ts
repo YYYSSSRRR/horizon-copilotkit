@@ -156,6 +156,32 @@ class LocatorAdapter {
   }
 
   /**
+   * 检查元素是否是指定的 HTML 元素类型（支持 iframe 场景）
+   */
+  private isHTMLElement(element: Element, type: 'HTMLElement' | 'HTMLInputElement' | 'HTMLTextAreaElement' | 'HTMLSelectElement' | 'HTMLButtonElement' | 'HTMLIFrameElement'): boolean {
+    const contextWindow = this.getContextWindow();
+    const Constructor = (contextWindow as any)[type];
+    if (!Constructor) {
+      // 如果无法获取构造函数，回退到全局检查
+      return element instanceof (globalThis as any)[type];
+    }
+    return element instanceof Constructor;
+  }
+
+  /**
+   * 创建事件对象（支持 iframe 场景）
+   */
+  private createEvent(type: string, options?: EventInit): Event {
+    const contextWindow = this.getContextWindow();
+    const EventConstructor = (contextWindow as any).Event;
+    if (EventConstructor) {
+      return new EventConstructor(type, options);
+    }
+    // 回退到全局 Event 构造函数
+    return new Event(type, options);
+  }
+
+  /**
    * 基于已解析元素创建新的 locator（保留用于内部使用）
    */
   static fromElements(elements: Element[], page: PageContext, queryStrategy: QueryStrategy): LocatorAdapter {
@@ -545,12 +571,12 @@ class LocatorAdapter {
    */
   private triggerNativeInputEvents(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
     // 触发 input 事件
-    const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+    const inputEvent = this.createEvent('input', { bubbles: true, cancelable: true });
     Object.defineProperty(inputEvent, 'target', { value: element, enumerable: true });
     element.dispatchEvent(inputEvent);
     
     // 触发 change 事件
-    const changeEvent = new Event('change', { bubbles: true, cancelable: true });
+    const changeEvent = this.createEvent('change', { bubbles: true, cancelable: true });
     Object.defineProperty(changeEvent, 'target', { value: element, enumerable: true });
     element.dispatchEvent(changeEvent);
     
@@ -562,7 +588,7 @@ class LocatorAdapter {
    * 触发原生 change 事件
    */
   private triggerNativeChangeEvent(element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): void {
-    const changeEvent = new Event('change', { bubbles: true, cancelable: true });
+    const changeEvent = this.createEvent('change', { bubbles: true, cancelable: true });
     Object.defineProperty(changeEvent, 'target', { value: element, enumerable: true });
     element.dispatchEvent(changeEvent);
   }
@@ -572,9 +598,9 @@ class LocatorAdapter {
    */
   private triggerNativeInteractionEvents(element: Element): void {
     try {
-      element.dispatchEvent(new Event('focus', { bubbles: true }));
+      element.dispatchEvent(this.createEvent('focus', { bubbles: true }));
       setTimeout(() => {
-        element.dispatchEvent(new Event('blur', { bubbles: true }));
+        element.dispatchEvent(this.createEvent('blur', { bubbles: true }));
       }, 10);
     } catch (error) {
       // 忽略交互事件错误
@@ -735,8 +761,8 @@ class LocatorAdapter {
     
     if (isReactComponent || isOpenInulaComponent) {
       // 对于框架组件，触发 mouseenter 和 mouseover 事件
-      element.dispatchEvent(new Event('mouseenter', { bubbles: true }));
-      element.dispatchEvent(new Event('mouseover', { bubbles: true }));
+      element.dispatchEvent(this.createEvent('mouseenter', { bubbles: true }));
+      element.dispatchEvent(this.createEvent('mouseover', { bubbles: true }));
       this.logger.debug(`悬停元素完成: ${this.selector} (${isReactComponent ? 'react' : 'openinula'})`);
     } else {
       // 原生元素：使用原生事件模拟器
@@ -1267,7 +1293,7 @@ class LocatorAdapter {
     }
 
     // 检查是否被禁用
-    if (element instanceof HTMLElement && element.hasAttribute('disabled')) {
+    if (this.isHTMLElement(element, 'HTMLElement') && element.hasAttribute('disabled')) {
       return false;
     }
 
@@ -1311,7 +1337,7 @@ class LocatorAdapter {
     }
 
     // 检查是否被禁用
-    if (element instanceof HTMLElement && (
+    if (this.isHTMLElement(element, 'HTMLElement') && (
         element.hasAttribute('disabled') 
         // 暂时不支持 readonly 属性
         // element.hasAttribute('readonly')
@@ -1320,14 +1346,14 @@ class LocatorAdapter {
     }
 
     // 检查是否是可编辑元素
-    if (element instanceof HTMLInputElement || 
-        element instanceof HTMLTextAreaElement || 
-        element instanceof HTMLSelectElement) {
+    if (this.isHTMLElement(element, 'HTMLInputElement') || 
+        this.isHTMLElement(element, 'HTMLTextAreaElement') || 
+        this.isHTMLElement(element, 'HTMLSelectElement')) {
       return true;
     }
 
     // 检查 contenteditable
-    if (element instanceof HTMLElement && element.isContentEditable) {
+    if (this.isHTMLElement(element, 'HTMLElement') && (element as HTMLElement).isContentEditable) {
       return true;
     }
 
