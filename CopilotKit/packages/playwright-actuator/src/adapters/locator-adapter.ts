@@ -125,12 +125,34 @@ class LocatorAdapter {
    * 获取正确的文档对象（支持 iframe 场景）
    */
   private getDocument(): Document {
-    // 如果 page 有 frameDocument 属性，说明是在 iframe 中
-    if (this.page && this.page.frameDocument) {
-      return this.page.frameDocument;
+    // 如果 page 是 BasePageContext 实例，使用其 getContext() 方法获取正确的 document
+    if (this.page && typeof (this.page as any).getContext === 'function') {
+      const context = (this.page as any).getContext();
+      return context.document;
+    }
+    // 兼容旧的接口：如果 page 有 frameDocument 属性，说明是在 iframe 中
+    if (this.page && (this.page as any).frameDocument) {
+      return (this.page as any).frameDocument;
     }
     // 否则使用主页面的 document
     return document;
+  }
+
+  /**
+   * 获取正确的 window 对象（支持 iframe 场景）
+   */
+  private getContextWindow(): Window {
+    // 如果 page 是 BasePageContext 实例，使用其 getContext() 方法获取正确的 window
+    if (this.page && typeof (this.page as any).getContext === 'function') {
+      const context = (this.page as any).getContext();
+      return context.window;
+    }
+    // 兼容旧的接口：如果 page 有 frameWindow 属性，说明是在 iframe 中
+    if (this.page && (this.page as any).frameWindow) {
+      return (this.page as any).frameWindow;
+    }
+    // 否则使用主页面的 window
+    return window;
   }
 
   /**
@@ -1213,11 +1235,13 @@ class LocatorAdapter {
    * 检查元素是否可见
    */
   private isElementVisible(element: Element): boolean {
-    if (typeof window === 'undefined' || !window.getComputedStyle) {
+    // 获取正确的 window 对象（支持 iframe 环境）
+    const contextWindow = this.getContextWindow();
+    if (typeof contextWindow === 'undefined' || !contextWindow.getComputedStyle) {
       return true;
     }
 
-    const style = window.getComputedStyle(element);
+    const style = contextWindow.getComputedStyle(element);
     
     // 检查基本可见性属性
     if (style.display === 'none' || 

@@ -34,9 +34,18 @@ describe('LocatorAdapter iframe document context', () => {
       body: { tagName: 'BODY' } as any
     } as any;
 
+    // Create mock frameWindow for iframe context
+    const mockFrameWindow = {
+      getComputedStyle: jest.fn().mockReturnValue({
+        display: 'block',
+        visibility: 'visible'
+      })
+    };
+
     // Create mock page with frameDocument (simulating iframe context)
     mockPage = {
       frameDocument: mockFrameDocument, // This indicates we're in an iframe
+      frameWindow: mockFrameWindow, // This is the iframe's window
       scrollIntoViewIfNeeded: jest.fn(),
       eventSimulator: {
         simulateClick: jest.fn(),
