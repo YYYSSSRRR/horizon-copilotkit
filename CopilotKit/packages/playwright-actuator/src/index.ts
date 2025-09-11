@@ -12,7 +12,6 @@ import type {
 
 // 导入所有依赖模块
 import PlaywrightLogger from './utils/logger.js';
-import PlaywrightWaitManager from './dom/wait-manager.js';
 import PlaywrightEventSimulator from './dom/event-simulator.js';
 import PlaywrightLocatorAdapter from './adapters/locator-adapter.js';
 import PlaywrightPageAdapter from './adapters/page-adapter.js';
@@ -27,7 +26,6 @@ import * as FrameworkAdapters from './framework-adapters/index.js';
 function ensureDependencies(): void {
   const dependencies = {
     PlaywrightLogger,
-    PlaywrightWaitManager, 
     PlaywrightEventSimulator,
     PlaywrightLocatorAdapter,
     PlaywrightPageAdapter,
@@ -211,7 +209,6 @@ class PlaywrightExecutionEngine {
    */
   static Components = {
     Logger: PlaywrightLogger,
-    WaitManager: PlaywrightWaitManager,
     EventSimulator: PlaywrightEventSimulator,
     PageAdapter: PlaywrightPageAdapter,
     LocatorAdapter: PlaywrightLocatorAdapter,
@@ -271,7 +268,6 @@ export default PlaywrightExecutionEngine;
 // 命名导出
 export {
   PlaywrightLogger,
-  PlaywrightWaitManager,
   PlaywrightEventSimulator,
   PlaywrightLocatorAdapter,
   PlaywrightPageAdapter,
