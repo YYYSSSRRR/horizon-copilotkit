@@ -39,7 +39,29 @@ const createMockPage = () => ({
     simulateTyping: jest.fn(),
     simulateHover: jest.fn()
   },
-  scrollIntoViewIfNeeded: jest.fn()
+  scrollIntoViewIfNeeded: jest.fn(),
+  // 添加 BasePageContext 需要的方法
+  getContext: jest.fn().mockReturnValue({
+    document: document,
+    window: window
+  }),
+  waitForElementInContext: jest.fn(),
+  waitForConditionInContext: jest.fn(),
+  waitForSelector: jest.fn(),
+  logger: {
+    info: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn()
+  },
+  // 添加其他可能需要的方法
+  locator: jest.fn(),
+  getByRole: jest.fn(),
+  getByText: jest.fn(),
+  getByLabel: jest.fn(),
+  getByPlaceholder: jest.fn(),
+  getByTestId: jest.fn(),
+  getByTitle: jest.fn()
 });
 
 describe('LocatorAdapter Table Integration Tests', () => {

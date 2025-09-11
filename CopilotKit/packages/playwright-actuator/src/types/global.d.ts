@@ -29,6 +29,10 @@ declare global {
     PWEngine?: any;
     runPlaywrightScript?: any;
     loadPlaywrightScript?: any;
+    // Frame 相关组件
+    PlaywrightFrameLocatorAdapter?: any;
+    PlaywrightContentFrameAdapter?: any;
+    PlaywrightFrameAdapter?: any;
     // 新增的全局实例
     page?: any;
     expect?: any;

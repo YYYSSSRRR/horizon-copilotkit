@@ -1,35 +1,45 @@
 /// <reference path="../types/global.d.ts" />
 import type { 
-  ClickOptions, 
-  FillOptions, 
-  TypeOptions, 
   PageGotoOptions, 
-  BoundingBox, 
   ViewportSize,
-  Logger
+  ClickOptions,
+  TypeOptions,
+  EventSimulator,
+  FrameAdapter as FrameAdapterType
 } from '../../types/index.js';
-import { 
-  getRoleSelector, 
-  buildGetByTextSelector,
-  buildGetByLabelSelector, 
-  buildGetByPlaceholderSelector,
-  buildGetByTestIdSelector,
-  buildGetByTitleSelector,
-  type RoleOptions 
-} from '../utils/role-selector-utils.js';
+import { BasePageContext, type PageContext } from './base-page-context.js';
+import FrameLocatorAdapter from './frame-locator-adapter.js';
 
 /**
  * Page 适配器 - 实现 Playwright Page API
+ * 继承 BasePageContext，避免与 FrameAdapter 的代码重复
  */
-class PageAdapter {
-  private readonly logger: Logger;
-  private readonly waitManager: any; // TODO: Type this properly
-  private readonly eventSimulator: any; // TODO: Type this properly
+class PageAdapter extends BasePageContext {
+  private readonly eventSimulator: EventSimulator;
 
   constructor() {
-    this.logger = new (window.PlaywrightLogger || (console as any))() as Logger;
-    this.waitManager = new (window.PlaywrightWaitManager as any)();
-    this.eventSimulator = new (window.PlaywrightEventSimulator as any)();
+    super();
+    // 不再需要创建 waitManager，使用基类的通用方法
+    this.eventSimulator = new window.PlaywrightEventSimulator();
+  }
+
+  /**
+   * 获取页面上下文
+   */
+  protected getContext(): PageContext {
+    return {
+      document: document,
+      window: window
+    };
+  }
+
+  // =============== 页面特有方法 ===============
+
+  /**
+   * 获取当前 URL
+   */
+  url(): string {
+    return window.location.href;
   }
 
   // =============== 导航方法 ===============
@@ -77,33 +87,10 @@ class PageAdapter {
     await this.waitForLoadState(waitUntil);
   }
 
-  // =============== 页面信息获取 ===============
+  // =============== 重写部分方法以使用事件模拟器 ===============
 
   /**
-   * 获取当前 URL
-   */
-  url(): string {
-    return window.location.href;
-  }
-
-  /**
-   * 获取页面标题
-   */
-  async title(): Promise<string> {
-    return document.title;
-  }
-
-  /**
-   * 获取页面内容
-   */
-  async content(): Promise<string> {
-    return document.documentElement.outerHTML;
-  }
-
-  // =============== 元素交互方法 ===============
-
-  /**
-   * 点击元素
+   * 点击元素（使用事件模拟器）
    */
   async click(selector: string, options: ClickOptions = {}): Promise<void> {
     const element = await this.waitForSelector(selector);
@@ -114,7 +101,7 @@ class PageAdapter {
   }
 
   /**
-   * 双击元素
+   * 双击元素（使用事件模拟器）
    */
   async dblclick(selector: string, options: ClickOptions = {}): Promise<void> {
     const element = await this.waitForSelector(selector);
@@ -125,25 +112,7 @@ class PageAdapter {
   }
 
   /**
-   * 填充表单
-   */
-  async fill(selector: string, value: string, options: FillOptions = {}): Promise<void> {
-    const element = await this.waitForSelector(selector) as HTMLInputElement | HTMLTextAreaElement;
-    await this.scrollIntoViewIfNeeded(element);
-    
-    // 清空并填充
-    element.value = '';
-    element.value = value;
-    
-    // 触发相关事件
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
-    
-    this.logger.debug(`填充: ${selector} = "${value}"`);
-  }
-
-  /**
-   * 按键操作
+   * 按键操作（使用事件模拟器）
    */
   async press(selector: string, key: string, options: TypeOptions = {}): Promise<void> {
     const element = await this.waitForSelector(selector) as HTMLElement;
@@ -154,16 +123,16 @@ class PageAdapter {
   }
 
   /**
-   * 输入文本（模拟打字）
+   * 输入文本（使用事件模拟器）
    */
   async type(selector: string, text: string, options: TypeOptions = {}): Promise<void> {
-    const element = await this.waitForSelector(selector);
+    const element = await this.waitForSelector(selector) as HTMLInputElement | HTMLTextAreaElement;
     await this.eventSimulator.simulateTyping(element, text, options);
-    this.logger.debug(`输入: ${selector} -> "${text}"`);
+    this.logger.debug(`输入: ${selector} -> \"${text}\"`);
   }
 
   /**
-   * 悬停
+   * 悬停（使用事件模拟器）
    */
   async hover(selector: string): Promise<void> {
     const element = await this.waitForSelector(selector);
@@ -173,227 +142,31 @@ class PageAdapter {
     this.logger.debug(`悬停: ${selector}`);
   }
 
-  /**
-   * 选择复选框
-   */
-  async check(selector: string): Promise<void> {
-    const element = await this.waitForSelector(selector) as HTMLInputElement;
-    if (element.type === 'checkbox' || element.type === 'radio') {
-      element.checked = true;
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      this.logger.debug(`选择: ${selector}`);
-    }
-  }
-
-  /**
-   * 取消选择复选框
-   */
-  async uncheck(selector: string): Promise<void> {
-    const element = await this.waitForSelector(selector) as HTMLInputElement;
-    if (element.type === 'checkbox') {
-      element.checked = false;
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      this.logger.debug(`取消选择: ${selector}`);
-    }
-  }
-
-  /**
-   * 选择下拉选项
-   */
-  async selectOption(selector: string, values: string | string[], options: Record<string, any> = {}): Promise<void> {
-    const element = await this.waitForSelector(selector) as HTMLSelectElement;
-    if (element.tagName === 'SELECT') {
-      if (Array.isArray(values)) {
-        // 多选
-        Array.from(element.options).forEach(option => {
-          option.selected = values.includes(option.value) || values.includes(option.text);
-        });
-      } else {
-        element.value = values;
-      }
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-      this.logger.debug(`选择选项: ${selector} = ${values}`);
-    }
-  }
-
-  /**
-   * 聚焦元素
-   */
-  async focus(selector: string, options: Record<string, any> = {}): Promise<void> {
-    const element = await this.waitForSelector(selector) as HTMLElement;
-    await this.scrollIntoViewIfNeeded(element);
-    
-    element.focus();
-    this.logger.debug(`聚焦: ${selector}`);
-  }
-
-  // =============== 现代定位器方法 ===============
-
-  /**
-   * 创建 Locator
-   */
-  locator(selector: string, options: Record<string, any> = {}): any {
-    // 动态获取 LocatorAdapter 类
-    const LocatorAdapterClass = window.PlaywrightLocatorAdapter;
-    if (!LocatorAdapterClass) {
-      throw new Error('PlaywrightLocatorAdapter not found in global scope');
-    }
-    return new LocatorAdapterClass(selector, this, options);
-  }
-
-  /**
-   * 根据角色定位
-   */
-  getByRole(role: string, options: { name?: string; exact?: boolean; level?: number } = {}): any {
-    const { name, exact = false, level } = options;
-    const roleOptions: RoleOptions = { exact, level };
-    
-    if (name) {
-      // 获取基础角色选择器，然后使用过滤器进行accessible name匹配
-      // 这样可以复用LocatorAdapter中已经完善的elementMatchesAccessibleName逻辑
-      const baseSelector = getRoleSelector(role, roleOptions);
-      return this.locator(baseSelector).filter({
-        hasAccessibleName: name,
-        exact: exact
-      });
-    }
-    
-    // 获取基础角色选择器
-    const baseSelector = getRoleSelector(role, roleOptions);
-    return this.locator(baseSelector);
-  }
-
-  /**
-   * 根据文本定位
-   */
-  getByText(text: string, options: { exact?: boolean } = {}): any {
-    const { exact = false } = options;
-    const selector = buildGetByTextSelector(text, exact);
-    return this.locator(selector);
-  }
-
-  /**
-   * 根据标签定位
-   */
-  getByLabel(text: string, options: { exact?: boolean } = {}): any {
-    const { exact = false } = options;
-    const selector = buildGetByLabelSelector(text, exact);
-    return this.locator(selector);
-  }
-
-  /**
-   * 根据占位符定位
-   */
-  getByPlaceholder(text: string, options: { exact?: boolean } = {}): any {
-    const { exact = false } = options;
-    const selector = buildGetByPlaceholderSelector(text, exact);
-    return this.locator(selector);
-  }
-
-  /**
-   * 根据测试 ID 定位
-   */
-  getByTestId(testId: string): any {
-    const selector = buildGetByTestIdSelector(testId);
-    return this.locator(selector);
-  }
-
-  /**
-   * 根据标题定位
-   */
-  getByTitle(text: string, options: { exact?: boolean } = {}): any {
-    const { exact = false } = options;
-    const selector = buildGetByTitleSelector(text, exact);
-    return this.locator(selector);
-  }
-
-  // =============== 等待方法 ===============
-
-  /**
-   * 等待元素
-   */
-  async waitForSelector(selector: string, options: { timeout?: number; state?: string } = {}): Promise<Element> {
-    const { timeout = 30000, state = 'visible' } = options;
-    
-    // 如果是 xpath，需要特殊处理
-    if (selector.startsWith('xpath=')) {
-      return this.waitForXPath(selector.substring(6), { timeout });
-    }
-    
-    // 处理 :visible 和 :hidden 伪类选择器
-    let actualSelector = selector;
-    let requiredState = state;
-    
-    if (selector.includes(':visible')) {
-      actualSelector = selector.replace(':visible', '');
-      requiredState = 'visible';
-    } else if (selector.includes(':hidden')) {
-      actualSelector = selector.replace(':hidden', '');
-      requiredState = 'hidden';
-    }
-    
-    const element = await this.waitManager.waitForElement(actualSelector, timeout);
-    
-    if (requiredState === 'visible') {
-      await this.waitManager.waitForCondition(
-        () => {
-          const rect = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          return rect.width > 0 && rect.height > 0 && 
-                 style.visibility !== 'hidden' && style.display !== 'none';
-        },
-        timeout,
-        `元素 "${actualSelector}" 等待可见超时`
-      );
-    } else if (requiredState === 'hidden') {
-      await this.waitManager.waitForCondition(
-        () => {
-          const rect = element.getBoundingClientRect();
-          const style = getComputedStyle(element);
-          return rect.width === 0 || rect.height === 0 || 
-                 style.visibility === 'hidden' || style.display === 'none';
-        },
-        timeout,
-        `元素 "${actualSelector}" 等待隐藏超时`
-      );
-    }
-    
-    return element;
-  }
+  // =============== 等待方法重写 ===============
 
   /**
    * 等待 XPath 元素
    */
   async waitForXPath(xpath: string, options: { timeout?: number } = {}): Promise<Element> {
     const { timeout = 30000 } = options;
+    let foundElement: Element | null = null;
     
-    return this.waitManager.waitForCondition(
+    await this.waitForConditionInDocument(
       () => {
-        const result = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-        return result.singleNodeValue;
+        const context = this.getContext();
+        const result = context.document.evaluate(xpath, context.document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
+        foundElement = result.singleNodeValue as Element | null;
+        return foundElement !== null;
       },
       timeout,
       `XPath 元素等待超时: ${xpath}`
     );
-  }
-
-  /**
-   * 等待超时
-   */
-  async waitForTimeout(ms: number): Promise<void> {
-    return this.waitManager.waitForTimeout(ms);
-  }
-
-  /**
-   * 等待函数
-   */
-  async waitForFunction<T>(fn: () => T, arg?: any, options: { timeout?: number } = {}): Promise<T> {
-    const { timeout = 30000 } = options;
-    return this.waitManager.waitForCondition(
-      () => fn(),
-      timeout,
-      '等待函数条件超时'
-    );
+    
+    if (!foundElement) {
+      throw new Error(`XPath element not found: ${xpath}`);
+    }
+    
+    return foundElement;
   }
 
   /**
@@ -401,42 +174,38 @@ class PageAdapter {
    */
   async waitForURL(url: string | RegExp, options: { timeout?: number } = {}): Promise<void> {
     const { timeout = 30000 } = options;
-    return this.waitManager.waitForURL(url, timeout);
+    await this.waitForURLInDocument(url, timeout);
   }
 
   /**
    * 等待加载状态
    */
   async waitForLoadState(state: 'load' | 'domcontentloaded' | 'networkidle' = 'load'): Promise<void> {
-    return this.waitManager.waitForLoadState(state);
-  }
-
-  // =============== 脚本执行方法 ===============
-
-  /**
-   * 在页面上下文中执行脚本
-   */
-  async evaluate<T>(fn: (...args: any[]) => T, ...args: any[]): Promise<T> {
-    try {
-      return fn.apply(window, args);
-    } catch (error) {
-      this.logger.error('脚本执行失败:', error);
-      throw error;
-    }
+    return this.waitForLoadStateInDocument(state);
   }
 
   /**
-   * 在页面上下文中执行脚本并返回句柄
+   * 等待函数（使用基类通用方法）
    */
-  async evaluateHandle<T>(fn: (...args: any[]) => T, ...args: any[]): Promise<T> {
-    return this.evaluate(fn, ...args);
+  async waitForFunction<T>(fn: () => T, options: { timeout?: number } = {}): Promise<T> {
+    const { timeout = 30000 } = options;
+    return this.waitForConditionInDocument(
+      () => {
+        const result = fn();
+        return Boolean(result);
+      },
+      timeout,
+      '等待函数条件超时'
+    ) as Promise<T>;
   }
+
+  // =============== 脚本相关方法 ===============
 
   /**
    * 添加脚本标签
    */
   async addScriptTag(options: { url?: string; path?: string; content?: string; type?: string } = {}): Promise<HTMLScriptElement> {
-    const { url, path, content, type = 'text/javascript' } = options;
+    const { url, content, type = 'text/javascript' } = options;
     
     const script = document.createElement('script');
     script.type = type;
@@ -465,7 +234,7 @@ class PageAdapter {
    * 添加样式标签
    */
   async addStyleTag(options: { url?: string; path?: string; content?: string } = {}): Promise<HTMLLinkElement | HTMLStyleElement> {
-    const { url, path, content } = options;
+    const { url, content } = options;
     
     if (url) {
       const link = document.createElement('link');
@@ -483,62 +252,140 @@ class PageAdapter {
     throw new Error('Either url or content must be provided');
   }
 
-  // =============== 辅助方法 ===============
-
-  /**
-   * 滚动元素到可视区域
-   */
-  async scrollIntoViewIfNeeded(element: Element): Promise<void> {
-    const rect = element.getBoundingClientRect();
-    const isInViewport = rect.top >= 0 && rect.bottom <= window.innerHeight &&
-                        rect.left >= 0 && rect.right <= window.innerWidth;
-    
-    if (!isInViewport) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await this.waitForTimeout(100); // 等待滚动完成
-      this.logger.debug('元素滚动到可视区域');
-    }
-  }
-
-  /**
-   * 获取元素边界框
-   */
-  async boundingBox(selector: string): Promise<BoundingBox> {
-    const element = await this.waitForSelector(selector);
-    const rect = element.getBoundingClientRect();
-    
-    return {
-      x: rect.left + window.scrollX,
-      y: rect.top + window.scrollY,
-      width: rect.width,
-      height: rect.height
-    };
-  }
+  // =============== 视口方法 ===============
 
   /**
    * 设置视口大小（有限支持）
    */
-  async setViewportSize(size: ViewportSize): Promise<ViewportSize> {
+  async setViewportSize(_size: ViewportSize): Promise<ViewportSize> {
     // 浏览器环境中无法直接设置视口大小
-    // 这里只是记录日志
     this.logger.warn('浏览器环境中无法设置视口大小');
     return { width: window.innerWidth, height: window.innerHeight };
   }
 
+  // =============== Frame 相关方法 ===============
+
   /**
-   * 获取视口大小
+   * 创建 FrameLocator
    */
-  viewportSize(): ViewportSize {
-    return { width: window.innerWidth, height: window.innerHeight };
+  frameLocator(selector: string): FrameLocatorAdapter {
+    return new FrameLocatorAdapter(selector, {
+      frameDocument: undefined,
+      waitForSelector: this.waitForSelector.bind(this),
+      scrollIntoViewIfNeeded: this.scrollIntoViewIfNeeded.bind(this),
+      waitForTimeout: this.waitForTimeout.bind(this),
+      logger: this.logger,
+      eventSimulator: this.eventSimulator,
+      createFrameAdapter: this.createFrameAdapter.bind(this)
+    });
+  }
+
+  /**
+   * 获取页面中的所有 frame 元素
+   */
+  frames(): HTMLIFrameElement[] {
+    return Array.from(document.querySelectorAll('iframe, frame')) as HTMLIFrameElement[];
+  }
+
+  /**
+   * 获取主框架（当前页面）
+   */
+  mainFrame(): PageAdapter {
+    return this;
+  }
+
+  /**
+   * 根据 URL 或 name 查找 frame
+   */
+  frame(options: { url?: string | RegExp; name?: string }): FrameAdapterType | null {
+    const frames = this.frames();
+    
+    if (options.url) {
+      for (const frameElement of frames) {
+        try {
+          if (frameElement.src && this.matchesUrl(frameElement.src, options.url)) {
+            return this.createFrameAdapter(frameElement);
+          }
+          
+          if (frameElement.contentWindow && this.matchesUrl(frameElement.contentWindow.location.href, options.url)) {
+            return this.createFrameAdapter(frameElement);
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+    
+    if (options.name) {
+      for (const frameElement of frames) {
+        if (frameElement.name === options.name) {
+          return this.createFrameAdapter(frameElement);
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * 检查是否包含 frame
+   */
+  hasFrames(): boolean {
+    return this.frames().length > 0;
+  }
+
+  /**
+   * 等待 frame 出现
+   */
+  async waitForFrame(selector: string, options: { timeout?: number } = {}): Promise<any> {
+    const { timeout = 30000 } = options;
+    const startTime = Date.now();
+    const interval = 100;
+
+    while (Date.now() - startTime < timeout) {
+      const frameElement = document.querySelector(selector) as HTMLIFrameElement;
+      if (frameElement && frameElement.tagName.toLowerCase() === 'iframe') {
+        return this.createFrameAdapter(frameElement);
+      }
+      await this.waitForTimeout(interval);
+    }
+
+    throw new Error(`Frame not found within timeout: ${selector}`);
+  }
+
+  /**
+   * 创建 FrameAdapter 实例
+   */
+  private createFrameAdapter(frameElement: HTMLIFrameElement): FrameAdapterType | null {
+    const FrameAdapterClass = window.PlaywrightFrameAdapter;
+    if (!FrameAdapterClass) {
+      throw new Error('PlaywrightFrameAdapter not found in global scope');
+    }
+    
+    try {
+      return new FrameAdapterClass(frameElement);
+    } catch (error) {
+      this.logger.warn(`Cannot create frame adapter: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * 检查 URL 是否匹配
+   */
+  private matchesUrl(url: string, pattern: string | RegExp): boolean {
+    if (typeof pattern === 'string') {
+      return url.includes(pattern);
+    } else {
+      return pattern.test(url);
+    }
   }
 }
-
 
 // 导出给浏览器使用
 if (typeof window !== 'undefined') {
   window.PlaywrightPageAdapter = PageAdapter;
 }
-
 
 // ES6 模块导出
 export default PageAdapter;
