@@ -696,13 +696,6 @@ export abstract class BasePageContext {
   }
 
   /**
-   * 等待超时的通用方法
-   */
-  protected async waitForTimeoutInDocument(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  /**
    * 等待URL匹配的通用方法
    */
   protected async waitForURLInDocument(urlPattern: string | RegExp, timeout: number = 30000): Promise<boolean> {

@@ -178,6 +178,14 @@ export class FrameLocatorAdapter {
   }
 
   /**
+   * 等待指定时间
+   */
+  async waitForTimeout(ms: number): Promise<void> {
+    const frame = this.getFrameAdapter();
+    return frame.waitForTimeout(ms);
+  }
+
+  /**
    * 创建 iframe 中的 Locator
    */
   locator(selector: string, options?: LocatorOptions): any {

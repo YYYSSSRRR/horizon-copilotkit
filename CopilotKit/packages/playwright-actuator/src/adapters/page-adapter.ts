@@ -199,13 +199,6 @@ class PageAdapter extends BasePageContext {
     ) as Promise<T>;
   }
 
-  /**
-   * 等待超时（使用基类通用方法）
-   */
-  async waitForTimeout(ms: number): Promise<void> {
-    return this.waitForTimeoutInDocument(ms);
-  }
-
   // =============== 脚本相关方法 ===============
 
   /**
