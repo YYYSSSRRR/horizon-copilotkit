@@ -25,6 +25,7 @@ const mockFrameAdapter = {
   selectOption: jest.fn(),
   focus: jest.fn(),
   waitForSelector: jest.fn(),
+  waitForTimeout: jest.fn(),
   locator: jest.fn(),
   getByRole: jest.fn(),
   getByText: jest.fn(),
@@ -202,6 +203,14 @@ describe('FrameLocatorAdapter Tests', () => {
 
       expect(mockFrameAdapter.waitForSelector).toHaveBeenCalledWith('.element', options);
       expect(result).toBe(mockElement);
+    });
+
+    test('should wait for timeout', async () => {
+      mockFrameAdapter.waitForTimeout.mockResolvedValue(undefined);
+      
+      await frameLocatorAdapter.waitForTimeout(1000);
+
+      expect(mockFrameAdapter.waitForTimeout).toHaveBeenCalledWith(1000);
     });
   });
 
