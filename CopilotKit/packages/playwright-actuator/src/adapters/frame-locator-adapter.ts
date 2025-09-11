@@ -3,7 +3,9 @@ import type {
   ClickOptions, 
   FillOptions, 
   TypeOptions,
-  LocatorOptions
+  LocatorOptions,
+  FrameLocatorParent,
+  FrameAdapter as FrameAdapterType
 } from '../../types/index.js';
 
 /**
@@ -12,9 +14,9 @@ import type {
  */
 export class FrameLocatorAdapter {
   private readonly selector: string;
-  private readonly parentPage: any; // PageAdapter 或 FrameAdapter
+  private readonly parentPage: FrameLocatorParent; // PageAdapter 或 FrameAdapter
 
-  constructor(selector: string, parentPage: any) {
+  constructor(selector: string, parentPage: FrameLocatorParent) {
     this.selector = selector;
     this.parentPage = parentPage;
   }
@@ -22,11 +24,17 @@ export class FrameLocatorAdapter {
   /**
    * 获取 FrameAdapter 实例（延迟获取）
    */
-  private getFrameAdapter(): any {
+  private getFrameAdapter(): FrameAdapterType {
     const frameElement = this.getFrameElement();
-    return this.parentPage.createFrameAdapter ? 
+    const adapter = this.parentPage.createFrameAdapter ? 
       this.parentPage.createFrameAdapter(frameElement) :
       this.createFrameAdapter(frameElement);
+    
+    if (!adapter) {
+      throw new Error('Failed to create frame adapter');
+    }
+    
+    return adapter;
   }
 
   /**
@@ -62,7 +70,7 @@ export class FrameLocatorAdapter {
   /**
    * 创建 FrameAdapter 实例
    */
-  private createFrameAdapter(frameElement: HTMLIFrameElement): any {
+  private createFrameAdapter(frameElement: HTMLIFrameElement): FrameAdapterType | null {
     const FrameAdapterClass = window.PlaywrightFrameAdapter;
     if (!FrameAdapterClass) {
       throw new Error('PlaywrightFrameAdapter not found in global scope');
@@ -160,9 +168,13 @@ export class FrameLocatorAdapter {
   /**
    * 等待 iframe 中的元素
    */
-  async waitForSelector(selector: string, options?: { timeout?: number; state?: string }): Promise<void> {
+  async waitForSelector(selector: string, options?: { timeout?: number; state?: 'attached' | 'detached' | 'visible' | 'hidden' }): Promise<Element> {
     const frame = this.getFrameAdapter();
-    return await frame.waitForSelector(selector, options);
+    const element = await frame.waitForSelector(selector, options);
+    if (!element) {
+      throw new Error(`Element not found in frame: ${selector}`);
+    }
+    return element;
   }
 
   /**

@@ -5,7 +5,8 @@ import type {
   TypeOptions,
   BoundingBox,
   ViewportSize,
-  Logger 
+  Logger,
+  BaseLocator 
 } from '../../types/index.js';
 import { 
   getRoleSelector, 
@@ -29,7 +30,7 @@ export interface PageContext {
  * 基础页面操作类 - Page 和 Frame 的共同基类
  */
 export abstract class BasePageContext {
-  protected readonly logger: Logger;
+  public readonly logger: Logger;
   protected abstract getContext(): PageContext;
 
   constructor() {
@@ -58,8 +59,61 @@ export abstract class BasePageContext {
    * 等待元素
    */
   async waitForSelector(selector: string, options: { timeout?: number; state?: string } = {}): Promise<Element> {
-    const { timeout = 30000 } = options;
-    return await this.waitForElementInContext(selector, timeout);
+    const { timeout = 30000, state = 'visible' } = options;
+    
+    // 如果是 xpath，需要特殊处理（只有 PageAdapter 支持）
+    if (selector.startsWith('xpath=')) {
+      // 检查子类是否支持 waitForXPath
+      if ('waitForXPath' in this && typeof (this as any).waitForXPath === 'function') {
+        return await (this as any).waitForXPath(selector.substring(6), { timeout });
+      } else {
+        throw new Error('XPath selectors are not supported in this context');
+      }
+    }
+    
+    // 处理 :visible 和 :hidden 伪类选择器
+    let actualSelector = selector;
+    let requiredState = state;
+    
+    if (selector.includes(':visible')) {
+      actualSelector = selector.replace(':visible', '');
+      requiredState = 'visible';
+    } else if (selector.includes(':hidden')) {
+      actualSelector = selector.replace(':hidden', '');
+      requiredState = 'hidden';
+    }
+    
+    // 等待元素存在
+    const element = await this.waitForElementInContext(actualSelector, timeout);
+    
+    // 检查可见性状态
+    if (requiredState === 'visible') {
+      await this.waitForConditionInContext(
+        () => {
+          const rect = element.getBoundingClientRect();
+          const context = this.getContext();
+          const style = context.window.getComputedStyle(element as HTMLElement);
+          return rect.width > 0 && rect.height > 0 && 
+                 style.visibility !== 'hidden' && style.display !== 'none';
+        },
+        timeout,
+        `元素 "${actualSelector}" 等待可见超时`
+      );
+    } else if (requiredState === 'hidden') {
+      await this.waitForConditionInContext(
+        () => {
+          const rect = element.getBoundingClientRect();
+          const context = this.getContext();
+          const style = context.window.getComputedStyle(element as HTMLElement);
+          return rect.width === 0 || rect.height === 0 || 
+                 style.visibility === 'hidden' || style.display === 'none';
+        },
+        timeout,
+        `元素 "${actualSelector}" 等待隐藏超时`
+      );
+    }
+    
+    return element;
   }
 
   /**
@@ -368,27 +422,38 @@ export abstract class BasePageContext {
   }
 
   /**
-   * 等待函数条件
+   * 等待函数条件（使用通用等待逻辑）
    */
   async waitForFunction<T>(fn: () => T, options: { timeout?: number } = {}): Promise<T> {
     const { timeout = 30000 } = options;
-    const startTime = Date.now();
-    const interval = 100;
     const context = this.getContext();
-
-    while (Date.now() - startTime < timeout) {
-      try {
-        const result = fn.call(context.window);
-        if (result) {
-          return result;
-        }
-      } catch (error) {
-        // 继续等待
-      }
-      await this.waitForTimeout(interval);
-    }
+    let result: T;
     
-    throw new Error('waitForFunction timeout');
+    // 使用一个简化版的 waitForCondition 等待逻辑
+    return new Promise((resolve, reject) => {
+      const startTime = Date.now();
+      
+      const check = async (): Promise<void> => {
+        try {
+          result = fn.call(context.window);
+          if (result) {
+            resolve(result);
+            return;
+          }
+        } catch (error) {
+          // 继续等待，忽略错误
+        }
+
+        if (Date.now() - startTime >= timeout) {
+          reject(new Error(`waitForFunction 超时 (${timeout}ms)`));
+          return;
+        }
+
+        setTimeout(check, 100);
+      };
+
+      check();
+    });
   }
 
   /**
@@ -412,7 +477,7 @@ export abstract class BasePageContext {
   /**
    * 创建 Locator
    */
-  locator(selector: string, options: Record<string, any> = {}): any {
+  locator(selector: string, options: Record<string, any> = {}): BaseLocator {
     const LocatorAdapterClass = window.PlaywrightLocatorAdapter;
     if (!LocatorAdapterClass) {
       throw new Error('PlaywrightLocatorAdapter not found in global scope');
@@ -423,7 +488,7 @@ export abstract class BasePageContext {
   /**
    * 根据角色定位
    */
-  getByRole(role: string, options: { name?: string; exact?: boolean; level?: number } = {}): any {
+  getByRole(role: string, options: { name?: string; exact?: boolean; level?: number } = {}): BaseLocator {
     const { name, exact = false, level } = options;
     const roleOptions: RoleOptions = { exact, level };
     
@@ -442,7 +507,7 @@ export abstract class BasePageContext {
   /**
    * 根据文本定位
    */
-  getByText(text: string, options: { exact?: boolean } = {}): any {
+  getByText(text: string, options: { exact?: boolean } = {}): BaseLocator {
     const { exact = false } = options;
     const selector = buildGetByTextSelector(text, exact);
     return this.locator(selector);
@@ -451,7 +516,7 @@ export abstract class BasePageContext {
   /**
    * 根据标签定位
    */
-  getByLabel(text: string, options: { exact?: boolean } = {}): any {
+  getByLabel(text: string, options: { exact?: boolean } = {}): BaseLocator {
     const { exact = false } = options;
     const selector = buildGetByLabelSelector(text, exact);
     return this.locator(selector);
@@ -460,7 +525,7 @@ export abstract class BasePageContext {
   /**
    * 根据占位符定位
    */
-  getByPlaceholder(text: string, options: { exact?: boolean } = {}): any {
+  getByPlaceholder(text: string, options: { exact?: boolean } = {}): BaseLocator {
     const { exact = false } = options;
     const selector = buildGetByPlaceholderSelector(text, exact);
     return this.locator(selector);
@@ -469,7 +534,7 @@ export abstract class BasePageContext {
   /**
    * 根据测试 ID 定位
    */
-  getByTestId(testId: string): any {
+  getByTestId(testId: string): BaseLocator {
     const selector = buildGetByTestIdSelector(testId);
     return this.locator(selector);
   }
@@ -477,7 +542,7 @@ export abstract class BasePageContext {
   /**
    * 根据标题定位
    */
-  getByTitle(text: string, options: { exact?: boolean } = {}): any {
+  getByTitle(text: string, options: { exact?: boolean } = {}): BaseLocator {
     const { exact = false } = options;
     const selector = buildGetByTitleSelector(text, exact);
     return this.locator(selector);
@@ -488,5 +553,207 @@ export abstract class BasePageContext {
   /**
    * 等待元素在上下文中出现
    */
-  protected abstract waitForElementInContext(selector: string, timeout: number): Promise<Element>;
+  /**
+   * 等待元素在上下文中出现（默认实现，子类可以覆盖）
+   */
+  protected async waitForElementInContext(selector: string, timeout: number): Promise<Element> {
+    return await this.waitForElementInDocument(selector, timeout);
+  }
+
+  
+  /**
+   * 等待条件满足（由子类实现具体的等待逻辑）
+   */
+  /**
+   * 等待条件满足（默认实现，子类可以覆盖）
+   */
+  protected async waitForConditionInContext<T>(
+    conditionFn: () => T | Promise<T>, 
+    timeout: number, 
+    errorMessage: string
+  ): Promise<T> {
+    return await this.waitForConditionInDocument(conditionFn, timeout, errorMessage);
+  }
+
+  // =============== 通用等待方法（可以替代各种自定义 WaitManager）===============
+
+  /**
+   * 通用的元素查找方法，支持 CSS 选择器、XPath 和 text 选择器
+   */
+  protected querySelector(selector: string): Element | null {
+    const context = this.getContext();
+    const doc = context.document;
+    
+    if (selector.startsWith('xpath=')) {
+      const xpath = selector.substring(6);
+      const result = doc.evaluate(
+        xpath,
+        doc,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      );
+      return result.singleNodeValue as Element | null;
+    } else if (selector.startsWith('text=')) {
+      const text = selector.substring(5);
+      const xpath = `//*[contains(normalize-space(text()), "${text}")]`;
+      const result = doc.evaluate(
+        xpath,
+        doc,
+        null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE,
+        null
+      );
+      return result.singleNodeValue as Element | null;
+    } else {
+      return doc.querySelector(selector);
+    }
+  }
+
+  /**
+   * 通用的等待元素方法，使用当前上下文的 document
+   */
+  protected async waitForElementInDocument(selector: string, timeout: number = 30000): Promise<Element> {
+    return new Promise((resolve, reject) => {
+      const startTime = Date.now();
+      
+      // 立即检查
+      const existing = this.querySelector(selector);
+      if (existing) {
+        this.logger.debug(`元素立即找到: ${selector}`);
+        return resolve(existing);
+      }
+
+      let timeoutId: NodeJS.Timeout | undefined;
+      let observer: MutationObserver | undefined;
+
+      const cleanup = (): void => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (observer) observer.disconnect();
+      };
+
+      // 设置超时
+      timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new Error(`等待元素超时: ${selector} (${timeout}ms)`));
+      }, timeout);
+
+      // 监听 DOM 变化
+      observer = new MutationObserver(() => {
+        const element = this.querySelector(selector);
+        if (element) {
+          cleanup();
+          const elapsed = Date.now() - startTime;
+          this.logger.debug(`元素找到: ${selector} (${elapsed}ms)`);
+          resolve(element);
+        }
+      });
+
+      const context = this.getContext();
+      const observeTarget = context.document.body || context.document.documentElement;
+      observer.observe(observeTarget, {
+        childList: true,
+        subtree: true,
+        attributes: true
+      });
+    });
+  }
+
+  /**
+   * 通用的等待条件方法
+   */
+  protected async waitForConditionInDocument<T>(
+    conditionFn: () => T | Promise<T>, 
+    timeout: number = 30000, 
+    errorMessage: string = '等待条件超时'
+  ): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const startTime = Date.now();
+      
+      const check = async (): Promise<void> => {
+        try {
+          const result = await conditionFn();
+          if (result) {
+            const elapsed = Date.now() - startTime;
+            this.logger.debug(`条件满足 (${elapsed}ms)`);
+            resolve(result);
+            return;
+          }
+        } catch (error) {
+          this.logger.debug('条件检查出错，继续等待:', (error as Error).message);
+        }
+
+        if (Date.now() - startTime >= timeout) {
+          reject(new Error(`${errorMessage} (${timeout}ms)`));
+          return;
+        }
+
+        setTimeout(check, 100);
+      };
+
+      check();
+    });
+  }
+
+  /**
+   * 等待超时的通用方法
+   */
+  protected async waitForTimeoutInDocument(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * 等待URL匹配的通用方法
+   */
+  protected async waitForURLInDocument(urlPattern: string | RegExp, timeout: number = 30000): Promise<boolean> {
+    return this.waitForConditionInDocument(
+      () => {
+        const context = this.getContext();
+        const currentUrl = context.window.location.href;
+        if (typeof urlPattern === 'string') {
+          return currentUrl.includes(urlPattern);
+        }
+        if (urlPattern instanceof RegExp) {
+          return urlPattern.test(currentUrl);
+        }
+        return false;
+      },
+      timeout,
+      `等待URL变化超时: ${urlPattern}`
+    );
+  }
+
+  /**
+   * 等待加载状态的通用方法
+   */
+  protected async waitForLoadStateInDocument(state: 'load' | 'domcontentloaded' | 'networkidle' = 'load'): Promise<void> {
+    return new Promise((resolve) => {
+      const context = this.getContext();
+      const doc = context.document;
+      
+      const checkState = (): void => {
+        if (state === 'load' && doc.readyState === 'complete') {
+          this.logger.debug('页面完全加载');
+          resolve();
+        } else if (state === 'domcontentloaded' && doc.readyState !== 'loading') {
+          this.logger.debug('DOM 内容加载完成');
+          resolve();
+        } else if (state === 'networkidle') {
+          // 简单实现：等待 500ms 无网络请求
+          setTimeout(() => {
+            this.logger.debug('网络空闲');
+            resolve();
+          }, 500);
+        }
+      };
+
+      if (doc.readyState === 'complete' && state === 'load') {
+        resolve();
+      } else if (doc.readyState !== 'loading' && state === 'domcontentloaded') {
+        resolve();
+      } else {
+        doc.addEventListener('readystatechange', checkState, { once: true });
+      }
+    });
+  }
 }

@@ -5,7 +5,10 @@ import type {
   TypeOptions, 
   LocatorOptions, 
   ElementWaitOptions,
-  Logger 
+  Logger,
+  PageContext,
+  EventSimulator,
+  FrameAdapter as FrameAdapterType
 } from '../../types/index.js';
 import { getReactAdapter } from '../framework-adapters/react-adapter.js';
 import { getOpenInulaAdapter } from '../framework-adapters/openinula-adapter.js';
@@ -51,11 +54,11 @@ interface QueryStrategy {
  * Locator 适配器 - 实现 Playwright Locator API with Lazy Execution
  */
 class LocatorAdapter {
-  private page: any; // TODO: Type this properly
+  private page: PageContext;
   private options: LocatorOptions;
   private filters: FilterOptions[];
   private logger: Logger;
-  private eventSimulator: any; // TODO: Type this properly
+  private eventSimulator: EventSimulator;
   private _element?: Element;
   private _queryStrategy: QueryStrategy; // 查询策略，延迟执行
   private _resolvedElements?: Element[]; // 缓存已解析的元素集合，仅在需要时计算
@@ -98,7 +101,7 @@ class LocatorAdapter {
     }
   }
 
-  constructor(queryStrategy: QueryStrategy | string, page: any, options: LocatorOptions = {}) {
+  constructor(queryStrategy: QueryStrategy | string, page: PageContext, options: LocatorOptions = {}) {
     // 兼容旧的构造函数调用方式
     if (typeof queryStrategy === 'string') {
       this._queryStrategy = {
@@ -112,9 +115,9 @@ class LocatorAdapter {
     this.page = page;
     this.options = options;
     this.filters = [];
-    this.logger = (typeof window !== 'undefined' && window.PlaywrightLogger) 
+    this.logger = page.logger || ((typeof window !== 'undefined' && window.PlaywrightLogger) 
       ? new window.PlaywrightLogger() 
-      : console as unknown as Logger;
+      : console as unknown as Logger);
     this.eventSimulator = page.eventSimulator;
   }
 
@@ -133,7 +136,7 @@ class LocatorAdapter {
   /**
    * 基于已解析元素创建新的 locator（保留用于内部使用）
    */
-  static fromElements(elements: Element[], page: any, queryStrategy: QueryStrategy): LocatorAdapter {
+  static fromElements(elements: Element[], page: PageContext, queryStrategy: QueryStrategy): LocatorAdapter {
     const locator = new LocatorAdapter(queryStrategy, page);
     locator._resolvedElements = elements;
     return locator;
@@ -1435,6 +1438,68 @@ class LocatorAdapter {
     }
     
     return path.join(' > ');
+  }
+
+  /**
+   * 获取 iframe 元素的 contentFrame
+   * 适用于通过 Locator 查找 iframe 元素再获取其 frame 的场景
+   */
+  async contentFrame(): Promise<FrameAdapterType | null> {
+    try {
+      // 等待元素出现
+      const element = await this.waitFor({ state: 'attached', timeout: 10000 });
+      
+      // 检查是否是 iframe 或 frame 元素
+      if (!element || (element.tagName.toLowerCase() !== 'iframe' && element.tagName.toLowerCase() !== 'frame')) {
+        this.logger.warn(`Element is not an iframe or frame: ${this.selector}`);
+        return null;
+      }
+      
+      const frameElement = element as HTMLIFrameElement;
+      
+      // 检查 frame 是否可访问
+      try {
+        const frameWindow = frameElement.contentWindow;
+        if (!frameWindow) {
+          this.logger.warn(`Cannot access frame window (cross-origin?): ${this.selector}`);
+          return null;
+        }
+        
+        const frameDocument = frameWindow.document;
+        if (!frameDocument) {
+          this.logger.warn(`Cannot access frame document: ${this.selector}`);
+          return null;
+        }
+      } catch (error) {
+        this.logger.warn(`Frame access denied (cross-origin?): ${this.selector}`, error);
+        return null;
+      }
+      
+      // 创建 FrameAdapter 实例 - 支持测试和生产环境
+      let FrameAdapterClass: any;
+      if (typeof window !== 'undefined' && (window as any).PlaywrightFrameAdapter) {
+        FrameAdapterClass = (window as any).PlaywrightFrameAdapter;
+      } else if ((global as any).window && (global as any).window.PlaywrightFrameAdapter) {
+        FrameAdapterClass = (global as any).window.PlaywrightFrameAdapter;
+      }
+      
+      if (!FrameAdapterClass) {
+        throw new Error('PlaywrightFrameAdapter not found in global scope');
+      }
+      
+      try {
+        const frameAdapter = new FrameAdapterClass(frameElement);
+        this.logger.debug(`Created frame adapter for: ${this.selector}`);
+        return frameAdapter;
+      } catch (error) {
+        this.logger.error(`Failed to create frame adapter: ${(error as Error).message}`);
+        return null;
+      }
+      
+    } catch (error) {
+      this.logger.error(`contentFrame failed: ${(error as Error).message}`);
+      return null;
+    }
   }
 }
 

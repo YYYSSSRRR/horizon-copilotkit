@@ -1,6 +1,9 @@
 /// <reference path="../types/global.d.ts" />
 import type { 
-  LocatorOptions 
+  LocatorOptions,
+  BaseLocator,
+  FrameAdapter as FrameAdapterType,
+  EventSimulator,
 } from '../../types/index.js';
 import { BasePageContext, type PageContext } from './base-page-context.js';
 import FrameLocatorAdapter from './frame-locator-adapter.js';
@@ -11,8 +14,9 @@ import FrameLocatorAdapter from './frame-locator-adapter.js';
  */
 export class FrameAdapter extends BasePageContext {
   private readonly frameElement: HTMLIFrameElement;
-  private readonly frameDocument: Document;
+  public readonly frameDocument: Document;
   private readonly frameWindow: Window;
+  public readonly eventSimulator: EventSimulator;
 
   constructor(frameElement: HTMLIFrameElement) {
     super();
@@ -31,6 +35,9 @@ export class FrameAdapter extends BasePageContext {
     
     this.frameWindow = frameWindow;
     this.frameDocument = frameDocument;
+    this.eventSimulator = new window.PlaywrightEventSimulator();
+    
+    // 不再需要创建专门的 WaitManager，使用基类的通用方法
   }
 
   /**
@@ -41,24 +48,6 @@ export class FrameAdapter extends BasePageContext {
       document: this.frameDocument,
       window: this.frameWindow
     };
-  }
-
-  /**
-   * 实现抽象方法：等待元素在 frame 中出现
-   */
-  protected async waitForElementInContext(selector: string, timeout: number = 30000): Promise<Element> {
-    const startTime = Date.now();
-    const interval = 100;
-
-    while (Date.now() - startTime < timeout) {
-      const element = this.frameDocument.querySelector(selector);
-      if (element) {
-        return element;
-      }
-      await this.waitForTimeout(interval);
-    }
-    
-    throw new Error(`Element not found in frame: ${selector}`);
   }
 
   // =============== Frame 特有方法 ===============
@@ -120,24 +109,6 @@ export class FrameAdapter extends BasePageContext {
     });
   }
 
-  // =============== Frame 特有的 Locator 重写 ===============
-
-  /**
-   * 创建 Locator（在 frame 上下文中）- 重写基类方法
-   */
-  locator(selector: string, options: LocatorOptions = {}): any {
-    // 创建一个特殊的 locator，它在 frame 上下文中工作
-    const LocatorAdapterClass = window.PlaywrightLocatorAdapter;
-    if (!LocatorAdapterClass) {
-      throw new Error('PlaywrightLocatorAdapter not found in global scope');
-    }
-    
-    // 直接使用 this，因为 FrameAdapter 已经实现了所需的接口
-    const locator = new LocatorAdapterClass(selector, this, options);
-    
-    return locator;
-  }
-
   // =============== Frame 嵌套支持 ===============
 
   /**
@@ -157,7 +128,7 @@ export class FrameAdapter extends BasePageContext {
   /**
    * 根据 URL 或 name 查找子 frame
    */
-  frame(options: { url?: string | RegExp; name?: string }): any {
+  frame(options: { url?: string | RegExp; name?: string }): FrameAdapterType | null {
     const frames = this.frames();
     
     if (options.url) {
@@ -209,7 +180,7 @@ export class FrameAdapter extends BasePageContext {
   /**
    * 创建嵌套 FrameAdapter 实例
    */
-  private createNestedFrameAdapter(frameElement: HTMLIFrameElement): any {
+  private createNestedFrameAdapter(frameElement: HTMLIFrameElement): FrameAdapterType | null {
     const FrameAdapterClass = window.PlaywrightFrameAdapter;
     if (!FrameAdapterClass) {
       throw new Error('PlaywrightFrameAdapter not found in global scope');
