@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useCopilotAction, useCopilotScriptAction } from '@copilotkit/react-core-next'
-import { askLlmAction, fillFormAction } from '../../playwright-scripts/index.js'
+import { scriptActions } from '../../playwright-scripts/index.js'
 
 /**
  * 业务相关的 CopilotKit Actions
@@ -607,6 +607,7 @@ export function useBusinessActions() {
     useCopilotAction(action);
   });
 
-  useCopilotScriptAction(askLlmAction);
-  useCopilotScriptAction(fillFormAction);
+  scriptActions.forEach(action => {
+    useCopilotScriptAction(action);
+  });
 }
