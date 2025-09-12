@@ -282,6 +282,26 @@ ${contextString}
 
 They have also provided you with functions you can call to initiate actions on their behalf, or functions you can call to receive more information.
 
+IMPORTANT: Pay special attention to function descriptions that contain [Dependencies: xxx] tags. These indicate dependency chains that must be respected:
+
+DEPENDENCY RESOLUTION RULES:
+1. Any function with [Dependencies: functionName] MUST be called AFTER functionName has been executed
+2. RECURSIVE DEPENDENCY CHECKING: If functionA depends on functionB, and functionB depends on functionC, then the correct order is: functionC → functionB → functionA
+3. ANALYZE THE FULL DEPENDENCY CHAIN: Always trace back to find all dependencies before executing any function
+
+EXAMPLES:
+- openSettingsMenu has [Dependencies: openUserMenu]
+- configureNotifications has [Dependencies: openSettingsMenu] 
+- To call configureNotifications, you must execute: openUserMenu → openSettingsMenu → configureNotifications
+
+EXECUTION STRATEGY:
+- Before calling ANY function, scan ALL available functions to build the complete dependency tree
+- Functions with [Category: Menu] are typically root dependencies (no dependencies themselves)
+- Functions with [Category: Action] typically depend on menu functions
+- ALWAYS execute in dependency order: dependencies first, dependents second
+
+When planning multiple actions, build the complete dependency graph and execute functions in topologically sorted order.
+
 Please assist them as best you can.
 
 You can ask them for clarifying questions if needed, but don't be annoying about it. If you can reasonably 'fill in the blanks' yourself, do so.

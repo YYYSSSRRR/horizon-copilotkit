@@ -649,7 +649,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
           for (let i = finalMessages.length - 1; i >= 0; i--) {
             const message = finalMessages[i];
             if (
-              (message.isActionExecutionMessage() || message.isResultMessage()) &&
+              (message.isActionExecutionMessage()) &&
               message.status.code !== "pending"
             ) {
               lastMessages.unshift(message);
@@ -711,7 +711,7 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         });
         
         if (
-          !isFollowUp && // 只有非后续请求才能触发后续请求，避免死循环
+          // !isFollowUp && // 只有非后续请求才能触发后续请求，避免死循环
           (didExecuteAction || hasBackendActions) && // 前端动作执行或存在后端动作时都需要后续请求
           !chatAbortControllerRef.current?.signal.aborted
         ) {
