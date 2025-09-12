@@ -16,7 +16,7 @@ import {
 import { shouldShowDevConsole } from "../../utils";
 import { ToastProvider } from "../toast/toast-provider";
 import { CopilotErrorBoundary } from "../error-boundary/error-boundary";
-import { FrontendApprovalManager } from "../../lib/frontend-approval-manager";
+import { FrontendInterruptManager } from "../../lib/frontend-interrupt-manager";
 
 export interface CopilotKitProps {
   /**
@@ -131,8 +131,11 @@ export function CopilotKit({
   const [isLoading, setIsLoading] = useState(false);
   const [threadId, setThreadId] = useState<string>(initialThreadId || randomId());
   
-  // 前端审批管理器
-  const frontendApprovalManager = useMemo(() => new FrontendApprovalManager(), []);
+  // 前端中断管理器（新的灵活框架）
+  const frontendInterruptManager = useMemo(() => new FrontendInterruptManager(), []);
+  
+  // 向后兼容：前端审批管理器使用相同的中断管理器实例
+  const frontendApprovalManager = frontendInterruptManager;
 
   // 动作管理
   const setAction = useCallback((id: string, actionDef: FrontendAction) => {
@@ -326,6 +329,7 @@ export function CopilotKit({
     setSystemMessage: setSystemMessagePlaceholder,
     chatInstructions: undefined, // 聊天指令
     forwardedParameters: forwardedParameters,
+    frontendInterruptManager,
     frontendApprovalManager,
     isLoading,
     setIsLoading,
@@ -363,6 +367,7 @@ export function CopilotKit({
     setRunIdPlaceholder,
     setLangGraphInterruptActionPlaceholder,
     removeLangGraphInterruptActionPlaceholder,
+    frontendInterruptManager,
     frontendApprovalManager,
   ]);
 

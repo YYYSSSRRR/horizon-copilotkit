@@ -36,6 +36,26 @@ export function HomePage() {
   const { toast } = useToast()
   const approvalManager = useFrontendApprovalManager()
   
+  // AI生成的旅行选项状态
+  const [showTravelModal, setShowTravelModal] = useState(false)
+  const [travelOptions, setTravelOptions] = useState<any[]>([])
+  const [currentInterruptId, setCurrentInterruptId] = useState<string | null>(null)
+  
+  // 处理旅行选项选择
+  const handleTravelOptionSelect = useCallback(async (selectedOption: any) => {
+    if (!currentInterruptId || !approvalManager) return;
+    
+    try {
+      setShowTravelModal(false);
+      const result = await approvalManager.resumeAction(currentInterruptId, selectedOption);
+      toast(`行程预订成功: ${result}`, 'success');
+      setCurrentInterruptId(null);
+      setTravelOptions([]);
+    } catch (error) {
+      toast(`处理失败: ${error}`, 'error');
+    }
+  }, [currentInterruptId, approvalManager, toast]);
+  
   // 表单处理函数
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -238,17 +258,17 @@ export function HomePage() {
       return `❌ 无效的审批决定: "${decision}"。请输入 'y'/'yes'/'同意'/'是' 批准，或 'n'/'no'/'拒绝'/'否' 拒绝。`;
     }
     
-    // 查找审批请求
-    const request = approvalManager.findApprovalByPartialId(approval_id || "");
+    // 查找中断请求
+    const request = approvalManager.findInterruptByPartialId(approval_id || "");
     if (!request) {
-      const pending = approvalManager.getPendingApprovals();
+      const pending = approvalManager.getPendingInterrupts();
       return pending.length > 0
-        ? `❌ 找不到匹配的审批请求。当前有 ${pending.length} 个待处理的审批。`
+        ? `❌ 找不到匹配的审批请求。当前有 ${pending.length} 个待处理的中断。`
         : '❌ 没有找到待审批的请求。';
     }
     
     if (request.resolved) {
-      return `❌ 审批请求 ${request.approvalId.slice(-8)} 已经被处理过了。`;
+      return `❌ 审批请求 ${request.interruptId.slice(-8)} 已经被处理过了。`;
     }
     
     // 标记为已解决
@@ -268,9 +288,9 @@ export function HomePage() {
         } else if (request.actionName === 'fill-form') {
           // 执行表单填写脚本动作
           try {
-            const module: { fillFormExecutor: (formData: any) => Promise<string> } = 
-              await import('../../playwright-scripts/executors/fill-form.executor.js');
-            const { fillFormExecutor } = module;
+            // 动态导入脚本执行器，使用 @ts-ignore 跳过类型检查
+            // @ts-ignore
+            const { fillFormExecutor } = await import('../../playwright-scripts/executors/fill-form.executor.js');
             const result = await fillFormExecutor(request.parameters);
             return `✅ 批准 - 脚本动作执行完成: ${result}`;
           } catch (error) {
@@ -311,6 +331,177 @@ export function HomePage() {
   }), [frontendApprovalHandler]);
 
   useCopilotAction(frontendApprovalAction);
+
+  // AI生成旅行规划 - 使用真正的AI调用
+  const aiTravelPlanAction = useMemo<FrontendAction<[
+    { name: "destination"; type: "string"; description: string; required: true },
+    { name: "budget"; type: "string"; description: string; required: false },
+    { name: "days"; type: "number"; description: string; required: false },
+    { name: "preferences"; type: "string"; description: string; required: false }
+  ]>>(() => ({
+    name: "planAITrip",
+    description: "AI智能旅行规划 - 根据目的地、预算等信息，让真正的AI生成多个个性化旅行方案供用户选择",
+    parameters: [
+      {
+        name: "destination",
+        type: "string",
+        description: "旅行目的地，例如：东京、巴厘岛、泰国、欧洲、美国",
+        required: true,
+      },
+      {
+        name: "budget",
+        type: "string", 
+        description: "预算范围，例如：5000、10000、15000、20000",
+        required: false,
+      },
+      {
+        name: "days",
+        type: "number",
+        description: "旅行天数，例如：3、5、7、10、14",
+        required: false,
+      },
+      {
+        name: "preferences",
+        type: "string",
+        description: "旅行偏好，例如：美食、文化、自然风光、购物、冒险、休闲度假",
+        required: false,
+      }
+    ],
+    asyncInterruptHandler: {
+      onInterrupt: async (actionName: string, parameters: any, interruptId: string, runtimeClient?: any) => {
+        const { destination, budget, days, preferences } = parameters;
+        
+        try {
+          console.log(`[AI旅行规划] 开始调用后端AI为${destination}生成旅行方案...`);
+          
+          // 调用后端AI生成旅行方案
+          const response = await fetch('/api/ai/generate-travel-plans', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              destination,
+              budget: budget || '10000',
+              days: days || 7,
+              preferences: preferences || ''
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`AI调用失败: ${response.status} ${response.statusText}`);
+          }
+          
+          const aiResponse = await response.json();
+          console.log(`[AI旅行规划] AI成功生成${aiResponse.plans?.length || 0}个方案`);
+          
+          if (!aiResponse.success || !aiResponse.plans || aiResponse.plans.length === 0) {
+            throw new Error('AI返回的数据格式错误或没有生成方案');
+          }
+          
+          // 显示旅行选项弹框
+          setTravelOptions(aiResponse.plans);
+          setCurrentInterruptId(interruptId);
+          setShowTravelModal(true);
+          
+          // 返回给聊天的提示消息
+          return `🤖 **AI旅行规划完成！**
+
+基于您的需求，AI已为您量身定制：
+- 📍 目的地：${destination}
+- 💰 预算：${budget || '10000'}元
+- 📅 天数：${days || 7}天
+- 🎯 偏好：${preferences || '综合体验'}
+
+🎊 **AI已生成 ${aiResponse.plans.length} 个个性化旅行方案**：
+
+${aiResponse.plans.map((option: any, index: number) => 
+`**${index + 1}. ${option.title}**
+💡 AI推荐：${option.aiReason}
+💰 价格：¥${option.price}
+✨ 亮点：${option.highlights?.join('、')}
+`).join('\n')}
+
+🎉 **选择弹框已弹出**，请在弹框中选择您心仪的旅行方案！
+
+💭 每个方案都是真正的AI根据${destination}的实际情况和您的个人偏好精心设计的，点击选择即可查看详细行程和预订。`;
+          
+        } catch (error) {
+          console.error(`[AI旅行规划] AI调用失败:`, error);
+          
+          // AI调用失败时的降级方案
+          const fallbackOptions = [
+            {
+              id: 1,
+              title: `${destination} 经典文化之旅`,
+              description: `${days || 7}天深度文化体验，预算约${budget || '10000'}元`,
+              highlights: ['历史古迹游览', '当地文化体验', '传统美食品尝', '民俗活动参与'],
+              price: parseInt(budget || '10000') * 0.8,
+              itinerary: `第1-2天：抵达${destination}，市区观光\n第3-4天：历史文化景点深度游\n第5-6天：当地民俗体验\n第${days || 7}天：返程`,
+              aiReason: `AI暂时不可用，为您提供${destination}的经典文化体验路线`
+            }
+          ];
+          
+          setTravelOptions(fallbackOptions);
+          setCurrentInterruptId(interruptId);
+          setShowTravelModal(true);
+          
+          return `⚠️ **AI旅行规划（降级模式）**
+
+抱歉，AI服务暂时不可用（${error}），为您提供备用方案：
+
+📍 目的地：${destination}
+💰 预算：${budget || '10000'}元
+📅 天数：${days || 7}天
+
+🎯 **备用方案已生成**：
+${fallbackOptions.map((option, index) => 
+`**${index + 1}. ${option.title}**
+💡 说明：${option.aiReason}
+💰 价格：¥${option.price}
+✨ 亮点：${option.highlights.join('、')}
+`).join('\n')}
+
+🎉 **选择弹框已弹出**，请选择方案继续！`;
+        }
+      },
+      
+      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+        const selectedOption = resumeData;
+        const { destination } = originalParameters;
+        
+        // 模拟预订处理时间
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        return `✅ **AI旅行方案预订成功！**
+
+🎊 恭喜您选择了"${selectedOption.title}"！
+
+📋 **预订详情：**
+- 🏝️ 目的地：${destination}
+- 📊 方案：${selectedOption.title}
+- 🗓️ 描述：${selectedOption.description}
+- 💰 总价：¥${selectedOption.price}
+- ⭐ 特色服务：${selectedOption.highlights?.join('、')}
+
+📅 **详细行程安排：**
+${selectedOption.itinerary}
+
+🎫 **预订确认号：** AI-TRIP-${Date.now()}
+
+📧 **后续服务：**
+- 详细行程单将发送到您的邮箱
+- 专属客服将在24小时内联系您确认细节
+- 出行前会提供详细的旅行攻略和注意事项
+
+🤖 **AI贴心提示：** ${selectedOption.aiReason}
+
+祝您旅途愉快！有任何问题随时咨询我们的AI助手。✈️🌟`;
+      }
+    }
+  }), [setTravelOptions, setCurrentInterruptId, setShowTravelModal]);
+
+  useCopilotAction(aiTravelPlanAction);
 
   useCopilotScriptAction(askLlmAction);
   useCopilotScriptAction(fillFormAction);
@@ -520,6 +711,12 @@ export function HomePage() {
                 >
                   重置表单 (需审批)
                 </button>
+                <button
+                  onClick={() => handleSendMessage("帮我规划一个去日本的7天旅行")}
+                  className="w-full px-3 py-2 text-sm bg-pink-500 text-white rounded hover:bg-pink-600"
+                >
+                  AI旅行规划 (新功能)
+                </button>
             </div>
           </div>
 
@@ -572,6 +769,14 @@ export function HomePage() {
         </div>
       </div>
 
+      {/* 旅行选项弹框 */}
+      {showTravelModal && (
+        <TravelOptionsModal
+          options={travelOptions}
+          onSelect={handleTravelOptionSelect}
+          onClose={() => setShowTravelModal(false)}
+        />
+      )}
     </div>
   )
 }
@@ -884,4 +1089,105 @@ function UserInfoForm({
       </div>
     </div>
   )
+}
+
+// 旅行选项弹框组件
+function TravelOptionsModal({ 
+  options, 
+  onSelect, 
+  onClose 
+}: {
+  options: any[],
+  onSelect: (option: any) => void,
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">🏖️ AI生成的旅行方案</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl"
+              aria-label="关闭弹框"
+            >
+              ×
+            </button>
+          </div>
+          
+          <p className="text-gray-600 mb-6">
+            AI已为您量身定制以下旅行方案，请选择您心仪的方案：
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {options.map((option, index) => (
+              <div 
+                key={option.id || index} 
+                className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer hover:border-blue-300"
+                onClick={() => onSelect(option)}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">{option.title}</h3>
+                  <span className="text-xl font-bold text-blue-600">¥{option.price}</span>
+                </div>
+                
+                <p className="text-gray-600 mb-4">{option.description}</p>
+                
+                {option.highlights && (
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-700 mb-2">✨ 亮点特色：</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {option.highlights.map((highlight: string, idx: number) => (
+                        <span 
+                          key={idx}
+                          className="px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
+                        >
+                          {highlight}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {option.itinerary && (
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-700 mb-2">📅 行程安排：</h4>
+                    <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                      {option.itinerary.split('\n').map((day: string, idx: number) => (
+                        <div key={idx} className="mb-1">{day}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {option.aiReason && (
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-700 mb-2">🤖 AI推荐理由：</h4>
+                    <p className="text-sm text-gray-600 italic">{option.aiReason}</p>
+                  </div>
+                )}
+                
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(option);
+                  }}
+                  className="w-full mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  选择此方案
+                </button>
+              </div>
+            ))}
+          </div>
+          
+          <div className="mt-6 pt-4 border-t border-gray-200">
+            <p className="text-sm text-gray-500 text-center">
+              💡 每个方案都是AI根据您的需求精心设计的，选择后即可进行预订
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 } 

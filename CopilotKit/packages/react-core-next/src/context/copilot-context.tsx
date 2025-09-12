@@ -4,7 +4,7 @@ import { FrontendAction, ScriptAction } from "../types/frontend-action";
 import { CopilotChatSuggestionConfiguration } from "../types/chat-suggestion-configuration";
 import { SystemMessageFunction } from "../types/system-message";
 import { LangGraphInterruptAction } from "../hooks/use-langgraph-interrupt";
-import { FrontendApprovalManager } from "../lib/frontend-approval-manager";
+import { FrontendInterruptManager } from "../lib/frontend-interrupt-manager";
 
 export interface CopilotReadable {
   categories?: string[];
@@ -66,8 +66,11 @@ export interface CopilotContextValue {
   setLangGraphInterruptAction: (action: Partial<LangGraphInterruptAction>) => void;
   removeLangGraphInterruptAction: (actionId: string) => void;
   
-  // 前端审批管理器
-  frontendApprovalManager?: FrontendApprovalManager;
+  // 前端中断管理器（新的灵活框架）
+  frontendInterruptManager?: FrontendInterruptManager;
+  
+  // 前端审批管理器（向后兼容）
+  frontendApprovalManager?: FrontendInterruptManager;
   
   // Agent 会话（LangGraph需要）
   agentSession?: any;
@@ -165,6 +168,13 @@ export function useCopilotScriptActions() {
   };
 }
 
+// 新的中断管理器Hook
+export function useFrontendInterruptManager() {
+  const { frontendInterruptManager } = useCopilotContext();
+  return frontendInterruptManager;
+}
+
+// 向后兼容的审批管理器Hook
 export function useFrontendApprovalManager() {
   const { frontendApprovalManager } = useCopilotContext();
   return frontendApprovalManager;
