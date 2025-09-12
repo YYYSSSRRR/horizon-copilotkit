@@ -702,17 +702,17 @@ export function useChat(options: UseChatOptions): UseChatHelpers {
         
         // 检查是否需要后续请求
         // 对于后端动作，我们也需要触发后续请求，因为后端可能返回需要处理的结果
-        const hasBackendActions = finalMessages.some((msg: Message) => {
-          if (!msg.isActionExecutionMessage()) return false;
-          const actionMsg = msg as ActionExecutionMessage;
-          // 检查是否既不在 actions 中也不在 scriptActions 中（即为后端动作）
-          const foundAction = findAction(actionMsg.name, actions, scriptActions);
-          return !foundAction;
-        });
+        // const hasBackendActions = finalMessages.some((msg: Message) => {
+        //   if (!msg.isActionExecutionMessage()) return false;
+        //   const actionMsg = msg as ActionExecutionMessage;
+        //   // 检查是否既不在 actions 中也不在 scriptActions 中（即为后端动作）
+        //   const foundAction = findAction(actionMsg.name, actions, scriptActions);
+        //   return !foundAction;
+        // });
         
         if (
-          // !isFollowUp && // 只有非后续请求才能触发后续请求，避免死循环
-          (didExecuteAction || hasBackendActions) && // 前端动作执行或存在后端动作时都需要后续请求
+          // !isFollowUp && // 只有非后续请求才能触发后续请求，避免死循环+
+          didExecuteAction && // 前端动作执行或存在后端动作时都需要后续请求
           !chatAbortControllerRef.current?.signal.aborted
         ) {
           console.log("🔄 Executed action in this run, triggering follow-up completion...");
