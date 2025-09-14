@@ -109,59 +109,6 @@ export function useCopilotAction<T extends any[] = any[]>(
         }
       } as any;
     }
-    // 向后兼容：支持旧的 requireApproval 机制
-    else if (action.requireApproval && action.handler && interruptManager) {
-      console.log(`[中断系统] 使用兼容模式为动作 "${action.name}" 设置审批中断`);
-      
-      // 创建默认的审批处理器
-      const defaultApprovalHandler = {
-        onInterrupt: (actionName: string, parameters: any, interruptId: string) => {
-          return `🔐 **动作审批请求**
-
-动作名称: ${actionName}
-参数: ${JSON.stringify(parameters, null, 2)}
-审批ID: ${interruptId.slice(-8)}
-时间: ${new Date().toLocaleString()}
-
-请回复 'y' 或 '同意' 批准此操作，或 'n' 或 '拒绝' 取消操作。
-
-⚠️ **重要**: 当你批准或拒绝时，请使用审批ID "${interruptId.slice(-8)}" 来确保正确处理。`;
-        },
-        
-        onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
-          const normalizedDecision = String(resumeData).toLowerCase().trim();
-          const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
-          
-          if (!isApproved) {
-            return `❌ 拒绝 - 动作 "${actionName}" 已被拒绝，操作已取消。`;
-          }
-          
-          // 执行原始处理器
-          if (action.handler) {
-            const result = await action.handler(originalParameters);
-            return `✅ 批准 - ${result}`;
-          }
-          
-          return `✅ 批准 - 动作 "${actionName}" 已获批准并执行。`;
-        }
-      };
-      
-      // 注册默认审批处理器
-      interruptManager.registerInterruptAction(action.name, defaultApprovalHandler);
-      
-      wrappedAction = {
-        ...action,
-        handler: async (args: any) => {
-          try {
-            const { request, displayData } = interruptManager.createInterrupt(action.name, args);
-            return displayData;
-          } catch (error) {
-            console.error(`[中断系统] 审批中断创建失败:`, error);
-            throw error;
-          }
-        }
-      } as any;
-    }
 
     // 注册动作
     setAction(actionId, wrappedAction as any);
@@ -171,7 +118,7 @@ export function useCopilotAction<T extends any[] = any[]>(
     return () => {
       console.log(`[中断系统] 清理动作 "${action.name}"`);
       removeAction(actionId);
-      if ((action.asyncInterruptHandler || action.interruptHandler || action.requireApproval) && interruptManager) {
+      if ((action.asyncInterruptHandler || action.interruptHandler) && interruptManager) {
         interruptManager.unregisterInterruptAction(action.name);
         console.log(`[中断系统] 动作 "${action.name}" 的中断处理器已移除`);
       }
@@ -180,7 +127,6 @@ export function useCopilotAction<T extends any[] = any[]>(
     action.name, 
     action.description, 
     action.handler, 
-    action.requireApproval,
     action.interruptHandler,
     action.asyncInterruptHandler
   ]);

@@ -27,7 +27,7 @@ export interface InterruptHandler {
 
 /**
  * 通用前端中断管理器
- * 支持自定义的中断处理逻辑，而不局限于审批流程
+ * 支持自定义的中断处理逻辑
  */
 export class FrontendInterruptManager {
   private pendingInterrupts = new Map<string, InterruptRequest>();
@@ -83,6 +83,7 @@ export class FrontendInterruptManager {
     };
 
     this.pendingInterrupts.set(interruptId, request);
+    console.log(`[中断管理器] 创建中断请求: ${interruptId}, 动作: ${actionName}, 当前待处理数量: ${this.getPendingInterrupts().length}`);
 
     // 获取中断处理器并生成显示数据
     const handler = this.interruptHandlers.get(actionName);
@@ -141,25 +142,47 @@ export class FrontendInterruptManager {
    * 根据部分 ID 查找中断请求
    */
   findInterruptByPartialId(partialId: string): InterruptRequest | undefined {
+    console.log(`[中断管理器] 查找中断请求: partialId="${partialId}", 总中断数: ${this.pendingInterrupts.size}`);
+    
+    const allInterrupts = Array.from(this.pendingInterrupts.values());
+    const pendingInterrupts = allInterrupts.filter(req => !req.resolved);
+    
+    console.log(`[中断管理器] 当前待处理中断: ${pendingInterrupts.length}个`);
+    pendingInterrupts.forEach(req => {
+      console.log(`  - ${req.interruptId} (${req.actionName}) - ${req.timestamp}`);
+    });
+
     if (!partialId) {
       // 如果没有提供 ID，返回最新的未解决中断
-      const pending = Array.from(this.pendingInterrupts.values()).filter(req => !req.resolved);
-      return pending.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      const latest = pendingInterrupts.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+      console.log(`[中断管理器] 返回最新中断: ${latest?.interruptId || '无'}`);
+      return latest;
     }
 
     // 精确匹配
     if (this.pendingInterrupts.has(partialId)) {
-      return this.pendingInterrupts.get(partialId);
+      const request = this.pendingInterrupts.get(partialId)!;
+      console.log(`[中断管理器] 精确匹配找到: ${request.interruptId}`);
+      return request;
     }
 
     // 部分匹配
     for (const [id, request] of this.pendingInterrupts) {
       if (id.includes(partialId) || partialId.includes(id)) {
+        console.log(`[中断管理器] 部分匹配找到: ${request.interruptId}`);
         return request;
       }
     }
 
+    console.log(`[中断管理器] 未找到匹配的中断请求`);
     return undefined;
+  }
+
+  /**
+   * 获取待处理的中断请求列表
+   */
+  getPendingInterrupts(): InterruptRequest[] {
+    return Array.from(this.pendingInterrupts.values()).filter(req => !req.resolved);
   }
 
   /**
@@ -203,12 +226,6 @@ export class FrontendInterruptManager {
     }
   }
 
-  /**
-   * 获取所有待处理中断
-   */
-  getPendingInterrupts(): InterruptRequest[] {
-    return Array.from(this.pendingInterrupts.values()).filter(req => !req.resolved);
-  }
 
   /**
    * 取消中断请求
@@ -260,62 +277,6 @@ export class FrontendInterruptManager {
       resolvedCount: resolved.length,
       actionStats
     };
-  }
-
-  // ================================
-  // 向后兼容方法（用于旧的审批API）
-  // ================================
-
-  /**
-   * 向后兼容：请求审批（映射到中断请求）
-   */
-  requestApproval(actionName: string, parameters: any): InterruptRequest {
-    const { request } = this.createInterrupt(actionName, parameters);
-    return request;
-  }
-
-  /**
-   * 向后兼容：生成审批消息
-   */
-  generateApprovalMessage(request: InterruptRequest): string {
-    return `🔐 **动作审批请求**
-
-动作名称: ${request.actionName}
-参数: ${JSON.stringify(request.parameters, null, 2)}
-审批ID: ${request.interruptId.slice(-8)}
-时间: ${new Date(request.timestamp).toLocaleString()}
-
-请回复 'y' 或 '同意' 批准此操作，或 'n' 或 '拒绝' 取消操作。
-
-⚠️ **重要**: 当你批准或拒绝时，请使用审批ID "${request.interruptId.slice(-8)}" 来确保正确处理。`;
-  }
-
-  /**
-   * 向后兼容：添加需要审批的动作
-   */
-  addApprovalRequiredAction(actionName: string): void {
-    this.interruptRequiredActions.add(actionName);
-  }
-
-  /**
-   * 向后兼容：移除需要审批的动作
-   */
-  removeApprovalRequiredAction(actionName: string): void {
-    this.interruptRequiredActions.delete(actionName);
-  }
-
-  /**
-   * 向后兼容：通过部分ID查找审批请求
-   */
-  findApprovalByPartialId(partialId: string): InterruptRequest | undefined {
-    return this.findInterruptByPartialId(partialId);
-  }
-
-  /**
-   * 向后兼容：获取待审批列表
-   */
-  getPendingApprovals(): InterruptRequest[] {
-    return this.getPendingInterrupts();
   }
 
 }

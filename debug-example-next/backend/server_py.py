@@ -56,6 +56,7 @@ logger = logging.getLogger(__name__)
 # 审批系统相关定义
 # ================================
 
+
 # 全局对话式审批管理器实例
 conversational_approval_manager = None
 

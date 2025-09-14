@@ -131,11 +131,8 @@ export function CopilotKit({
   const [isLoading, setIsLoading] = useState(false);
   const [threadId, setThreadId] = useState<string>(initialThreadId || randomId());
   
-  // 前端中断管理器（新的灵活框架）
+  // 前端中断管理器
   const frontendInterruptManager = useMemo(() => new FrontendInterruptManager(), []);
-  
-  // 向后兼容：前端审批管理器使用相同的中断管理器实例
-  const frontendApprovalManager = frontendInterruptManager;
 
   // 动作管理
   const setAction = useCallback((id: string, actionDef: FrontendAction) => {
@@ -330,7 +327,6 @@ export function CopilotKit({
     chatInstructions: undefined, // 聊天指令
     forwardedParameters: forwardedParameters,
     frontendInterruptManager,
-    frontendApprovalManager,
     isLoading,
     setIsLoading,
     threadId,
@@ -368,7 +364,6 @@ export function CopilotKit({
     setLangGraphInterruptActionPlaceholder,
     removeLangGraphInterruptActionPlaceholder,
     frontendInterruptManager,
-    frontendApprovalManager,
   ]);
 
   const messagesContextValue: MessagesContextValue = useMemo(() => ({

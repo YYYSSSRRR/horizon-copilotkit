@@ -5,7 +5,7 @@ import {
   useCopilotScriptAction, 
   useCopilotReadable,
   useToast,
-  useFrontendApprovalManager,
+  useFrontendInterruptManager,
   TextMessage, 
   FrontendAction
 } from '@copilotkit/react-core-next'
@@ -34,27 +34,51 @@ export function HomePage() {
   })
 
   const { toast } = useToast()
-  const approvalManager = useFrontendApprovalManager()
+  const interruptManager = useFrontendInterruptManager()
   
   // AI生成的旅行选项状态
   const [showTravelModal, setShowTravelModal] = useState(false)
   const [travelOptions, setTravelOptions] = useState<any[]>([])
   const [currentInterruptId, setCurrentInterruptId] = useState<string | null>(null)
   
+  // 审批状态
+  const [showApprovalModal, setShowApprovalModal] = useState(false)
+  const [approvalRequest, setApprovalRequest] = useState<{
+    id: string;
+    actionName: string;
+    message: string;
+    parameters: any;
+  } | null>(null)
+  
   // 处理旅行选项选择
   const handleTravelOptionSelect = useCallback(async (selectedOption: any) => {
-    if (!currentInterruptId || !approvalManager) return;
+    if (!currentInterruptId || !interruptManager) return;
     
     try {
       setShowTravelModal(false);
-      const result = await approvalManager.resumeAction(currentInterruptId, selectedOption);
+      const result = await interruptManager.resumeAction(currentInterruptId, selectedOption);
       toast(`行程预订成功: ${result}`, 'success');
       setCurrentInterruptId(null);
       setTravelOptions([]);
     } catch (error) {
       toast(`处理失败: ${error}`, 'error');
     }
-  }, [currentInterruptId, approvalManager, toast]);
+  }, [currentInterruptId, interruptManager, toast]);
+
+  // 处理审批按钮点击
+  const handleApprovalDecision = useCallback(async (decision: 'approve' | 'reject') => {
+    if (!approvalRequest || !interruptManager) return;
+    
+    try {
+      setShowApprovalModal(false);
+      const decisionText = decision === 'approve' ? 'y' : 'n';
+      const result = await interruptManager.resumeAction(approvalRequest.id, decisionText);
+      toast(`审批${decision === 'approve' ? '通过' : '拒绝'}: ${result}`, 'success');
+      setApprovalRequest(null);
+    } catch (error) {
+      toast(`处理失败: ${error}`, 'error');
+    }
+  }, [approvalRequest, interruptManager, toast]);
   
   // 表单处理函数
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -197,7 +221,6 @@ export function HomePage() {
   ]>>(() => ({
     name: "submitForm",
     description: "提交用户表单数据（需要审批）",
-    requireApproval: true, // 启用审批
     parameters: [
       {
         name: "formData",
@@ -206,8 +229,38 @@ export function HomePage() {
         required: false,
       },
     ],
-    handler: submitFormHandler
-  }), [submitFormHandler]);
+    interruptHandler: {
+      onInterrupt: (actionName: string, parameters: any, interruptId: string) => {
+        const dataToSubmit = parameters.formData || formData;
+        
+        // 设置审批请求并显示弹框
+        setApprovalRequest({
+          id: interruptId,
+          actionName,
+          message: `提交表单数据：${JSON.stringify(dataToSubmit, null, 2)}`,
+          parameters: parameters
+        });
+        setShowApprovalModal(true);
+        
+        return `🔐 **表单提交审批请求已创建**
+
+审批弹框已显示，请在弹框中选择批准或拒绝。`;
+      },
+      
+      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+        const normalizedDecision = String(resumeData).toLowerCase().trim();
+        const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
+        
+        if (!isApproved) {
+          return `❌ 拒绝 - 表单提交已被拒绝，操作已取消。`;
+        }
+        
+        // 执行表单提交
+        const result = await submitFormHandler(originalParameters);
+        return `✅ 批准 - ${result}`;
+      }
+    }
+  }), []);
 
   useCopilotAction(submitFormAction);
 
@@ -228,7 +281,6 @@ export function HomePage() {
   ]>>(() => ({
     name: "resetFormData",
     description: "重置表单数据（需要审批）",
-    requireApproval: true, // 启用审批
     parameters: [
       {
         name: "confirm",
@@ -237,102 +289,105 @@ export function HomePage() {
         required: false,
       },
     ],
-    handler: resetFormHandler
-  }), [resetFormHandler]);
+    interruptHandler: {
+      onInterrupt: (actionName: string, parameters: any, interruptId: string) => {
+        // 设置审批请求并显示弹框
+        setApprovalRequest({
+          id: interruptId,
+          actionName,
+          message: `重置表单数据：${JSON.stringify(parameters, null, 2)}`,
+          parameters: parameters
+        });
+        setShowApprovalModal(true);
+        
+        return `🔐 **表单重置审批请求已创建**
+
+审批弹框已显示，请在弹框中选择批准或拒绝。`;
+      },
+      
+      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+        const normalizedDecision = String(resumeData).toLowerCase().trim();
+        const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
+        
+        if (!isApproved) {
+          return `❌ 拒绝 - 表单重置已被拒绝，操作已取消。`;
+        }
+        
+        // 执行表单重置
+        const result = await resetFormHandler({ confirm: true });
+        return `✅ 批准 - ${result}`;
+      }
+    }
+  }), []);
 
   useCopilotAction(resetFormAction);
 
-  // 前端审批决定处理动作
-  const frontendApprovalHandler = useCallback(async (args: { decision: string; approval_id?: string }) => {
-    const { decision, approval_id } = args || {};
+  // 中断处理动作 - 处理用户对中断请求的回复
+  const interruptReplyHandler = useCallback(async (args: { decision: string; interrupt_id?: string }) => {
+    const { decision, interrupt_id } = args || {};
     
-    if (!approvalManager) {
-      return `❌ 审批管理器未初始化，无法处理审批请求。`;
+    console.log(`[前端] 处理中断回复: decision="${decision}", interrupt_id="${interrupt_id}"`);
+    
+    if (!interruptManager) {
+      console.log(`[前端] 错误: 中断管理器未初始化`);
+      return `❌ 中断管理器未初始化，无法处理中断回复。`;
     }
     
-    const normalizedDecision = decision?.toLowerCase()?.trim() || '';
-    const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
-    const isRejected = ['n', 'no', '拒绝', '否', 'reject', 'rejected'].includes(normalizedDecision);
-    
-    if (!isApproved && !isRejected) {
-      return `❌ 无效的审批决定: "${decision}"。请输入 'y'/'yes'/'同意'/'是' 批准，或 'n'/'no'/'拒绝'/'否' 拒绝。`;
-    }
-    
-    // 查找中断请求
-    const request = approvalManager.findInterruptByPartialId(approval_id || "");
-    if (!request) {
-      const pending = approvalManager.getPendingInterrupts();
-      return pending.length > 0
-        ? `❌ 找不到匹配的审批请求。当前有 ${pending.length} 个待处理的中断。`
-        : '❌ 没有找到待审批的请求。';
-    }
-    
-    if (request.resolved) {
-      return `❌ 审批请求 ${request.interruptId.slice(-8)} 已经被处理过了。`;
-    }
-    
-    // 标记为已解决
-    request.resolved = true;
-    
-    if (isApproved) {
-      // 批准后，根据动作名称执行相应的操作
-      try {
-        if (request.actionName === 'submitForm') {
-          // 执行表单提交，使用审批请求中保存的参数
-          const result = await submitFormHandler(request.parameters);
-          return `✅ 批准 - ${result}`;
-        } else if (request.actionName === 'resetFormData') {
-          // 执行表单重置
-          const result = await resetFormHandler({ confirm: true });
-          return `✅ 批准 - ${result}`;
-        } else if (request.actionName === 'fill-form') {
-          // 执行表单填写脚本动作
-          try {
-            // 动态导入脚本执行器，使用 @ts-ignore 跳过类型检查
-            // @ts-ignore
-            const { fillFormExecutor } = await import('../../playwright-scripts/executors/fill-form.executor.js');
-            const result = await fillFormExecutor(request.parameters);
-            return `✅ 批准 - 脚本动作执行完成: ${result}`;
-          } catch (error) {
-            return `❌ 脚本动作执行失败: ${error}`;
-          }
-        } else {
-          return `✅ 批准 - 前端动作 "${request.actionName}" 已获批准，但暂未实现执行逻辑。`;
-        }
-      } catch (error) {
-        return `❌ 执行失败 - 审批已通过，但操作执行时出错: ${error}`;
+    try {
+      // 查找中断请求
+      console.log(`[前端] 查找中断请求...`);
+      const request = interruptManager.findInterruptByPartialId(interrupt_id || "");
+      if (!request) {
+        const pending = interruptManager.getPendingInterrupts();
+        console.log(`[前端] 未找到匹配请求，待处理数量: ${pending.length}`);
+        return pending.length > 0
+          ? `❌ 找不到匹配的中断请求。当前有 ${pending.length} 个待处理的中断。`
+          : '❌ 没有找到待处理的中断请求。';
       }
-    } else {
-      return `❌ 拒绝 - 前端动作 "${request.actionName}" 已被拒绝，操作已取消。`;
-    }
-  }, [approvalManager, submitFormHandler, resetFormHandler]);
 
-  const frontendApprovalAction = useMemo<FrontendAction<[
+      console.log(`[前端] 找到中断请求: ${request.interruptId}, 已解决: ${request.resolved}`);
+
+      if (request.resolved) {
+        return `❌ 中断请求 ${request.interruptId.slice(-8)} 已经被处理过了。`;
+      }
+
+      // 处理中断回复
+      console.log(`[前端] 执行中断恢复...`);
+      const result = await interruptManager.resumeAction(request.interruptId, decision);
+      console.log(`[前端] 中断恢复完成: ${result}`);
+      return result;
+    } catch (error) {
+      console.error(`[前端] 处理中断回复失败:`, error);
+      return `❌ 处理中断回复失败: ${error}`;
+    }
+  }, [interruptManager]);
+
+  const interruptReplyAction = useMemo<FrontendAction<[
     { name: "decision"; type: "string"; description: string; required: true },
-    { name: "approval_id"; type: "string"; description: string; required: false }
+    { name: "interrupt_id"; type: "string"; description: string; required: false }
   ]>>(() => ({
-    name: "handleFrontendApproval",
-    description: "【重要】只有当用户在最新消息中明确输入了'y'、'yes'、'同意'、'是'、'n'、'no'、'拒绝'、'否'等审批决定时，才能调用此工具。绝对不要在显示审批消息后立即调用此工具，必须等待用户的实际回复。如果用户没有明确输入审批决定，就不要调用此工具。",
+    name: "handleInterruptReply",
+    description: "处理用户对前端中断请求的回复。仅用于前端动作（如submitForm、resetFormData）的审批决定。不要用于后端工具（如calculate、get_user_info、check_status）的审批。",
     parameters: [
       {
         name: "decision",
         type: "string",
-        description: "用户在最新消息中明确输入的审批决定，必须是以下值之一: 'y', 'yes', '同意', '是', 'n', 'no', '拒绝', '否'。只有用户真正输入了这些词时才使用。",
+        description: "用户输入的审批决定：'y'、'yes'、'同意'、'是'表示批准；'n'、'no'、'拒绝'、'否'表示拒绝",
         required: true,
       },
       {
-        name: "approval_id",
+        name: "interrupt_id",
         type: "string", 
-        description: "可选的审批ID（部分即可），如果不提供则处理最新的审批请求",
+        description: "中断ID，从中断请求消息中获取，如果不提供则处理最新的中断请求",
         required: false,
       },
     ],
-    handler: frontendApprovalHandler
-  }), [frontendApprovalHandler]);
+    handler: interruptReplyHandler
+  }), [interruptReplyHandler]);
 
-  useCopilotAction(frontendApprovalAction);
+  useCopilotAction(interruptReplyAction);
 
-  // AI生成旅行规划 - 使用真正的AI调用
+  // AI生成旅行规划 
   const aiTravelPlanAction = useMemo<FrontendAction<[
     { name: "destination"; type: "string"; description: string; required: true },
     { name: "budget"; type: "string"; description: string; required: false },
@@ -528,13 +583,14 @@ ${selectedOption.itinerary}
     
     可用功能:
     1. 获取当前时间 (get_current_time) - 前端处理，无需审批
-    2. 数学计算 (calculate) - 后端审批系统处理
-    3. 查询用户信息 (get_user_info) - 后端审批系统处理
-    4. 检查系统状态 (check_status) - 后端审批系统处理
+    2. 数学计算 (calculate) - 后端审批系统处理，用户输入审批决定后自动处理
+    3. 查询用户信息 (get_user_info) - 后端审批系统处理，用户输入审批决定后自动处理
+    4. 检查系统状态 (check_status) - 后端审批系统处理，用户输入审批决定后自动处理
     5. 显示通知消息 (showNotification) - 前端处理，无需审批
-    6. 提交表单数据 (submitForm) - 前端处理，需要审批
-    7. 重置表单数据 (resetFormData) - 前端处理，需要审批
-    8. 处理审批决定 (handleFrontendApproval) - 用于前端审批流程
+    6. 提交表单数据 (submitForm) - 前端中断处理，用户点击弹框按钮确认
+    7. 重置表单数据 (resetFormData) - 前端中断处理，用户点击弹框按钮确认
+    8. AI旅行规划 (planAITrip) - 异步中断处理，AI生成方案供用户选择
+    9. 处理前端中断回复 (handleInterruptReply) - 仅用于前端中断请求的处理
   `, [backendStatus, currentTime, userInfo, systemStatus])
 
   useCopilotReadable({
@@ -775,6 +831,16 @@ ${selectedOption.itinerary}
           options={travelOptions}
           onSelect={handleTravelOptionSelect}
           onClose={() => setShowTravelModal(false)}
+        />
+      )}
+
+      {/* 审批弹框 */}
+      {showApprovalModal && approvalRequest && (
+        <ApprovalModal
+          request={approvalRequest}
+          onApprove={() => handleApprovalDecision('approve')}
+          onReject={() => handleApprovalDecision('reject')}
+          onClose={() => setShowApprovalModal(false)}
         />
       )}
     </div>
@@ -1185,6 +1251,77 @@ function TravelOptionsModal({
             <p className="text-sm text-gray-500 text-center">
               💡 每个方案都是AI根据您的需求精心设计的，选择后即可进行预订
             </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 审批弹框组件
+function ApprovalModal({ 
+  request, 
+  onApprove, 
+  onReject, 
+  onClose 
+}: {
+  request: {
+    id: string;
+    actionName: string;
+    message: string;
+    parameters: any;
+  },
+  onApprove: () => void,
+  onReject: () => void,
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-900">🔐 审批请求</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-xl"
+              aria-label="关闭弹框"
+            >
+              ×
+            </button>
+          </div>
+          
+          <div className="mb-6">
+            <div className="mb-4">
+              <h3 className="font-semibold text-gray-700">动作名称:</h3>
+              <p className="text-gray-600">{request.actionName}</p>
+            </div>
+            
+            <div className="mb-4">
+              <h3 className="font-semibold text-gray-700">详情:</h3>
+              <div className="text-gray-600 bg-gray-50 p-3 rounded text-sm">
+                {request.message}
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <h3 className="font-semibold text-gray-700">审批ID:</h3>
+              <p className="text-gray-600 font-mono text-sm">{request.id.slice(-8)}</p>
+            </div>
+          </div>
+          
+          <div className="flex space-x-3">
+            <button
+              onClick={onReject}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            >
+              ❌ 拒绝
+            </button>
+            <button
+              onClick={onApprove}
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+            >
+              ✅ 批准
+            </button>
           </div>
         </div>
       </div>

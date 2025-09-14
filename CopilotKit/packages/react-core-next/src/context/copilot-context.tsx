@@ -66,11 +66,8 @@ export interface CopilotContextValue {
   setLangGraphInterruptAction: (action: Partial<LangGraphInterruptAction>) => void;
   removeLangGraphInterruptAction: (actionId: string) => void;
   
-  // 前端中断管理器（新的灵活框架）
+  // 前端中断管理器
   frontendInterruptManager?: FrontendInterruptManager;
-  
-  // 前端审批管理器（向后兼容）
-  frontendApprovalManager?: FrontendInterruptManager;
   
   // Agent 会话（LangGraph需要）
   agentSession?: any;
@@ -168,7 +165,7 @@ export function useCopilotScriptActions() {
   };
 }
 
-// 新的中断管理器Hook
+// 中断管理器Hook
 export function useFrontendInterruptManager() {
   const { frontendInterruptManager } = useCopilotContext();
   return frontendInterruptManager;
@@ -176,6 +173,6 @@ export function useFrontendInterruptManager() {
 
 // 向后兼容的审批管理器Hook
 export function useFrontendApprovalManager() {
-  const { frontendApprovalManager } = useCopilotContext();
-  return frontendApprovalManager;
+  const { frontendInterruptManager } = useCopilotContext();
+  return frontendInterruptManager;
 } 
