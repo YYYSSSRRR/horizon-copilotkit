@@ -4,6 +4,7 @@ import { FrontendAction, ScriptAction } from "../types/frontend-action";
 import { CopilotChatSuggestionConfiguration } from "../types/chat-suggestion-configuration";
 import { SystemMessageFunction } from "../types/system-message";
 import { LangGraphInterruptAction } from "../hooks/use-langgraph-interrupt";
+import { FrontendInterruptManager } from "../lib/frontend-interrupt-manager";
 
 export interface CopilotReadable {
   categories?: string[];
@@ -64,6 +65,12 @@ export interface CopilotContextValue {
   langGraphInterruptAction?: LangGraphInterruptAction;
   setLangGraphInterruptAction: (action: Partial<LangGraphInterruptAction>) => void;
   removeLangGraphInterruptAction: (actionId: string) => void;
+  
+  // 前端中断管理器
+  frontendInterruptManager?: FrontendInterruptManager;
+  
+  // Agent 会话（LangGraph需要）
+  agentSession?: any;
   
   // 辅助方法
   getContextString: (categories?: string[], defaultCategories?: string[]) => string;
@@ -129,24 +136,24 @@ export function useCopilotChatSuggestions() {
   };
 }
 
-export function useCopilotDocumentPointers() {
-  const { documentPointers, setDocumentPointer, removeDocumentPointer } = useCopilotContext();
-  return {
-    documentPointers,
-    setDocumentPointer,
-    removeDocumentPointer,
-  };
-}
+// export function useCopilotDocumentPointers() {
+//   const { documentPointers, setDocumentPointer, removeDocumentPointer } = useCopilotContext();
+//   return {
+//     documentPointers,
+//     setDocumentPointer,
+//     removeDocumentPointer,
+//   };
+// }
 
-export function useCopilotCoAgentStateRenders() {
-  const { coAgentStateRenders, setCoAgentStateRender, removeCoAgentStateRender, getCoAgentStateRender } = useCopilotContext();
-  return {
-    coAgentStateRenders,
-    setCoAgentStateRender,
-    removeCoAgentStateRender,
-    getCoAgentStateRender,
-  };
-}
+// export function useCopilotCoAgentStateRenders() {
+//   const { coAgentStateRenders, setCoAgentStateRender, removeCoAgentStateRender, getCoAgentStateRender } = useCopilotContext();
+//   return {
+//     coAgentStateRenders,
+//     setCoAgentStateRender,
+//     removeCoAgentStateRender,
+//     getCoAgentStateRender,
+//   };
+// }
 
 export function useCopilotScriptActions() {
   const { scriptActions, setScriptAction, removeScriptAction, executeScriptAction } = useCopilotContext();
@@ -156,4 +163,16 @@ export function useCopilotScriptActions() {
     removeScriptAction,
     executeScriptAction,
   };
+}
+
+// 中断管理器Hook
+export function useFrontendInterruptManager() {
+  const { frontendInterruptManager } = useCopilotContext();
+  return frontendInterruptManager;
+}
+
+// 向后兼容的审批管理器Hook
+export function useFrontendApprovalManager() {
+  const { frontendInterruptManager } = useCopilotContext();
+  return frontendInterruptManager;
 } 

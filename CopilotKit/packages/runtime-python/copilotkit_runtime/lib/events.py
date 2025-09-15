@@ -17,6 +17,7 @@ from reactivex import operators as ops
 from reactivex.subject import ReplaySubject, Subject
 from reactivex import Observable
 
+
 from .types.events import (
     RuntimeEvent,
     TextMessageStartEvent,
@@ -490,6 +491,7 @@ class RuntimeEventSource:
                 )
                 
             except Exception as e:
+                # 标准异常处理
                 logger.error(f"Error in action handler: {e}")
                 event_stream.send_action_execution_result(
                     action_execution_id,

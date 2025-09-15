@@ -24,7 +24,7 @@ export function useCopilotScriptAction(
 
     const scriptActionId = scriptActionIdRef.current;
 
-    // 注册脚本动作
+    // 直接注册脚本动作
     setScriptAction(scriptActionId, scriptAction);
 
     // 清理函数：移除脚本动作

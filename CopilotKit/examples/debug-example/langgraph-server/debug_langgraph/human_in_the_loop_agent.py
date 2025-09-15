@@ -27,9 +27,9 @@ from langchain_core.messages import SystemMessage
 # Configure DeepSeek model with OpenAI-compatible API
 def create_deepseek_model():
     return ChatOpenAI(
-        model="deepseek-chat",
-        openai_api_base="https://api.deepseek.com/v1",
-        openai_api_key="sk-43fc565dd627428db42a1325b24886bd"  # Replace with your actual DeepSeek API key
+        model="gpt-4o-mini",
+        openai_api_base="https://api.chatanywhere.tech/v1",
+        openai_api_key="sk-IGmFA9jyH2mlwcpelXbarOuipa3I55tF4We1fFYiYCElBXhS"  # Replace with your actual DeepSeek API key
     )
 
 GENERATE_TASK_STEPS_TOOL = {

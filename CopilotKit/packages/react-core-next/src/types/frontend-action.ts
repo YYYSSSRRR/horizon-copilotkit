@@ -132,6 +132,50 @@ export type FrontendAction<
   available?: FrontendActionAvailability;
   pairedAction?: string;
   followUp?: boolean;
+
+  /**
+   * 中断处理器 - 支持自定义的用户交互逻辑
+   * 当设置时，动作将在执行前中断，允许自定义UI交互
+   */
+  interruptHandler?: {
+    /**
+     * 当动作被中断时调用，返回用于显示给用户的数据
+     * 可以返回字符串、对象或React元素等任何数据
+     */
+    onInterrupt: (actionName: string, parameters: any, interruptId: string) => any;
+    
+    /**
+     * 当用户提供恢复数据时调用，返回最终的动作执行结果
+     * @param actionName 动作名称
+     * @param originalParameters 原始参数
+     * @param resumeData 用户交互返回的数据
+     */
+    onResume: (actionName: string, originalParameters: any, resumeData: any) => Promise<any>;
+  };
+
+  /**
+   * 异步中断处理器 - 支持AI生成等异步操作的用户交互逻辑
+   * 当设置时，动作将在执行前中断，onInterrupt可以异步调用AI等服务
+   */
+  asyncInterruptHandler?: {
+    /**
+     * 当动作被中断时调用，支持异步操作（如调用AI生成选项）
+     * 返回Promise，可以进行异步的AI调用、数据获取等
+     * @param actionName 动作名称
+     * @param parameters 动作参数
+     * @param interruptId 中断ID
+     * @param runtimeClient 可选的运行时客户端，用于调用AI等服务
+     */
+    onInterrupt: (actionName: string, parameters: any, interruptId: string, runtimeClient?: any) => Promise<any>;
+    
+    /**
+     * 当用户提供恢复数据时调用，返回最终的动作执行结果
+     * @param actionName 动作名称
+     * @param originalParameters 原始参数
+     * @param resumeData 用户交互返回的数据
+     */
+    onResume: (actionName: string, originalParameters: any, resumeData: any) => Promise<any>;
+  };
 } & (
     | {
         render?:
@@ -158,6 +202,7 @@ export type FrontendAction<
 
 export interface ScriptAction<T extends Parameter[] | [] = []> extends Action<T> {
   executeOnClient?: boolean;
+  script?: string;
 }
 
 // 新的动作可用性枚举，不依赖 GraphQL

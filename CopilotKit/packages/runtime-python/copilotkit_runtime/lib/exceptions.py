@@ -59,3 +59,14 @@ class ResolvedCopilotKitError(CopilotKitError):
         if is_remote_endpoint:
             message += " (remote endpoint)"
         super().__init__(message, **kwargs)
+
+
+class ApprovalRequiredError(CopilotKitError):
+    """Exception thrown when a tool requires approval."""
+    
+    def __init__(self, approval_id: str, tool_name: str, arguments: Dict[str, Any], approval_message: str, **kwargs):
+        self.approval_id = approval_id
+        self.tool_name = tool_name
+        self.arguments = arguments
+        self.approval_message = approval_message
+        super().__init__(approval_message, **kwargs)

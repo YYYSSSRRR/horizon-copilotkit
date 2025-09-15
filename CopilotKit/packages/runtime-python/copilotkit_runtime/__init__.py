@@ -25,6 +25,7 @@ from .service_adapters import (
     ServiceAdapter,
     CopilotServiceAdapter,
     DeepSeekAdapter,
+    
 )
 
 # API exports
@@ -53,6 +54,23 @@ from .lib.types import (
     StreamingResponse,
 )
 
+# Approval system exports
+from .lib.approval import (
+    ApprovalManager,
+    ApprovalMiddleware,
+    PendingToolCall,
+    ApprovalRequest,
+    ApprovalResponse,
+    ApprovalStatus,
+    ConversationalApprovalManager,
+    create_conversational_approval_wrapper,
+    create_approval_decision_handler,
+    get_conversational_approval_manager
+)
+
+# Exception exports
+from .lib.exceptions import ApprovalRequiredError
+
 __all__ = [
     "__version__",
     "__author__", 
@@ -66,7 +84,7 @@ __all__ = [
     "langgraph_platform_endpoint",
     "flatten_tool_calls_no_duplicates",
     # Service Adapters
-    "ServiceAdapter",
+    "ServiceAdapter", 
     "CopilotServiceAdapter",
     "DeepSeekAdapter",
     # API
@@ -93,4 +111,17 @@ __all__ = [
     "Parameter",
     "AgentState",
     "StreamingResponse",
+    # Approval System
+    "ApprovalManager",
+    "ApprovalMiddleware",
+    "PendingToolCall",
+    "ApprovalRequest",
+    "ApprovalResponse",
+    "ApprovalStatus",
+    "ConversationalApprovalManager",
+    "create_conversational_approval_wrapper",
+    "create_approval_decision_handler",
+    "get_conversational_approval_manager",
+    # Exceptions
+    "ApprovalRequiredError",
 ]

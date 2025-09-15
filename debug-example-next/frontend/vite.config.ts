@@ -10,9 +10,6 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
       '@copilotkit/react-core-next': fileURLToPath(new URL('../../CopilotKit/packages/react-core-next/src', import.meta.url)),
       '@copilotkit/playwright-actuator': fileURLToPath(new URL('../../CopilotKit/packages/playwright-actuator/src', import.meta.url)),
-      'react': 'openinula', // 新增
-      'react-dom': 'openinula', // 新增
-      'react-is': 'openinula', // 新增
     },
   },
   server: {

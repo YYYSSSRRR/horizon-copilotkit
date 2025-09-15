@@ -5,7 +5,9 @@ import {
   useCopilotScriptAction, 
   useCopilotReadable,
   useToast,
-  TextMessage 
+  useFrontendInterruptManager,
+  TextMessage, 
+  FrontendAction
 } from '@copilotkit/react-core-next'
 import { askLlmAction, fillFormAction } from '../../playwright-scripts/index.js'
 
@@ -13,7 +15,6 @@ import { askLlmAction, fillFormAction } from '../../playwright-scripts/index.js'
 export function HomePage() {
   const [backendStatus, setBackendStatus] = useState<string>('检查中...')
   const [currentTime, setCurrentTime] = useState<string>('')
-  const [calculation, setCalculation] = useState<string>('')
   const [userInfo, setUserInfo] = useState<string>('')
   const [systemStatus, setSystemStatus] = useState<string>('')
   
@@ -33,6 +34,51 @@ export function HomePage() {
   })
 
   const { toast } = useToast()
+  const interruptManager = useFrontendInterruptManager()
+  
+  // AI生成的旅行选项状态
+  const [showTravelModal, setShowTravelModal] = useState(false)
+  const [travelOptions, setTravelOptions] = useState<any[]>([])
+  const [currentInterruptId, setCurrentInterruptId] = useState<string | null>(null)
+  
+  // 审批状态
+  const [showApprovalModal, setShowApprovalModal] = useState(false)
+  const [approvalRequest, setApprovalRequest] = useState<{
+    id: string;
+    actionName: string;
+    message: string;
+    parameters: any;
+  } | null>(null)
+  
+  // 处理旅行选项选择
+  const handleTravelOptionSelect = useCallback(async (selectedOption: any) => {
+    if (!currentInterruptId || !interruptManager) return;
+    
+    try {
+      setShowTravelModal(false);
+      const result = await interruptManager.resumeAction(currentInterruptId, selectedOption);
+      toast(`行程预订成功: ${result}`, 'success');
+      setCurrentInterruptId(null);
+      setTravelOptions([]);
+    } catch (error) {
+      toast(`处理失败: ${error}`, 'error');
+    }
+  }, [currentInterruptId, interruptManager, toast]);
+
+  // 处理审批按钮点击
+  const handleApprovalDecision = useCallback(async (decision: 'approve' | 'reject') => {
+    if (!approvalRequest || !interruptManager) return;
+    
+    try {
+      setShowApprovalModal(false);
+      const decisionText = decision === 'approve' ? 'y' : 'n';
+      const result = await interruptManager.resumeAction(approvalRequest.id, decisionText);
+      toast(`审批${decision === 'approve' ? '通过' : '拒绝'}: ${result}`, 'success');
+      setApprovalRequest(null);
+    } catch (error) {
+      toast(`处理失败: ${error}`, 'error');
+    }
+  }, [approvalRequest, interruptManager, toast]);
   
   // 表单处理函数
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -75,7 +121,7 @@ export function HomePage() {
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const response = await fetch('/health')
+        const response = await fetch('/api/copilotkit/api/health')
         if (response.ok) {
           const data = await response.json()
           setBackendStatus(`✅ 后端正常运行 (${data.adapter?.provider}: ${data.adapter?.model})`)
@@ -83,6 +129,7 @@ export function HomePage() {
           setBackendStatus('❌ 后端连接失败')
         }
       } catch (error) {
+        console.log(error,"后端不可用");
         setBackendStatus('❌ 后端不可用')
       }
     }
@@ -94,11 +141,13 @@ export function HomePage() {
     const { timezone } = args || {}
     const result = `当前时间: ${new Date().toLocaleString('zh-CN', { 
       timeZone: timezone || 'Asia/Shanghai' 
+
     })}`
     setCurrentTime(result)
     toast('时间查询成功！', 'success')
     return result
   }, [setCurrentTime, toast])
+
 
   // 定义Copilot动作 - 时间查询
   const timeAction = useMemo(() => ({
@@ -115,119 +164,22 @@ export function HomePage() {
     handler: timeHandler
   }), [timeHandler])
 
-  // useCopilotAction(timeAction)
+  useCopilotAction(timeAction)
 
-  const calculateHandler = useCallback(async (args: any) => {
-    const { expression } = args || {}
-    try {
-      // 简单的安全计算（仅支持基本运算）
-      const allowedChars = /^[0-9+\-*/(). ]+$/
-      if (!allowedChars.test(expression)) {
-        throw new Error('表达式包含不支持的字符')
-      }
-      
-      const result = eval(expression)
-      const resultText = `计算结果: ${expression} = ${result}`
-      setCalculation(resultText)
-      toast('计算完成！', 'success')
-      return resultText
-    } catch (error) {
-      const errorText = `计算错误: ${error instanceof Error ? error.message : '未知错误'}`
-      setCalculation(errorText)
-      toast('计算失败！', 'error')
-      return errorText
-    }
-  }, [setCalculation, toast])
 
-  // 定义Copilot动作 - 数学计算
-  const calculateAction = useMemo(() => ({
-    name: "calculate",
-    description: "执行数学计算",
-    parameters: [
-      {
-        name: "expression",
-        type: "string", 
-        description: "数学表达式 (如: 2+3*4)",
-        required: true
-      }
-    ],
-    handler: calculateHandler
-  }), [calculateHandler])
-
-  // useCopilotAction(calculateAction)
-
-  const userInfoHandler = useCallback(async (args: any) => {
-    const { type } = args || {}
-    let result = ''
-    if (type === 'system') {
-      result = `系统信息:\n- 浏览器: ${navigator.userAgent}\n- 平台: ${navigator.platform}\n- 语言: ${navigator.language}`
-    } else {
-      result = '用户: 调试用户\n状态: 在线\n权限: 标准用户'
-    }
-    setUserInfo(result)
-    toast('信息获取成功！', 'info')
-    return result
-  }, [setUserInfo, toast])
-
-  // 定义Copilot动作 - 用户信息
-  const userInfoAction = useMemo(() => ({
-    name: "get_user_info",
-    description: "获取用户或系统信息",
-    parameters: [
-      {
-        name: "type",
-        type: "string",
-        description: "信息类型: basic(基本信息) 或 system(系统信息)",
-        required: false
-      }
-    ],
-    handler: userInfoHandler
-  }), [userInfoHandler])
-
-  // useCopilotAction(userInfoAction)
-
-  const statusHandler = useCallback(async (args: any) => {
-    const { component } = args || {}
-    const status = {
-      frontend: "✅ React 前端运行中",
-      backend: backendStatus,
-      copilotkit: "✅ CopilotKit 已连接",
-      actions: "✅ 4 个动作可用"
-    }
-    
-    let result = ''
-    if (component === 'all' || !component) {
-      result = Object.entries(status).map(([k, v]) => `${k}: ${v}`).join('\n')
-    } else if (component in status) {
-      result = `${component}: ${status[component as keyof typeof status]}`
-    } else {
-      result = `未知组件: ${component}。可用组件: ${Object.keys(status).join(', ')}`
-    }
-    
-    setSystemStatus(result)
-    toast('状态检查完成！', 'info')
-    return result
-  }, [backendStatus, setSystemStatus, toast])
-
-  // 定义Copilot动作 - 状态检查
-  const statusAction = useMemo(() => ({
-    name: "check_status", 
-    description: "检查系统状态",
-    parameters: [
-      {
-        name: "component",
-        type: "string",
-        description: "要检查的组件 (frontend, backend, all)",
-        required: false
-      }
-    ],
-    handler: statusHandler
-  }), [statusHandler])
-
-  // useCopilotAction(statusAction)
 
   // 注册前端 Action 来测试工具调用
-  const notificationAction = useMemo(() => ({
+  
+  const notificationHandler=useCallback(async (args:{ message: string; type?: string })=>{
+      const { message, type = "info" } = args || {};
+      alert(`${type.toUpperCase()}: ${message}`);
+      return `已显示通知: ${message}`;
+  },[])
+
+  const notificationAction = useMemo<FrontendAction<[
+    { name: "message"; type: "string"; description: string; required: true },
+    { name: "type"; type: "string"; description: string; required: false }
+  ]>>(() => ({
     name: "showNotification",
     description: "显示前端通知消息",
     parameters: [
@@ -244,13 +196,367 @@ export function HomePage() {
         required: false,
       },
     ],
-    handler: ({ message, type = "info" }: { message: string; type?: string }) => {
-      alert(`${type.toUpperCase()}: ${message}`);
-      return `已显示通知: ${message}`;
-    },
-  }), []);
+    handler: notificationHandler
+  }), [notificationHandler]);
 
   useCopilotAction(notificationAction);
+
+  // 需要审批的表单提交动作
+  const submitFormHandler = useCallback(async (args: { formData?: any }) => {
+    const { formData: submittedData } = args || {};
+    const dataToSubmit = submittedData || formData;
+    
+    // 模拟表单提交
+    console.log('提交表单数据:', dataToSubmit);
+    toast(`表单提交成功！用户: ${dataToSubmit.name || '未知'}`, 'success');
+    
+    // 模拟提交到服务器
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    return `表单提交成功！已提交用户 ${dataToSubmit.name || '未知'} 的信息。`;
+  }, [formData, toast]);
+
+  const submitFormAction = useMemo<FrontendAction<[
+    { name: "formData"; type: "object"; description: string; required: false }
+  ]>>(() => ({
+    name: "submitForm",
+    description: "提交用户表单数据（需要审批）",
+    parameters: [
+      {
+        name: "formData",
+        type: "object",
+        description: "要提交的表单数据，如果不提供则使用当前表单内容",
+        required: false,
+      },
+    ],
+    interruptHandler: {
+      onInterrupt: (actionName: string, parameters: any, interruptId: string) => {
+        const dataToSubmit = parameters.formData || formData;
+        
+        // 设置审批请求并显示弹框
+        setApprovalRequest({
+          id: interruptId,
+          actionName,
+          message: `提交表单数据：${JSON.stringify(dataToSubmit, null, 2)}`,
+          parameters: parameters
+        });
+        setShowApprovalModal(true);
+        
+        return `🔐 **表单提交审批请求已创建**
+
+审批弹框已显示，请在弹框中选择批准或拒绝。`;
+      },
+      
+      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+        const normalizedDecision = String(resumeData).toLowerCase().trim();
+        const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
+        
+        if (!isApproved) {
+          return `❌ 拒绝 - 表单提交已被拒绝，操作已取消。`;
+        }
+        
+        // 执行表单提交
+        const result = await submitFormHandler(originalParameters);
+        return `✅ 批准 - ${result}`;
+      }
+    }
+  }), []);
+
+  useCopilotAction(submitFormAction);
+
+  // 需要审批的表单重置动作
+  const resetFormHandler = useCallback(async (args: { confirm?: boolean }) => {
+    const { confirm = false } = args || {};
+    
+    if (confirm) {
+      resetForm();
+      return '表单已重置为默认值。';
+    } else {
+      return '请确认是否要重置表单。使用 confirm: true 参数来确认操作。';
+    }
+  }, [resetForm]);
+
+  const resetFormAction = useMemo<FrontendAction<[
+    { name: "confirm"; type: "boolean"; description: string; required: false }
+  ]>>(() => ({
+    name: "resetFormData",
+    description: "重置表单数据（需要审批）",
+    parameters: [
+      {
+        name: "confirm",
+        type: "boolean",
+        description: "确认重置表单，设为 true 来确认操作",
+        required: false,
+      },
+    ],
+    interruptHandler: {
+      onInterrupt: (actionName: string, parameters: any, interruptId: string) => {
+        // 设置审批请求并显示弹框
+        setApprovalRequest({
+          id: interruptId,
+          actionName,
+          message: `重置表单数据：${JSON.stringify(parameters, null, 2)}`,
+          parameters: parameters
+        });
+        setShowApprovalModal(true);
+        
+        return `🔐 **表单重置审批请求已创建**
+
+审批弹框已显示，请在弹框中选择批准或拒绝。`;
+      },
+      
+      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+        const normalizedDecision = String(resumeData).toLowerCase().trim();
+        const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
+        
+        if (!isApproved) {
+          return `❌ 拒绝 - 表单重置已被拒绝，操作已取消。`;
+        }
+        
+        // 执行表单重置
+        const result = await resetFormHandler({ confirm: true });
+        return `✅ 批准 - ${result}`;
+      }
+    }
+  }), []);
+
+  useCopilotAction(resetFormAction);
+
+  // 中断处理动作 - 处理用户对中断请求的回复
+  const interruptReplyHandler = useCallback(async (args: { decision: string; interrupt_id?: string }) => {
+    const { decision, interrupt_id } = args || {};
+    
+    console.log(`[前端] 处理中断回复: decision="${decision}", interrupt_id="${interrupt_id}"`);
+    
+    if (!interruptManager) {
+      console.log(`[前端] 错误: 中断管理器未初始化`);
+      return `❌ 中断管理器未初始化，无法处理中断回复。`;
+    }
+    
+    try {
+      // 查找中断请求
+      console.log(`[前端] 查找中断请求...`);
+      const request = interruptManager.findInterruptByPartialId(interrupt_id || "");
+      if (!request) {
+        const pending = interruptManager.getPendingInterrupts();
+        console.log(`[前端] 未找到匹配请求，待处理数量: ${pending.length}`);
+        return pending.length > 0
+          ? `❌ 找不到匹配的中断请求。当前有 ${pending.length} 个待处理的中断。`
+          : '❌ 没有找到待处理的中断请求。';
+      }
+
+      console.log(`[前端] 找到中断请求: ${request.interruptId}, 已解决: ${request.resolved}`);
+
+      if (request.resolved) {
+        return `❌ 中断请求 ${request.interruptId.slice(-8)} 已经被处理过了。`;
+      }
+
+      // 处理中断回复
+      console.log(`[前端] 执行中断恢复...`);
+      const result = await interruptManager.resumeAction(request.interruptId, decision);
+      console.log(`[前端] 中断恢复完成: ${result}`);
+      return result;
+    } catch (error) {
+      console.error(`[前端] 处理中断回复失败:`, error);
+      return `❌ 处理中断回复失败: ${error}`;
+    }
+  }, [interruptManager]);
+
+  const interruptReplyAction = useMemo<FrontendAction<[
+    { name: "decision"; type: "string"; description: string; required: true },
+    { name: "interrupt_id"; type: "string"; description: string; required: false }
+  ]>>(() => ({
+    name: "handleInterruptReply",
+    description: "处理用户对前端中断请求的回复。仅用于前端动作（如submitForm、resetFormData）的审批决定。不要用于后端工具（如calculate、get_user_info、check_status）的审批。",
+    parameters: [
+      {
+        name: "decision",
+        type: "string",
+        description: "用户输入的审批决定：'y'、'yes'、'同意'、'是'表示批准；'n'、'no'、'拒绝'、'否'表示拒绝",
+        required: true,
+      },
+      {
+        name: "interrupt_id",
+        type: "string", 
+        description: "中断ID，从中断请求消息中获取，如果不提供则处理最新的中断请求",
+        required: false,
+      },
+    ],
+    handler: interruptReplyHandler
+  }), [interruptReplyHandler]);
+
+  useCopilotAction(interruptReplyAction);
+
+  // AI生成旅行规划 
+  const aiTravelPlanAction = useMemo<FrontendAction<[
+    { name: "destination"; type: "string"; description: string; required: true },
+    { name: "budget"; type: "string"; description: string; required: false },
+    { name: "days"; type: "number"; description: string; required: false },
+    { name: "preferences"; type: "string"; description: string; required: false }
+  ]>>(() => ({
+    name: "planAITrip",
+    description: "AI智能旅行规划 - 根据目的地、预算等信息，让真正的AI生成多个个性化旅行方案供用户选择",
+    parameters: [
+      {
+        name: "destination",
+        type: "string",
+        description: "旅行目的地，例如：东京、巴厘岛、泰国、欧洲、美国",
+        required: true,
+      },
+      {
+        name: "budget",
+        type: "string", 
+        description: "预算范围，例如：5000、10000、15000、20000",
+        required: false,
+      },
+      {
+        name: "days",
+        type: "number",
+        description: "旅行天数，例如：3、5、7、10、14",
+        required: false,
+      },
+      {
+        name: "preferences",
+        type: "string",
+        description: "旅行偏好，例如：美食、文化、自然风光、购物、冒险、休闲度假",
+        required: false,
+      }
+    ],
+    asyncInterruptHandler: {
+      onInterrupt: async (actionName: string, parameters: any, interruptId: string, runtimeClient?: any) => {
+        const { destination, budget, days, preferences } = parameters;
+        
+        try {
+          console.log(`[AI旅行规划] 开始调用后端AI为${destination}生成旅行方案...`);
+          
+          // 调用后端AI生成旅行方案
+          const response = await fetch('/api/ai/generate-travel-plans', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              destination,
+              budget: budget || '10000',
+              days: days || 7,
+              preferences: preferences || ''
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`AI调用失败: ${response.status} ${response.statusText}`);
+          }
+          
+          const aiResponse = await response.json();
+          console.log(`[AI旅行规划] AI成功生成${aiResponse.plans?.length || 0}个方案`);
+          
+          if (!aiResponse.success || !aiResponse.plans || aiResponse.plans.length === 0) {
+            throw new Error('AI返回的数据格式错误或没有生成方案');
+          }
+          
+          // 显示旅行选项弹框
+          setTravelOptions(aiResponse.plans);
+          setCurrentInterruptId(interruptId);
+          setShowTravelModal(true);
+          
+          // 返回给聊天的提示消息
+          return `🤖 **AI旅行规划完成！**
+
+基于您的需求，AI已为您量身定制：
+- 📍 目的地：${destination}
+- 💰 预算：${budget || '10000'}元
+- 📅 天数：${days || 7}天
+- 🎯 偏好：${preferences || '综合体验'}
+
+🎊 **AI已生成 ${aiResponse.plans.length} 个个性化旅行方案**：
+
+${aiResponse.plans.map((option: any, index: number) => 
+`**${index + 1}. ${option.title}**
+💡 AI推荐：${option.aiReason}
+💰 价格：¥${option.price}
+✨ 亮点：${option.highlights?.join('、')}
+`).join('\n')}
+
+🎉 **选择弹框已弹出**，请在弹框中选择您心仪的旅行方案！
+
+💭 每个方案都是真正的AI根据${destination}的实际情况和您的个人偏好精心设计的，点击选择即可查看详细行程和预订。`;
+          
+        } catch (error) {
+          console.error(`[AI旅行规划] AI调用失败:`, error);
+          
+          // AI调用失败时的降级方案
+          const fallbackOptions = [
+            {
+              id: 1,
+              title: `${destination} 经典文化之旅`,
+              description: `${days || 7}天深度文化体验，预算约${budget || '10000'}元`,
+              highlights: ['历史古迹游览', '当地文化体验', '传统美食品尝', '民俗活动参与'],
+              price: parseInt(budget || '10000') * 0.8,
+              itinerary: `第1-2天：抵达${destination}，市区观光\n第3-4天：历史文化景点深度游\n第5-6天：当地民俗体验\n第${days || 7}天：返程`,
+              aiReason: `AI暂时不可用，为您提供${destination}的经典文化体验路线`
+            }
+          ];
+          
+          setTravelOptions(fallbackOptions);
+          setCurrentInterruptId(interruptId);
+          setShowTravelModal(true);
+          
+          return `⚠️ **AI旅行规划（降级模式）**
+
+抱歉，AI服务暂时不可用（${error}），为您提供备用方案：
+
+📍 目的地：${destination}
+💰 预算：${budget || '10000'}元
+📅 天数：${days || 7}天
+
+🎯 **备用方案已生成**：
+${fallbackOptions.map((option, index) => 
+`**${index + 1}. ${option.title}**
+💡 说明：${option.aiReason}
+💰 价格：¥${option.price}
+✨ 亮点：${option.highlights.join('、')}
+`).join('\n')}
+
+🎉 **选择弹框已弹出**，请选择方案继续！`;
+        }
+      },
+      
+      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+        const selectedOption = resumeData;
+        const { destination } = originalParameters;
+        
+        // 模拟预订处理时间
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        return `✅ **AI旅行方案预订成功！**
+
+🎊 恭喜您选择了"${selectedOption.title}"！
+
+📋 **预订详情：**
+- 🏝️ 目的地：${destination}
+- 📊 方案：${selectedOption.title}
+- 🗓️ 描述：${selectedOption.description}
+- 💰 总价：¥${selectedOption.price}
+- ⭐ 特色服务：${selectedOption.highlights?.join('、')}
+
+📅 **详细行程安排：**
+${selectedOption.itinerary}
+
+🎫 **预订确认号：** AI-TRIP-${Date.now()}
+
+📧 **后续服务：**
+- 详细行程单将发送到您的邮箱
+- 专属客服将在24小时内联系您确认细节
+- 出行前会提供详细的旅行攻略和注意事项
+
+🤖 **AI贴心提示：** ${selectedOption.aiReason}
+
+祝您旅途愉快！有任何问题随时咨询我们的AI助手。✈️🌟`;
+      }
+    }
+  }), [setTravelOptions, setCurrentInterruptId, setShowTravelModal]);
+
+  useCopilotAction(aiTravelPlanAction);
 
   useCopilotScriptAction(askLlmAction);
   useCopilotScriptAction(fillFormAction);
@@ -272,16 +578,20 @@ export function HomePage() {
     当前状态:
     - 后端状态: ${backendStatus}
     - 最新时间查询: ${currentTime}
-    - 最新计算结果: ${calculation}
     - 用户信息: ${userInfo}
     - 系统状态: ${systemStatus}
     
     可用功能:
-    1. 获取当前时间 (get_current_time)
-    2. 数学计算 (calculate)
-    3. 查询用户信息 (get_user_info) 
-    4. 检查系统状态 (check_status)
-  `, [backendStatus, currentTime, calculation, userInfo, systemStatus])
+    1. 获取当前时间 (get_current_time) - 前端处理，无需审批
+    2. 数学计算 (calculate) - 后端审批系统处理，用户输入审批决定后自动处理
+    3. 查询用户信息 (get_user_info) - 后端审批系统处理，用户输入审批决定后自动处理
+    4. 检查系统状态 (check_status) - 后端审批系统处理，用户输入审批决定后自动处理
+    5. 显示通知消息 (showNotification) - 前端处理，无需审批
+    6. 提交表单数据 (submitForm) - 前端中断处理，用户点击弹框按钮确认
+    7. 重置表单数据 (resetFormData) - 前端中断处理，用户点击弹框按钮确认
+    8. AI旅行规划 (planAITrip) - 异步中断处理，AI生成方案供用户选择
+    9. 处理前端中断回复 (handleInterruptReply) - 仅用于前端中断请求的处理
+  `, [backendStatus, currentTime, userInfo, systemStatus])
 
   useCopilotReadable({
     description: readableDescription,
@@ -291,6 +601,7 @@ export function HomePage() {
 
   const handleSendMessage = (message: string) => {
     if (message.trim()) {
+      console.log("发送消息前")
       appendMessage(new TextMessage({ content: message, role: 'user' }))
     }
   }
@@ -335,29 +646,47 @@ export function HomePage() {
             
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {visibleMessages.map((message, index) => {
-                // 只显示文本消息
-                if (!message.isTextMessage()) {
+                console.log("Message:", message, message.status?.code);
+                
+                // 显示文本消息和工具执行结果
+                let content = '';
+                let role = 'assistant'; // 默认为助手角色
+                
+                if (message.isTextMessage()) {
+                  const textMsg = message as any;
+                  content = textMsg.content;
+                  role = textMsg.role || 'assistant';
+                } else if (message.isResultMessage?.()) {
+                  const resultMsg = message as any;
+                  content = resultMsg.result || '工具执行完成';
+                  role = 'assistant'; // 工具结果显示为助手消息
+                } else if (message.isActionExecutionMessage?.()) {
+                  // 跳过工具执行消息，只显示结果
                   return null;
+                } else {
+                  // 尝试显示其他类型的消息
+                  const anyMsg = message as any;
+                  content = anyMsg.content || anyMsg.result || JSON.stringify(message, null, 2);
+                  role = anyMsg.role || 'assistant';
                 }
 
-                console.log(message.status.code, message.content);
+                if (!content) return null;
                 
-                const textMessage = message;
                 return (
                   <div
                     key={index}
                     className={`flex ${
-                      textMessage.role === 'user' ? 'justify-end' : 'justify-start'
+                      role === 'user' ? 'justify-end' : 'justify-start'
                     }`}
                   >
                     <div
                       className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        textMessage.role === 'user'
+                        role === 'user'
                           ? 'bg-blue-600 text-white'
                           : 'bg-gray-200 text-gray-800'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{textMessage.content}</p>
+                      <p className="text-sm whitespace-pre-wrap">{content}</p>
                     </div>
                   </div>
                 );
@@ -426,6 +755,24 @@ export function HomePage() {
                 >
                   显示通知
                 </button>
+                <button
+                  onClick={() => handleSendMessage("提交当前表单数据")}
+                  className="w-full px-3 py-2 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600"
+                >
+                  提交表单 (需审批)
+                </button>
+                <button
+                  onClick={() => handleSendMessage("重置表单数据")}
+                  className="w-full px-3 py-2 text-sm bg-yellow-500 text-white rounded hover:bg-yellow-600"
+                >
+                  重置表单 (需审批)
+                </button>
+                <button
+                  onClick={() => handleSendMessage("帮我规划一个去日本的7天旅行")}
+                  className="w-full px-3 py-2 text-sm bg-pink-500 text-white rounded hover:bg-pink-600"
+                >
+                  AI旅行规划 (新功能)
+                </button>
             </div>
           </div>
 
@@ -440,12 +787,6 @@ export function HomePage() {
                 </div>
               )}
               
-              {calculation && (
-                <div>
-                  <span className="font-medium text-green-600">🧮 计算:</span>
-                  <p className="text-gray-700 mt-1">{calculation}</p>
-                </div>
-              )}
               
               {userInfo && (
                 <div>
@@ -483,6 +824,25 @@ export function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* 旅行选项弹框 */}
+      {showTravelModal && (
+        <TravelOptionsModal
+          options={travelOptions}
+          onSelect={handleTravelOptionSelect}
+          onClose={() => setShowTravelModal(false)}
+        />
+      )}
+
+      {/* 审批弹框 */}
+      {showApprovalModal && approvalRequest && (
+        <ApprovalModal
+          request={approvalRequest}
+          onApprove={() => handleApprovalDecision('approve')}
+          onReject={() => handleApprovalDecision('reject')}
+          onClose={() => setShowApprovalModal(false)}
+        />
+      )}
     </div>
   )
 }
@@ -795,4 +1155,176 @@ function UserInfoForm({
       </div>
     </div>
   )
+}
+
+// 旅行选项弹框组件
+function TravelOptionsModal({ 
+  options, 
+  onSelect, 
+  onClose 
+}: {
+  options: any[],
+  onSelect: (option: any) => void,
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-gray-900">🏖️ AI生成的旅行方案</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl"
+              aria-label="关闭弹框"
+            >
+              ×
+            </button>
+          </div>
+          
+          <p className="text-gray-600 mb-6">
+            AI已为您量身定制以下旅行方案，请选择您心仪的方案：
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {options.map((option, index) => (
+              <div 
+                key={option.id || index} 
+                className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer hover:border-blue-300"
+                onClick={() => onSelect(option)}
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">{option.title}</h3>
+                  <span className="text-xl font-bold text-blue-600">¥{option.price}</span>
+                </div>
+                
+                <p className="text-gray-600 mb-4">{option.description}</p>
+                
+                {option.highlights && (
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-700 mb-2">✨ 亮点特色：</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {option.highlights.map((highlight: string, idx: number) => (
+                        <span 
+                          key={idx}
+                          className="px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
+                        >
+                          {highlight}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {option.itinerary && (
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-700 mb-2">📅 行程安排：</h4>
+                    <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                      {option.itinerary.split('\n').map((day: string, idx: number) => (
+                        <div key={idx} className="mb-1">{day}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {option.aiReason && (
+                  <div className="mb-4">
+                    <h4 className="font-medium text-gray-700 mb-2">🤖 AI推荐理由：</h4>
+                    <p className="text-sm text-gray-600 italic">{option.aiReason}</p>
+                  </div>
+                )}
+                
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(option);
+                  }}
+                  className="w-full mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  选择此方案
+                </button>
+              </div>
+            ))}
+          </div>
+          
+          <div className="mt-6 pt-4 border-t border-gray-200">
+            <p className="text-sm text-gray-500 text-center">
+              💡 每个方案都是AI根据您的需求精心设计的，选择后即可进行预订
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 审批弹框组件
+function ApprovalModal({ 
+  request, 
+  onApprove, 
+  onReject, 
+  onClose 
+}: {
+  request: {
+    id: string;
+    actionName: string;
+    message: string;
+    parameters: any;
+  },
+  onApprove: () => void,
+  onReject: () => void,
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+        <div className="p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-gray-900">🔐 审批请求</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-xl"
+              aria-label="关闭弹框"
+            >
+              ×
+            </button>
+          </div>
+          
+          <div className="mb-6">
+            <div className="mb-4">
+              <h3 className="font-semibold text-gray-700">动作名称:</h3>
+              <p className="text-gray-600">{request.actionName}</p>
+            </div>
+            
+            <div className="mb-4">
+              <h3 className="font-semibold text-gray-700">详情:</h3>
+              <div className="text-gray-600 bg-gray-50 p-3 rounded text-sm">
+                {request.message}
+              </div>
+            </div>
+            
+            <div className="mb-4">
+              <h3 className="font-semibold text-gray-700">审批ID:</h3>
+              <p className="text-gray-600 font-mono text-sm">{request.id.slice(-8)}</p>
+            </div>
+          </div>
+          
+          <div className="flex space-x-3">
+            <button
+              onClick={onReject}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+            >
+              ❌ 拒绝
+            </button>
+            <button
+              onClick={onApprove}
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+            >
+              ✅ 批准
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 } 

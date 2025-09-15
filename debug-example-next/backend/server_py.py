@@ -13,6 +13,7 @@ from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
+import uuid
 
 # 添加 runtime-python 到路径
 current_dir = Path(__file__).parent
@@ -27,7 +28,9 @@ try:
         DeepSeekAdapter,
         create_copilot_app,
         Action,
-        Parameter
+        Parameter,
+        ConversationalApprovalManager,
+        ApprovalMiddleware
     )
 except ImportError as e:
     print(f"错误: 无法导入 runtime-python 模块: {e}")
@@ -48,6 +51,22 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+# ================================
+# 审批系统相关定义
+# ================================
+
+
+# 全局对话式审批管理器实例
+conversational_approval_manager = None
+
+def get_approval_manager():
+    """获取对话式审批管理器实例"""
+    global conversational_approval_manager
+    if conversational_approval_manager is None:
+        conversational_approval_manager = ConversationalApprovalManager()
+    return conversational_approval_manager
+
 
 
 def create_demo_actions() -> List[Action]:
@@ -130,6 +149,7 @@ def create_demo_actions() -> List[Action]:
             })
             
             if "message" in service_status:
+
                 result = service_status["message"]
             else:
                 status_info = ", ".join([f"{k}: {v}" for k, v in service_status.items()])
@@ -141,11 +161,24 @@ def create_demo_actions() -> List[Action]:
             logger.error(f"状态检查失败: {e}")
             return f"状态检查失败: {str(e)}"
     
-    # 创建动作列表
+    async def handle_approval(arguments: Dict[str, Any]) -> str:
+        """处理用户的审批决定"""
+        decision = arguments.get("decision", "").lower().strip()
+        approval_id_partial = arguments.get("approval_id", "").strip()
+        
+        # 使用对话式审批管理器处理审批
+        approval_manager = get_approval_manager()
+        return await approval_manager.handle_conversational_approval(
+            decision=decision,
+            approval_id_partial=approval_id_partial
+        )
+    
+    # 创建动作列表（部分需要审批）
     actions = [
+        # 直接执行的工具（无需审批）
         Action(
             name="get_current_time",
-            description="获取当前时间，可指定时区",
+            description="获取当前时间，可指定时区（无需审批）",
             parameters=[
                 Parameter(
                     name="timezone",
@@ -157,8 +190,44 @@ def create_demo_actions() -> List[Action]:
             handler=get_current_time
         ),
         Action(
+            name="get_user_info",
+            description="获取用户信息 注意：此工具需要人工审批，执行前会显示审批提示。",
+            parameters=[
+                Parameter(
+                    name="user_id",
+                    type="string",
+                    description="用户ID，可选值: default, admin, user1",
+                    required=False
+                )
+            ],
+            handler=get_user_info
+        ),
+        
+        # 审批决定处理工具
+        Action(
+            name="handle_approval",
+            description="【重要】只有当用户在最新消息中明确输入了'y'、'yes'、'同意'、'是'、'n'、'no'、'拒绝'、'否'等审批决定时，才能调用此工具。绝对不要在显示审批消息后立即调用此工具，必须等待用户的实际回复。如果用户没有明确输入审批决定，就不要调用此工具。",
+            parameters=[
+                Parameter(
+                    name="decision",
+                    type="string",
+                    description="用户在最新消息中明确输入的审批决定，必须是以下值之一: 'y', 'yes', '同意', '是', 'n', 'no', '拒绝', '否'。只有用户真正输入了这些词时才使用。",
+                    required=True
+                ),
+                Parameter(
+                    name="approval_id",
+                    type="string",
+                    description="可选的审批ID（部分即可），如果不提供则处理最新的审批请求",
+                    required=False
+                )
+            ],
+            handler=handle_approval
+        ),
+        
+        # 需要审批的工具
+        Action(
             name="calculate",
-            description="计算数学表达式，支持基本的四则运算",
+            description="计算数学表达式，支持基本的四则运算。注意：此工具需要人工审批，执行前会显示审批提示。",
             parameters=[
                 Parameter(
                     name="expression",
@@ -170,21 +239,8 @@ def create_demo_actions() -> List[Action]:
             handler=calculate
         ),
         Action(
-            name="get_user_info",
-            description="获取用户信息",
-            parameters=[
-                Parameter(
-                    name="user_id",
-                    type="string",
-                    description="用户ID，可选值: default, admin, user1",
-                    required=False
-                )
-            ],
-            handler=get_user_info
-        ),
-        Action(
             name="check_status",
-            description="检查系统或服务状态",
+            description="检查系统或服务状态。注意：此工具需要人工审批，执行前会显示审批提示。",
             parameters=[
                 Parameter(
                     name="service",
@@ -229,6 +285,16 @@ def main():
             )
         )
         
+        # 配置对话式审批系统
+        conversational_approval_manager = get_approval_manager()
+        approval_middleware = ApprovalMiddleware(
+            approval_required_tools={"calculate", "get_user_info","check_status"},
+            approval_manager=conversational_approval_manager
+        )
+        runtime.approval_middleware = approval_middleware
+        
+        logger.info("🔐 已配置对话式审批系统，需要审批的工具: check_status, calculate, get_user_info")
+        
         # 使用 create_copilot_app API 创建应用
         app = create_copilot_app(
             runtime=runtime,
@@ -252,8 +318,261 @@ def main():
                 "actions": [action.name for action in demo_actions],
                 "timestamp": datetime.utcnow().isoformat()
             }
+
+        # ================================
+        # 审批系统API端点（对话式审批）
+        # ================================
+
+        @app.get("/api/approvals/pending")
+        async def get_pending_approvals():
+            """获取所有待审批的工具调用"""
+            approval_manager = get_approval_manager()
+            pending = approval_manager.get_pending_approvals()
+            return {
+                "pending_count": len(pending),
+                "pending_requests": [
+                    {
+                        "approval_id": pending_call.approval_id,
+                        "session_id": pending_call.session_id,
+                        "tool_name": pending_call.tool_name,
+                        "arguments": pending_call.arguments,
+                        "timestamp": pending_call.timestamp,
+                    }
+                    for pending_call in pending.values()
+                ]
+            }
+
+        @app.get("/api/approvals/status")
+        async def get_approval_status():
+            """获取审批系统状态"""
+            approval_manager = get_approval_manager()
+            pending = approval_manager.get_pending_approvals()
+            return {
+                "status": "running",
+                "pending_count": len(pending),
+                "total_capacity": 100,  # 假设最大支持100个待审批
+                "uptime": "running since server start",
+                "approval_type": "conversational",
+                "features": {
+                    "conversational_approval": True,
+                    "chat_based_decisions": True,
+                    "approval_timeout": None
+                }
+            }
+
+        # ================================
+        # AI旅行规划API端点
+        # ================================
+        
+        from fastapi import HTTPException
+        from pydantic import BaseModel
+        
+        class TravelPlanRequest(BaseModel):
+            destination: str
+            budget: str = "10000"
+            days: int = 7
+            preferences: str = ""
+        
+        @app.post("/api/ai/generate-travel-plans")
+        async def generate_travel_plans(request: TravelPlanRequest):
+            """使用AI生成旅行方案"""
+            try:
+                # 构建AI提示词
+                prompt = f"""你是一个专业的旅行规划师，请为用户生成4个不同风格的{request.destination}旅行方案。
+
+用户需求：
+- 目的地：{request.destination}
+- 预算：{request.budget}元
+- 天数：{request.days}天
+- 偏好：{request.preferences or '综合体验'}
+
+请生成4个不同主题的旅行方案，每个方案包含：
+1. 标题（例如：东京文化深度游）
+2. 简短描述（50字内）
+3. 4个亮点特色
+4. 建议价格（基于预算调整）
+5. 详细的天天行程安排
+6. AI推荐理由（为什么推荐这个方案）
+
+请严格按照以下JSON格式返回，不要添加任何其他文字：
+{{
+  "plans": [
+    {{
+      "id": 1,
+      "title": "方案标题",
+      "description": "简短描述",
+      "highlights": ["特色1", "特色2", "特色3", "特色4"],
+      "price": 价格数字,
+      "itinerary": "详细行程安排（用\\n分隔每天）",
+      "aiReason": "AI推荐理由"
+    }},
+    {{
+      "id": 2,
+      "title": "方案标题",
+      "description": "简短描述",
+      "highlights": ["特色1", "特色2", "特色3", "特色4"],
+      "price": 价格数字,
+      "itinerary": "详细行程安排（用\\n分隔每天）",
+      "aiReason": "AI推荐理由"
+    }},
+    {{
+      "id": 3,
+      "title": "方案标题",
+      "description": "简短描述",
+      "highlights": ["特色1", "特色2", "特色3", "特色4"],
+      "price": 价格数字,
+      "itinerary": "详细行程安排（用\\n分隔每天）",
+      "aiReason": "AI推荐理由"
+    }},
+    {{
+      "id": 4,
+      "title": "方案标题",
+      "description": "简短描述",
+      "highlights": ["特色1", "特色2", "特色3", "特色4"],
+      "price": 价格数字,
+      "itinerary": "详细行程安排（用\\n分隔每天）",
+      "aiReason": "AI推荐理由"
+    }}
+  ]
+}}
+
+请确保每个方案都有不同的主题风格（如文化、美食、自然、奢华等），价格根据主题合理调整。只返回JSON，不要有任何解释文字。"""
+
+                # 调用AI生成方案
+                print(f"[AI旅行规划] 开始为{request.destination}生成旅行方案...")
+                
+                # 使用现有的DeepSeek适配器调用AI
+                messages = [{"role": "user", "content": prompt}]
+                
+                # 使用DeepSeek适配器的OpenAI兼容客户端
+                response = await deepseek_adapter._client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=messages,
+                    stream=False,
+                    max_tokens=2000
+                )
+                ai_content = response.choices[0].message.content
+                
+                print(f"[AI旅行规划] AI响应: {ai_content[:200]}...")
+                
+                # 解析AI返回的JSON
+                import json
+                import re
+                try:
+                    # 尝试多种方式提取JSON
+                    json_content = None
+                    
+                    # 方法1: 查找```json代码块
+                    if "```json" in ai_content:
+                        json_start = ai_content.find("```json") + 7
+                        json_end = ai_content.find("```", json_start)
+                        json_content = ai_content[json_start:json_end].strip()
+                        print(f"[AI旅行规划] 使用代码块方式提取JSON")
+                    
+                    # 方法2: 查找```代码块(不带json标识)
+                    elif "```" in ai_content and json_content is None:
+                        json_start = ai_content.find("```") + 3
+                        json_end = ai_content.find("```", json_start)
+                        if json_end > json_start:
+                            potential_json = ai_content[json_start:json_end].strip()
+                            if potential_json.startswith("{"):
+                                json_content = potential_json
+                                print(f"[AI旅行规划] 使用通用代码块方式提取JSON")
+                    
+                    # 方法3: 直接查找JSON对象
+                    if json_content is None and "{" in ai_content and "}" in ai_content:
+                        # 使用正则表达式找到完整的JSON对象
+                        json_match = re.search(r'\{.*\}', ai_content, re.DOTALL)
+                        if json_match:
+                            json_content = json_match.group(0)
+                            print(f"[AI旅行规划] 使用正则表达式提取JSON")
+                        else:
+                            # 备用方法：从第一个{到最后一个}
+                            json_start = ai_content.find("{")
+                            json_end = ai_content.rfind("}") + 1
+                            json_content = ai_content[json_start:json_end]
+                            print(f"[AI旅行规划] 使用位置定位方式提取JSON")
+                    
+                    if not json_content:
+                        raise ValueError("No JSON found in AI response")
+                    
+                    print(f"[AI旅行规划] 提取的JSON内容: {json_content[:300]}...")
+                    
+                    # 清理JSON内容
+                    json_content = json_content.strip()
+                    
+                    # 尝试解析JSON
+                    ai_plans = json.loads(json_content)
+                    
+                    # 验证JSON结构
+                    if not isinstance(ai_plans, dict) or "plans" not in ai_plans:
+                        raise ValueError("Invalid JSON structure: missing 'plans' key")
+                    
+                    if not isinstance(ai_plans["plans"], list):
+                        raise ValueError("Invalid JSON structure: 'plans' should be a list")
+                    
+                    if len(ai_plans["plans"]) == 0:
+                        raise ValueError("No travel plans found in AI response")
+                    
+                    print(f"[AI旅行规划] 成功解析AI生成的{len(ai_plans['plans'])}个方案")
+                    
+                    # 验证每个方案的结构
+                    for i, plan in enumerate(ai_plans["plans"]):
+                        required_keys = ["id", "title", "description", "highlights", "price", "itinerary", "aiReason"]
+                        for key in required_keys:
+                            if key not in plan:
+                                print(f"[AI旅行规划] 警告：方案{i+1}缺少字段: {key}")
+                    
+                    return {
+                        "success": True,
+                        "destination": request.destination,
+                        "budget": request.budget,
+                        "days": request.days,
+                        "preferences": request.preferences,
+                        "plans": ai_plans["plans"]
+                    }
+                    
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"[AI旅行规划] JSON解析失败: {e}")
+                    print(f"[AI旅行规划] AI原始响应: {ai_content}")
+                    
+                    # 如果JSON解析失败，返回默认方案
+                    fallback_plans = [
+                        {
+                            "id": 1,
+                            "title": f"{request.destination} 经典文化之旅",
+                            "description": f"{request.days}天深度文化体验，预算约{request.budget}元",
+                            "highlights": ["历史古迹游览", "当地文化体验", "传统美食品尝", "民俗活动参与"],
+                            "price": int(float(request.budget) * 0.8),
+                            "itinerary": f"第1-2天：抵达{request.destination}，市区观光\\n第3-4天：历史文化景点深度游\\n第5-6天：当地民俗体验\\n第{request.days}天：返程",
+                            "aiReason": f"根据您的文化偏好，这个行程专注于深度体验{request.destination}的历史和传统文化"
+                        }
+                    ]
+                    
+                    return {
+                        "success": True,
+                        "destination": request.destination,
+                        "budget": request.budget,
+                        "days": request.days,
+                        "preferences": request.preferences,
+                        "plans": fallback_plans,
+                        "note": "AI响应解析失败，返回默认方案"
+                    }
+                    
+            except Exception as e:
+                print(f"[AI旅行规划] 生成旅行方案失败: {e}")
+                raise HTTPException(status_code=500, detail=f"AI旅行方案生成失败: {str(e)}")
         
         logger.info(f"✅ 创建CopilotRuntime成功，注册了 {len(demo_actions)} 个动作")
+        for action in demo_actions:
+            logger.info(f"   - {action.name}: {type(action.handler).__name__}")
+        
+        # 检查审批中间件是否正确配置
+        if runtime.approval_middleware:
+            logger.info(f"🔐 审批中间件配置:")
+            logger.info(f"   - 需要审批的工具: {list(runtime.approval_middleware.approval_required_tools)}")
+            logger.info(f"   - 审批管理器类型: {type(runtime.approval_middleware.approval_manager).__name__}")
+        
         logger.info(f"🔧 配置DeepSeek适配器: {deepseek_adapter.model}")
         logger.info("🌐 使用 create_copilot_app API 创建FastAPI应用")
         
@@ -267,6 +586,11 @@ def main():
         logger.info(f"   - 健康检查: http://{host}:{port}/api/health")
         logger.info(f"   - 新API调试: http://{host}:{port}/debug/new-api")
         logger.info(f"   - CopilotKit Hello: http://{host}:{port}/copilotkit/hello")
+        logger.info(f"🔐 审批系统API端点:")
+        logger.info(f"   - 待审批列表: http://{host}:{port}/api/approvals/pending")
+        logger.info(f"   - 审批工具调用: POST http://{host}:{port}/api/approvals/approve")
+        logger.info(f"   - 取消审批: DELETE http://{host}:{port}/api/approvals/{{approval_id}}")
+        logger.info(f"   - 审批系统状态: http://{host}:{port}/api/approvals/status")
         
         uvicorn.run(
             app,

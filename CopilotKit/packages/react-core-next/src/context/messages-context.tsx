@@ -1,6 +1,6 @@
 import React, { createContext, useContext, ReactNode } from "react";
 import { Message, TextMessage, ActionExecutionMessage, ResultMessage, AgentStateMessage } from "../client";
-import { randomId } from "@copilotkit/shared";
+// import { randomId } from "@copilotkit/shared";
 
 export interface MessagesContextValue {
   // 消息列表

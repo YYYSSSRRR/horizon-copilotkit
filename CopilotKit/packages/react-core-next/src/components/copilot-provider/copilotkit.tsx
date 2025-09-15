@@ -1,5 +1,5 @@
 import React, { ReactNode, useMemo, useState, useCallback, useEffect } from "react";
-import { randomId } from "@copilotkit/shared";
+import { randomId } from "../../../../shared/src/utils/random-id";
 import { CopilotContextProvider, CopilotContextValue, CopilotReadable } from "../../context/copilot-context";
 import { MessagesContextProvider, MessagesContextValue } from "../../context/messages-context";
 import { createCopilotRuntimeClient } from "../../client";
@@ -9,13 +9,14 @@ import { SystemMessageFunction } from "../../types/system-message";
 import { 
   Message, 
   TextMessage, 
-  ActionExecutionMessage, 
+  ActionExecutionMessage,
   ResultMessage, 
   AgentStateMessage 
 } from "../../client";
 import { shouldShowDevConsole } from "../../utils";
 import { ToastProvider } from "../toast/toast-provider";
 import { CopilotErrorBoundary } from "../error-boundary/error-boundary";
+import { FrontendInterruptManager } from "../../lib/frontend-interrupt-manager";
 
 export interface CopilotKitProps {
   /**
@@ -129,6 +130,9 @@ export function CopilotKit({
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [threadId, setThreadId] = useState<string>(initialThreadId || randomId());
+  
+  // 前端中断管理器
+  const frontendInterruptManager = useMemo(() => new FrontendInterruptManager(), []);
 
   // 动作管理
   const setAction = useCallback((id: string, actionDef: FrontendAction) => {
@@ -322,6 +326,7 @@ export function CopilotKit({
     setSystemMessage: setSystemMessagePlaceholder,
     chatInstructions: undefined, // 聊天指令
     forwardedParameters: forwardedParameters,
+    frontendInterruptManager,
     isLoading,
     setIsLoading,
     threadId,
@@ -331,6 +336,7 @@ export function CopilotKit({
     langGraphInterruptAction: undefined,
     setLangGraphInterruptAction: setLangGraphInterruptActionPlaceholder,
     removeLangGraphInterruptAction: removeLangGraphInterruptActionPlaceholder,
+    agentSession: undefined,
     getContextString,
   }), [
     runtimeClient,
@@ -357,6 +363,7 @@ export function CopilotKit({
     setRunIdPlaceholder,
     setLangGraphInterruptActionPlaceholder,
     removeLangGraphInterruptActionPlaceholder,
+    frontendInterruptManager,
   ]);
 
   const messagesContextValue: MessagesContextValue = useMemo(() => ({
