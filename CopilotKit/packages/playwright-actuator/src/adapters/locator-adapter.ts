@@ -883,7 +883,7 @@ class LocatorAdapter {
    * 检查元素是否可见 - 立即判断，不等待
    * 符合Playwright的行为：立即返回当前状态，不进行等待
    */
-  async isVisible(): Promise<boolean> {
+  isVisible(): boolean {
     try {
       // 获取当前已存在的元素，不等待
       const elements = this.getCurrentElements();
@@ -902,14 +902,14 @@ class LocatorAdapter {
   /**
    * 检查元素是否隐藏
    */
-  async isHidden(): Promise<boolean> {
-    return !(await this.isVisible());
+  isHidden(): boolean {
+    return !this.isVisible();
   }
 
   /**
    * 检查元素是否启用 - 立即判断，不等待
    */
-  async isEnabled(): Promise<boolean> {
+  isEnabled(): boolean {
     try {
       const elements = this.getCurrentElements();
       if (elements.length === 0) {
@@ -926,14 +926,14 @@ class LocatorAdapter {
   /**
    * 检查元素是否禁用
    */
-  async isDisabled(): Promise<boolean> {
-    return !(await this.isEnabled());
+  isDisabled(): boolean {
+    return !this.isEnabled();
   }
 
   /**
    * 检查复选框是否选中 - 立即判断，不等待
    */
-  async isChecked(): Promise<boolean> {
+  isChecked(): boolean {
     try {
       const elements = this.getCurrentElements();
       if (elements.length === 0) {
