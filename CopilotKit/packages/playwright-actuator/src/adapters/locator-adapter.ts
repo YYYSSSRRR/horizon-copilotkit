@@ -950,7 +950,7 @@ class LocatorAdapter {
   /**
    * 检查元素是否具有指定的CSS类 - 立即判断，不等待
    */
-  async hasClass(className: string): Promise<boolean> {
+  hasClass(className: string): boolean {
     try {
       const elements = this.getCurrentElements();
       if (elements.length === 0) {
