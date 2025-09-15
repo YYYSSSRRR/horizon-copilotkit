@@ -621,6 +621,9 @@ class LocatorAdapter {
     
     await this.page.scrollIntoViewIfNeeded(element);
     
+    // 检查是否是右键点击
+    const isRightClick = options.button === 'right';
+    
     // 检查框架组件类型并使用相应适配器
     const reactAdapter = getReactAdapter(this.logger);
     const openinulaAdapter = getOpenInulaAdapter(this.logger);
@@ -630,16 +633,26 @@ class LocatorAdapter {
     
     if (isReactComponent) {
       // React 组件：使用 React 适配器
-      const clickResult = await reactAdapter.triggerClickEvent(element);
-      this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+      if (isRightClick) {
+        const clickResult = await reactAdapter.triggerContextMenuEvent(element);
+        this.logger.debug(`右键点击元素完成: ${this.selector} (${clickResult.method})`);
+      } else {
+        const clickResult = await reactAdapter.triggerClickEvent(element);
+        this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+      }
     } else if (isOpenInulaComponent) {
       // OpenInula 组件：使用 OpenInula 适配器
-      const clickResult = await openinulaAdapter.triggerClickEvent(element);
-      this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+      if (isRightClick) {
+        const clickResult = await openinulaAdapter.triggerContextMenuEvent(element);
+        this.logger.debug(`右键点击元素完成: ${this.selector} (${clickResult.method})`);
+      } else {
+        const clickResult = await openinulaAdapter.triggerClickEvent(element);
+        this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+      }
     } else {
       // 原生元素：使用原生事件模拟器
       this.eventSimulator.simulateClick(element, options);
-      this.logger.debug(`点击元素: ${this.selector} (native)`);
+      this.logger.debug(`${isRightClick ? '右键' : ''}点击元素: ${this.selector} (native)`);
     }
   }
 
