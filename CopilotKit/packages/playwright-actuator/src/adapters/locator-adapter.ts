@@ -947,6 +947,23 @@ class LocatorAdapter {
     }
   }
 
+  /**
+   * 检查元素是否具有指定的CSS类 - 立即判断，不等待
+   */
+  async hasClass(className: string): Promise<boolean> {
+    try {
+      const elements = this.getCurrentElements();
+      if (elements.length === 0) {
+        return false;
+      }
+      
+      const element = elements[0];
+      return element.classList.contains(className);
+    } catch (error) {
+      return false;
+    }
+  }
+
   // =============== 内容获取方法 ===============
 
   /**
