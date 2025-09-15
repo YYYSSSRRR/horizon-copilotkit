@@ -85,7 +85,7 @@ export function ChatbotContent() {
 
   // 展开状态
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div className="fixed bottom-6 right-6 z-9999">
       <div className="bg-white rounded-lg shadow-xl border w-96 h-[500px] flex flex-col">
         {/* 头部 */}
         <div className="flex items-center justify-between p-4 bg-blue-600 text-white rounded-t-lg">
