@@ -42,7 +42,7 @@ export class LLMAnalyzer {
       (menuProvider === 'deepseek' ? 'https://api.deepseek.com' : 'https://api.openai.com/v1');
     
     const htmlClientConfig: any = {
-      apiKey: menuConfig.apiKey || process.env.DEEPSEEK_API_KEY || config.apiKey,
+      apiKey: menuConfig.apiKey || process.env.DEEPSEEK_API_KEY || (config.htmlAnalysis?.apiKey),
       baseURL: menuBaseURL
     };
     
@@ -60,7 +60,7 @@ export class LLMAnalyzer {
       (imageProvider === 'openai' ? 'https://api.openai.com/v1' : 'https://api.deepseek.com');
     
     const imageClientConfig: any = {
-      apiKey: imageConfig.apiKey || process.env.OPENAI_API_KEY || config.apiKey,
+      apiKey: imageConfig.apiKey || process.env.OPENAI_API_KEY || (config.imageAnalysis?.apiKey),
       baseURL: imageBaseURL
     };
     

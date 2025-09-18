@@ -1,4 +1,4 @@
-import { Parameter, MappedParameterTypes, actionParametersToJsonSchema } from "@copilotkit/shared";
+import { Parameter, MappedParameterTypes } from "@copilotkit/shared";
 import React from "react";
 
 // 动作状态类型

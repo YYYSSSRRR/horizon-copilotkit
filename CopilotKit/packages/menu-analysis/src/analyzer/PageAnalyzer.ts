@@ -1,5 +1,9 @@
 import { Page, ElementHandle } from 'playwright';
 import * as cheerio from 'cheerio';
+
+// Type aliases for better compatibility
+type CheerioInstance = ReturnType<typeof cheerio.load>;
+type CheerioElement = any;
 import { PageAnalysis, PageContent, FormInfo, TableInfo, ButtonInfo, LinkInfo, ImageInfo, PageMetadata, MenuItem, WindowContent } from '../types';
 import { Logger } from '../utils/Logger';
 import { LLMAnalyzer, ImageAnalysisConfig, ImageAnalysisResult } from '../llm/LLMAnalyzer';
@@ -194,7 +198,7 @@ export class PageAnalyzer {
     return content;
   }
 
-  private extractCleanText($: cheerio.CheerioAPI): string {
+  private extractCleanText($: CheerioInstance): string {
     // Extract main content areas
     const contentSelectors = [
       'main', '.main', '#main',
@@ -227,10 +231,10 @@ export class PageAnalyzer {
       .substring(0, 5000); // Limit text length
   }
 
-  private extractForms($: cheerio.CheerioAPI): FormInfo[] {
+  private extractForms($: CheerioInstance): FormInfo[] {
     const forms: FormInfo[] = [];
 
-    $('form').each((_, formElement) => {
+    $('form').each((_: number, formElement: any) => {
       const $form = $(formElement);
       const fields = this.extractFormFields($, $form);
 
@@ -248,10 +252,10 @@ export class PageAnalyzer {
     return forms;
   }
 
-  private extractFormFields($: cheerio.CheerioAPI, $form: cheerio.Cheerio): any[] {
+  private extractFormFields($: CheerioInstance, $form: CheerioElement): any[] {
     const fields: any[] = [];
 
-    $form.find('input, select, textarea').each((_, fieldElement) => {
+    $form.find('input, select, textarea').each((_: number, fieldElement: any) => {
       const $field = $(fieldElement);
       const type = $field.attr('type') || $field.prop('tagName')?.toLowerCase() || 'text';
 
@@ -273,7 +277,7 @@ export class PageAnalyzer {
     return fields;
   }
 
-  private findFieldLabel($: cheerio.CheerioAPI, $field: cheerio.Cheerio): string | undefined {
+  private findFieldLabel($: CheerioInstance, $field: CheerioElement): string | undefined {
     // Try to find associated label
     const fieldId = $field.attr('id');
     if (fieldId) {
@@ -293,10 +297,10 @@ export class PageAnalyzer {
     return $field.attr('placeholder');
   }
 
-  private extractSelectOptions($: cheerio.CheerioAPI, $field: cheerio.Cheerio): string[] | undefined {
+  private extractSelectOptions($: CheerioInstance, $field: CheerioElement): string[] | undefined {
     if ($field.prop('tagName')?.toLowerCase() === 'select') {
       const options: string[] = [];
-      $field.find('option').each((_, option) => {
+      $field.find('option').each((_: number, option: any) => {
         const text = $(option).text().trim();
         if (text && text !== 'Select...') {
           options.push(text);
@@ -307,7 +311,7 @@ export class PageAnalyzer {
     return undefined;
   }
 
-  private inferFormPurpose($: cheerio.CheerioAPI, $form: cheerio.Cheerio<cheerio.Element>, fields: any[]): string {
+  private inferFormPurpose($: CheerioInstance, $form: CheerioElement, fields: any[]): string {
     const formText = $form.text().toLowerCase();
     const fieldNames = fields.map(f => f.name?.toLowerCase() || '').join(' ');
     const combined = `${formText} ${fieldNames}`;
@@ -326,10 +330,10 @@ export class PageAnalyzer {
     return 'data-entry';
   }
 
-  private extractTables($: cheerio.CheerioAPI): TableInfo[] {
+  private extractTables($: CheerioInstance): TableInfo[] {
     const tables: TableInfo[] = [];
 
-    $('table, [role="grid"], .table, .data-table').each((_, tableElement) => {
+    $('table, [role="grid"], .table, .data-table').each((_: number, tableElement: any) => {
       const $table = $(tableElement);
       const headers = this.extractTableHeaders($, $table);
       const rowCount = this.countTableRows($, $table);
@@ -348,10 +352,10 @@ export class PageAnalyzer {
     return tables;
   }
 
-  private extractTableHeaders($: cheerio.CheerioAPI, $table: cheerio.Cheerio): string[] {
+  private extractTableHeaders($: CheerioInstance, $table: CheerioElement): string[] {
     const headers: string[] = [];
 
-    $table.find('th, thead td, .table-header').each((_, headerElement) => {
+    $table.find('th, thead td, .table-header').each((_: number, headerElement: any) => {
       const text = $(headerElement).text().trim();
       if (text) headers.push(text);
     });
@@ -359,15 +363,15 @@ export class PageAnalyzer {
     return headers;
   }
 
-  private countTableRows($: cheerio.CheerioAPI, $table: cheerio.Cheerio): number {
+  private countTableRows($: CheerioInstance, $table: CheerioElement): number {
     return $table.find('tbody tr, .table-row').length;
   }
 
-  private hasTableActions($: cheerio.CheerioAPI, $table: cheerio.Cheerio): boolean {
+  private hasTableActions($: CheerioInstance, $table: CheerioElement): boolean {
     return $table.find('button, .btn, .action, [role="button"]').length > 0;
   }
 
-  private inferTablePurpose($: cheerio.CheerioAPI, $table: cheerio.Cheerio, headers: string[]): string {
+  private inferTablePurpose($: CheerioInstance, $table: CheerioElement, headers: string[]): string {
     const tableText = $table.text().toLowerCase();
     const headerText = headers.join(' ').toLowerCase();
     const combined = `${tableText} ${headerText}`;
@@ -384,10 +388,10 @@ export class PageAnalyzer {
     return 'data-display';
   }
 
-  private extractButtons($: cheerio.CheerioAPI): ButtonInfo[] {
+  private extractButtons($: CheerioInstance): ButtonInfo[] {
     const buttons: ButtonInfo[] = [];
 
-    $('button, input[type="submit"], input[type="button"], .btn, [role="button"]').each((_, buttonElement) => {
+    $('button, input[type="submit"], input[type="button"], .btn, [role="button"]').each((_: number, buttonElement: any) => {
       const $button = $(buttonElement);
       const text = $button.text().trim() || $button.attr('value') || $button.attr('title') || '';
 
@@ -423,11 +427,11 @@ export class PageAnalyzer {
     return 'action';
   }
 
-  private extractLinks($: cheerio.CheerioAPI, baseUrl: string): LinkInfo[] {
+  private extractLinks($: CheerioInstance, baseUrl: string): LinkInfo[] {
     const links: LinkInfo[] = [];
     const base = new URL(baseUrl);
 
-    $('a[href]').each((_, linkElement) => {
+    $('a[href]').each((_: number, linkElement: any) => {
       const $link = $(linkElement);
       const href = $link.attr('href');
       const text = $link.text().trim();
@@ -449,11 +453,11 @@ export class PageAnalyzer {
     return links;
   }
 
-  private extractMetadata($: cheerio.CheerioAPI): PageMetadata {
+  private extractMetadata($: CheerioInstance): PageMetadata {
     const breadcrumbs: string[] = [];
 
     // Extract breadcrumbs
-    $('.breadcrumb, .breadcrumbs, [aria-label="breadcrumb"]').find('a, span').each((_, element) => {
+    $('.breadcrumb, .breadcrumbs, [aria-label="breadcrumb"]').find('a, span').each((_: number, element: any) => {
       const text = $(element).text().trim();
       if (text) breadcrumbs.push(text);
     });
@@ -466,7 +470,7 @@ export class PageAnalyzer {
     };
   }
 
-  private inferPageType($: cheerio.CheerioAPI): string {
+  private inferPageType($: CheerioInstance): string {
     const title = $('title').text().toLowerCase();
     const bodyClass = $('body').attr('class') || '';
     const combined = `${title} ${bodyClass}`.toLowerCase();
