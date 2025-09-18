@@ -1,5 +1,5 @@
 {
-  "name": "copilotkit-debug-example-next-frontend",
+  "name": "copilot-chat-frontend",
   "version": "1.0.0",
   "type": "module",
   "description": "CopilotKit Debug Example Next Frontend - 基于 react-core-next 的前端应用",

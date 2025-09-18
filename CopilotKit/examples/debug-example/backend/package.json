@@ -11,8 +11,6 @@
     "debug": "node --inspect-brk=9229 -r ts-node/register src/server.ts"
   },
   "dependencies": {
-    "@copilotkit/runtime": "workspace:*",
-    "@copilotkit/shared": "workspace:*",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.19.2",

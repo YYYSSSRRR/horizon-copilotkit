@@ -27,14 +27,14 @@
       "@copilotkit/react-core-next": ["../../react-core-next/src"],
       "@copilotkit/shared": ["../../shared/src"],
       "@copilotkit/playwright-actuator": ["../../playwright-actuator/src"],
-      "react": ["../node_modules/openinula/@types/index.d.ts"],
-      "react-dom": ["../node_modules/openinula/@types/index.d.ts"],
-      "react-is": ["../node_modules/openinula/@types/index.d.ts"],
-      "react/*": ["../node_modules/openinula/*"],
-      "react-dom/*": ["../node_modules/openinula/*"],
-      "react/jsx-runtime": ["../node_modules/openinula/jsx-runtime"],
-      "openinula": ["../node_modules/openinula/@types/index.d.ts"],
-      "openinula/*": ["../node_modules/openinula/*"]
+      "react": ["./node_modules/openinula/@types/index.d.ts"],
+      "react-dom": ["./node_modules/openinula/@types/index.d.ts"],
+      "react-is": ["./node_modules/openinula/@types/index.d.ts"],
+      "react/*": ["./node_modules/openinula/*"],
+      "react-dom/*": ["./node_modules/openinula/*"],
+      "react/jsx-runtime": ["./node_modules/openinula/jsx-runtime"],
+      "openinula": ["./node_modules/openinula/@types/index.d.ts"],
+      "openinula/*": ["./node_modules/openinula/*"]
     }
   },
   "include": ["src"],
