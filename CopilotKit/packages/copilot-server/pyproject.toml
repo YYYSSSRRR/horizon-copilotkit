@@ -3,15 +3,12 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
-name = "copilotkit-runtime-python"
-version = "1.8.15"
+name = "copilot-server"
+version = "1.0.0"
 description = "CopilotKit Python Runtime - The Python runtime for integrating powerful AI Copilots into any application"
 authors = ["CopilotKit Team <team@copilotkit.ai>"]
 license = "MIT"
 readme = "README.md"
-homepage = "https://github.com/CopilotKit/CopilotKit"
-repository = "https://github.com/CopilotKit/CopilotKit"
-documentation = "https://docs.copilotkit.ai"
 keywords = ["copilotkit", "copilot", "ai", "assistant", "python", "automation", "deepseek"]
 classifiers = [
     "Development Status :: 4 - Beta",
