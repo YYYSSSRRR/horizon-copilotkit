@@ -20,7 +20,7 @@
 ```bash
 # 克隆仓库
 git clone <repository-url>
-cd function-rag-py
+cd function-rag
 
 # 安装依赖
 pip install -r requirements.txt
@@ -257,5 +257,5 @@ MIT 许可证 - 详见 LICENSE 文件。
 ## 支持
 
 问题和疑问：
-- GitHub 问题：[Project Issues](https://github.com/your-org/function-rag-py/issues)
+- GitHub 问题：[Project Issues](https://github.com/your-org/function-rag/issues)
 - 文档：[API 文档](http://localhost:8000/docs)

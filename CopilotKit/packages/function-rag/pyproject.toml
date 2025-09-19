@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "function-rag-py"
+name = "function-rag"
 version = "1.0.0"
 description = "Python RAG system for storing and querying LLM functions"
 authors = [{name = "CopilotKit", email = "support@copilotkit.ai"}]
@@ -51,10 +51,10 @@ redis = ["redis>=5.0.1"]
 cli = ["typer>=0.9.0", "rich>=13.7.0"]
 
 [project.urls]
-Homepage = "https://github.com/copilotkit/function-rag-py"
+Homepage = "https://github.com/copilotkit/function-rag"
 Documentation = "https://docs.copilotkit.ai/function-rag"
-Repository = "https://github.com/copilotkit/function-rag-py"
-Issues = "https://github.com/copilotkit/function-rag-py/issues"
+Repository = "https://github.com/copilotkit/function-rag"
+Issues = "https://github.com/copilotkit/function-rag/issues"
 
 [project.scripts]
 function-rag = "app.cli:main"
