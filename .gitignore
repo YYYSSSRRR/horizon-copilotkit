@@ -37,3 +37,4 @@ venv
 *.pkl
 
 *-lock.yaml
+*-lock.json
