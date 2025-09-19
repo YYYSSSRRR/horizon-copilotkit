@@ -10,24 +10,7 @@
         "^build"
       ],
       "outputs": [
-        "dist/**",
-        ".next/**",
-        "!.next/cache/**"
-      ]
-    },
-    "@copilotkit/runtime#generate-graphql-schema": {
-      "cache": false,
-      "persistent": false,
-      "dependsOn": [
-        "^build"
-      ]
-    },
-    "@copilotkit/runtime-client-gql#graphql-codegen": {
-      "cache": false,
-      "persistent": false,
-      "dependsOn": [
-        "^build",
-        "@copilotkit/runtime#generate-graphql-schema"
+        "dist/**"
       ]
     },
     "dev": {
@@ -43,13 +26,19 @@
         "build"
       ],
       "outputs": [
-        "coverage/**",
-        "!.next/**",
-        "!.next/cache/**"
+        "coverage/**"
       ]
     },
-    "lint": {},
+    "lint": {
+      "cache": false
+    },
     "check-types": {
+      "cache": false,
+      "dependsOn": [
+        "build"
+      ]
+    },
+    "type-check": {
       "cache": false,
       "dependsOn": [
         "build"
@@ -57,6 +46,18 @@
     },
     "clean": {
       "cache": false
+    },
+    "preview": {
+      "cache": false,
+      "dependsOn": [
+        "build"
+      ]
+    },
+    "analyze": {
+      "cache": false,
+      "dependsOn": [
+        "build"
+      ]
     },
     "//#check-prettier": {},
     "//#format": {
