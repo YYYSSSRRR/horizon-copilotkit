@@ -35,3 +35,5 @@ venv
 /playwright/.cache/
 
 *.pkl
+
+*-lock.yaml
