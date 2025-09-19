@@ -8,7 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@copilotkit/react-core-next': fileURLToPath(new URL('../../react-core-next/src', import.meta.url)),
+      '@copilotkit/copilot-client': fileURLToPath(new URL('../../copilot-client/src', import.meta.url)),
       '@copilotkit/shared': fileURLToPath(new URL('../../shared/src', import.meta.url)),
       '@copilotkit/playwright-actuator': fileURLToPath(new URL('../../playwright-actuator/src', import.meta.url)),
       // 具体路径映射需要在通用映射之前

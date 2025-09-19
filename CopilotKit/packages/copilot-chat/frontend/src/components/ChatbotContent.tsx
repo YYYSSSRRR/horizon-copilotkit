@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { 
   useCopilotChat, 
   TextMessage 
-} from '@copilotkit/react-core-next'
+} from '@copilotkit/copilot-client'
 import { ChatInput } from './ChatInput'
 import { useBusinessActions } from '../hooks/useBusinessActions'
 import { useDynamicActions } from '../hooks/useDynamicActions'

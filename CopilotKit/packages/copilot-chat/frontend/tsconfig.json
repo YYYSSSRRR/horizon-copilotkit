@@ -24,7 +24,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@copilotkit/react-core-next": ["../../react-core-next/src"],
+      "@copilotkit/copilot-client": ["../../copilot-client/src"],
       "@copilotkit/shared": ["../../shared/src"],
       "@copilotkit/playwright-actuator": ["../../playwright-actuator/src"],
       "react": ["./node_modules/openinula/@types/index.d.ts"],

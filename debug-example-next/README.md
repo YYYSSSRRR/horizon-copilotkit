@@ -1,12 +1,12 @@
 # CopilotKit Debug Example Next
 
-基于 `react-core-next` 和 `runtime-next` 的完整调试示例工程。
+基于 `copilot-client` 和 `runtime-next` 的完整调试示例工程。
 
 ## 概述
 
 这个示例展示了如何使用 CopilotKit 的下一代架构：
 
-- **前端**: React + TypeScript + Vite，基于 `@copilotkit/react-core-next`
+- **前端**: React + TypeScript + Vite，基于 `@copilotkit/copilot-client`
 - **后端**: Python + FastAPI，基于 `copilotkit-runtime-next`
 - **API架构**: REST API（移除了GraphQL依赖）
 - **LLM支持**: OpenAI 和 DeepSeek
@@ -72,7 +72,7 @@ npm run dev-frontend  # 前端应用 (http://localhost:5173)
 ## 功能特性
 
 ### 前端特性
-- ✅ 基于 `@copilotkit/react-core-next`
+- ✅ 基于 `@copilotkit/copilot-client`
 - ✅ 现代 React 18 + TypeScript
 - ✅ Vite 构建工具
 - ✅ 实时聊天界面
@@ -126,7 +126,7 @@ def create_weather_action():
 在 `frontend/src/components/` 中创建新组件：
 
 ```tsx
-import { useCopilotAction } from "@copilotkit/react-core-next";
+import { useCopilotAction } from "@copilotkit/copilot-client";
 
 export function WeatherWidget() {
   useCopilotAction({

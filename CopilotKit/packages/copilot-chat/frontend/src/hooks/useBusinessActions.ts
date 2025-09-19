@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useCopilotAction, useCopilotScriptAction } from '@copilotkit/react-core-next'
+import { useCopilotAction, useCopilotScriptAction } from '@copilotkit/copilot-client'
 import { scriptActions } from '../../playwright-scripts/index.js'
 
 /**

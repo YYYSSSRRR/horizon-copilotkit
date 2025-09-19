@@ -1,4 +1,4 @@
-import { CopilotKit } from '@copilotkit/react-core-next'
+import { CopilotKit } from '@copilotkit/copilot-client'
 import { ChatbotContent } from './ChatbotContent'
 
 // Chatbot 组件 - 包装 CopilotKit，支持动态ScriptActions

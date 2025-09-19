@@ -24,7 +24,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@copilotkit/react-core-next": ["../../CopilotKit/packages/react-core-next/src"]
+      "@copilotkit/copilot-client": ["../../CopilotKit/packages/copilot-client/src"]
     }
   },
   "include": ["src"],

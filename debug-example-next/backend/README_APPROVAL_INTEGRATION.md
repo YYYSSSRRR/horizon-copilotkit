@@ -2,7 +2,7 @@
 
 ## 🎯 概述
 
-已成功将人工审批系统集成到 CopilotKit runtime-python 中，实现了工具调用的人工审批功能。现在任何使用 CopilotKit 的项目都可以轻松启用审批系统。
+已成功将人工审批系统集成到 CopilotKit copilot-server 中，实现了工具调用的人工审批功能。现在任何使用 CopilotKit 的项目都可以轻松启用审批系统。
 
 ## 🚀 快速开始
 
@@ -259,7 +259,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 ## 🎉 结论
 
-集成审批系统成功地将人工审批功能无缝集成到 CopilotKit runtime-python 中，提供了：
+集成审批系统成功地将人工审批功能无缝集成到 CopilotKit copilot-server 中，提供了：
 
 - **零侵入性**: 现有代码无需修改
 - **灵活配置**: 可自由选择哪些工具需要审批

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 CopilotKit Debug Example Next - Backend Server (使用 create_copilot_app API)
-基于 runtime-python 的 FastAPI 后端服务，使用新的 create_copilot_app API
+基于 copilot-server 的 FastAPI 后端服务，使用新的 create_copilot_app API
 """
 
 import os
@@ -15,10 +15,10 @@ import uvicorn
 from dotenv import load_dotenv
 import uuid
 
-# 添加 runtime-python 到路径
+# 添加 copilot-server 到路径
 current_dir = Path(__file__).parent
 project_root = current_dir.parent.parent
-runtime_python_path = project_root / "CopilotKit" / "packages" / "runtime-python"
+runtime_python_path = project_root / "CopilotKit" / "packages" / "copilot-server"
 sys.path.insert(0, str(runtime_python_path))
 
 try:
@@ -33,8 +33,8 @@ try:
         ApprovalMiddleware
     )
 except ImportError as e:
-    print(f"错误: 无法导入 runtime-python 模块: {e}")
-    print(f"请确保 runtime-python 路径正确: {runtime_python_path}")
+    print(f"错误: 无法导入 copilot-server 模块: {e}")
+    print(f"请确保 copilot-server 路径正确: {runtime_python_path}")
     sys.exit(1)
 
 # 加载环境变量
