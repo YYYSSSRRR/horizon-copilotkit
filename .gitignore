@@ -8,7 +8,7 @@
 *.swp
 *.swo
 *~
-.serena
+.serena/
 
 # Dependencies
 node_modules/
