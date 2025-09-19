@@ -9,7 +9,7 @@ copilot-chat/
 ├── frontend/          # React + Vite 前端应用
 ├── backend/           # Python FastAPI 后端
 ├── packages/          # 本地 CopilotKit 包
-│   ├── react-core-next/
+│   ├── copilot-client/
 │   ├── playwright-actuator/
 │   └── shared/
 ├── scripts/           # 辅助脚本

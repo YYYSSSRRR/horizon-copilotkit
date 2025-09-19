@@ -9,8 +9,8 @@
  * ### Simple Usage
  *
  * ```tsx
- * import { useCopilotChat } from "@copilotkit/react-core-next";
- * import { Role, TextMessage } from "@copilotkit/react-core-next";
+ * import { useCopilotChat } from "@copilotkit/copilot-client";
+ * import { Role, TextMessage } from "@copilotkit/copilot-client";
  *
  * export function YourComponent() {
  *   const { appendMessage } = useCopilotChat();

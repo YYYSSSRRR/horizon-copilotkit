@@ -1,4 +1,4 @@
-# @copilotkit/react-core-next
+# @copilotkit/copilot-client
 
 下一代 CopilotKit React 核心库，采用 REST API + WebSocket 架构，移除了 GraphQL 依赖。
 
@@ -13,13 +13,13 @@
 ## 安装
 
 ```bash
-npm install @copilotkit/react-core-next
+npm install @copilotkit/copilot-client
 ```
 
 ## 快速开始
 
 ```tsx
-import { CopilotKit, useCopilotChat } from "@copilotkit/react-core-next";
+import { CopilotKit, useCopilotChat } from "@copilotkit/copilot-client";
 
 function App() {
   return (
@@ -84,7 +84,7 @@ function ChatComponent() {
 import { CopilotKit, useCopilotChat } from "@copilotkit/react-core";
 
 // 之后
-import { CopilotKit, useCopilotChat } from "@copilotkit/react-core-next";
+import { CopilotKit, useCopilotChat } from "@copilotkit/copilot-client";
 ```
 
 API 完全兼容，无需修改其他代码。 

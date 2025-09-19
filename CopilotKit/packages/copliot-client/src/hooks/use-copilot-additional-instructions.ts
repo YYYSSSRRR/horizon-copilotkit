@@ -32,7 +32,7 @@ export interface UseCopilotAdditionalInstructionsOptions {
  * ### 简单用法
  * 
  * ```tsx
- * import { useCopilotAdditionalInstructions } from "@copilotkit/react-core-next";
+ * import { useCopilotAdditionalInstructions } from "@copilotkit/copilot-client";
  * 
  * export function MyComponent() {
  *   useCopilotAdditionalInstructions({
@@ -44,7 +44,7 @@ export interface UseCopilotAdditionalInstructionsOptions {
  * ### 条件用法
  * 
  * ```tsx
- * import { useCopilotAdditionalInstructions } from "@copilotkit/react-core-next";
+ * import { useCopilotAdditionalInstructions } from "@copilotkit/copilot-client";
  * 
  * export function MyComponent() {
  *   const [showInstructions, setShowInstructions] = useState(false);

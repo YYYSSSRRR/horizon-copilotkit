@@ -8,7 +8,7 @@ import {
   useFrontendInterruptManager,
   TextMessage, 
   FrontendAction
-} from '@copilotkit/react-core-next'
+} from '@copilotkit/copilot-client'
 import { askLlmAction, fillFormAction } from '../../playwright-scripts/index.js'
 
 
@@ -614,7 +614,7 @@ ${selectedOption.itinerary}
           🚀 CopilotKit Debug Example Next
         </h1>
         <p className="text-gray-600">
-          基于 react-core-next 和 runtime-next 的调试示例
+          基于 copilot-client 和 runtime-next 的调试示例
         </p>
         <div className="mt-4 p-3 bg-white rounded-lg shadow">
           <span className="text-sm font-medium text-gray-700">后端状态: </span>
