@@ -594,18 +594,18 @@ export function useBusinessActions() {
     },
   ], []);
 
-  // 注册所有 Actions
-  useCopilotAction(notificationAction);
+  // // 注册所有 Actions
+  // useCopilotAction(notificationAction);
 
-  // 注册所有菜单 Actions
-  menuActions.forEach(action => {
-    useCopilotAction(action);
-  });
+  // // 注册所有菜单 Actions
+  // menuActions.forEach(action => {
+  //   useCopilotAction(action);
+  // });
 
-  // 注册所有菜单内部操作 Actions
-  menuItemActions.forEach(action => {
-    useCopilotAction(action);
-  });
+  // // 注册所有菜单内部操作 Actions
+  // menuItemActions.forEach(action => {
+  //   useCopilotAction(action);
+  // });
 
   scriptActions.forEach(action => {
     useCopilotScriptAction(action);
