@@ -42,43 +42,48 @@ export function HomePage() {
   const [currentInterruptId, setCurrentInterruptId] = useState<string | null>(null)
   
   // 审批状态
-  const [showApprovalModal, setShowApprovalModal] = useState(false)
-  const [approvalRequest, setApprovalRequest] = useState<{
-    id: string;
-    actionName: string;
-    message: string;
-    parameters: any;
-  } | null>(null)
+  const [pendingApprovals, setPendingApprovals] = useState<{
+    [key: string]: {
+      id: string;
+      actionName: string;
+      message: string;
+      parameters: any;
+    }
+  }>({})
   
-  // 处理旅行选项选择
+  // 处理旅行选项选择 - 直接模拟预订流程
   const handleTravelOptionSelect = useCallback(async (selectedOption: any) => {
-    if (!currentInterruptId || !interruptManager) return;
-    
     try {
       setShowTravelModal(false);
-      const result = await interruptManager.resumeAction(currentInterruptId, selectedOption);
+      const result = await interruptManager?.resumeAction(currentInterruptId||"", selectedOption);
       toast(`行程预订成功: ${result}`, 'success');
       setCurrentInterruptId(null);
       setTravelOptions([]);
     } catch (error) {
       toast(`处理失败: ${error}`, 'error');
     }
-  }, [currentInterruptId, interruptManager, toast]);
+  }, [toast]);
 
   // 处理审批按钮点击
-  const handleApprovalDecision = useCallback(async (decision: 'approve' | 'reject') => {
-    if (!approvalRequest || !interruptManager) return;
+  const handleApprovalDecision = useCallback(async (approvalId: string, decision: 'approve' | 'reject') => {
+    const approval = pendingApprovals[approvalId];
+    if (!approval || !interruptManager) return;
     
     try {
-      setShowApprovalModal(false);
       const decisionText = decision === 'approve' ? 'y' : 'n';
-      const result = await interruptManager.resumeAction(approvalRequest.id, decisionText);
+      const result = await interruptManager.resumeAction(approval.id, decisionText);
       toast(`审批${decision === 'approve' ? '通过' : '拒绝'}: ${result}`, 'success');
-      setApprovalRequest(null);
+      
+      // 移除已处理的审批
+      setPendingApprovals(prev => {
+        const newApprovals = { ...prev };
+        delete newApprovals[approvalId];
+        return newApprovals;
+      });
     } catch (error) {
       toast(`处理失败: ${error}`, 'error');
     }
-  }, [approvalRequest, interruptManager, toast]);
+  }, [pendingApprovals, interruptManager, toast]);
   
   // 表单处理函数
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -233,21 +238,28 @@ export function HomePage() {
       onInterrupt: (actionName: string, parameters: any, interruptId: string) => {
         const dataToSubmit = parameters.formData || formData;
         
-        // 设置审批请求并显示弹框
-        setApprovalRequest({
-          id: interruptId,
-          actionName,
-          message: `提交表单数据：${JSON.stringify(dataToSubmit, null, 2)}`,
-          parameters: parameters
-        });
-        setShowApprovalModal(true);
+        // 添加审批请求到待处理列表
+        setPendingApprovals(prev => ({
+          ...prev,
+          [interruptId]: {
+            id: interruptId,
+            actionName,
+            message: `提交表单数据：${JSON.stringify(dataToSubmit, null, 2)}`,
+            parameters: parameters
+          }
+        }));
         
         return `🔐 **表单提交审批请求已创建**
 
-审批弹框已显示，请在弹框中选择批准或拒绝。`;
+请在下方的审批按钮中选择批准或拒绝。
+
+📋 **待审批操作：** ${actionName}
+📝 **审批ID：** ${interruptId.slice(-8)}
+
+APPROVAL_BUTTONS:${interruptId}`;
       },
       
-      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+      onResume: async (_actionName: string, originalParameters: any, resumeData: any) => {
         const normalizedDecision = String(resumeData).toLowerCase().trim();
         const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
         
@@ -291,21 +303,28 @@ export function HomePage() {
     ],
     interruptHandler: {
       onInterrupt: (actionName: string, parameters: any, interruptId: string) => {
-        // 设置审批请求并显示弹框
-        setApprovalRequest({
-          id: interruptId,
-          actionName,
-          message: `重置表单数据：${JSON.stringify(parameters, null, 2)}`,
-          parameters: parameters
-        });
-        setShowApprovalModal(true);
+        // 添加审批请求到待处理列表
+        setPendingApprovals(prev => ({
+          ...prev,
+          [interruptId]: {
+            id: interruptId,
+            actionName,
+            message: `重置表单数据：${JSON.stringify(parameters, null, 2)}`,
+            parameters: parameters
+          }
+        }));
         
         return `🔐 **表单重置审批请求已创建**
 
-审批弹框已显示，请在弹框中选择批准或拒绝。`;
+请在下方的审批按钮中选择批准或拒绝。
+
+📋 **待审批操作：** ${actionName}
+📝 **审批ID：** ${interruptId.slice(-8)}
+
+APPROVAL_BUTTONS:${interruptId}`;
       },
       
-      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+      onResume: async (_actionName: string, _originalParameters: any, resumeData: any) => {
         const normalizedDecision = String(resumeData).toLowerCase().trim();
         const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
         
@@ -446,15 +465,15 @@ export function HomePage() {
           if (!response.ok) {
             throw new Error(`AI调用失败: ${response.status} ${response.statusText}`);
           }
-          
+            
           const aiResponse = await response.json();
           console.log(`[AI旅行规划] AI成功生成${aiResponse.plans?.length || 0}个方案`);
-          
+            
           if (!aiResponse.success || !aiResponse.plans || aiResponse.plans.length === 0) {
             throw new Error('AI返回的数据格式错误或没有生成方案');
           }
           
-          // 显示旅行选项弹框
+          // AI成功返回数据后再显示旅行选项弹框
           setTravelOptions(aiResponse.plans);
           setCurrentInterruptId(interruptId);
           setShowTravelModal(true);
@@ -480,10 +499,10 @@ ${aiResponse.plans.map((option: any, index: number) =>
 🎉 **选择弹框已弹出**，请在弹框中选择您心仪的旅行方案！
 
 💭 每个方案都是真正的AI根据${destination}的实际情况和您的个人偏好精心设计的，点击选择即可查看详细行程和预订。`;
-          
+            
         } catch (error) {
           console.error(`[AI旅行规划] AI调用失败:`, error);
-          
+            
           // AI调用失败时的降级方案
           const fallbackOptions = [
             {
@@ -496,7 +515,8 @@ ${aiResponse.plans.map((option: any, index: number) =>
               aiReason: `AI暂时不可用，为您提供${destination}的经典文化体验路线`
             }
           ];
-          
+            
+          // 只有在AI调用失败时才显示降级方案的弹框
           setTravelOptions(fallbackOptions);
           setCurrentInterruptId(interruptId);
           setShowTravelModal(true);
@@ -672,6 +692,16 @@ ${selectedOption.itinerary}
 
                 if (!content) return null;
                 
+                // 检查是否包含审批按钮标记
+                const approvalMatch = content.match(/APPROVAL_BUTTONS:(.+?)$/m);
+                let displayContent = content;
+                let approvalId = null;
+                
+                if (approvalMatch) {
+                  approvalId = approvalMatch[1];
+                  displayContent = content.replace(/APPROVAL_BUTTONS:.+$/m, '').trim();
+                }
+                
                 return (
                   <div
                     key={index}
@@ -686,7 +716,30 @@ ${selectedOption.itinerary}
                           : 'bg-gray-200 text-gray-800'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{content}</p>
+                      <p className="text-sm whitespace-pre-wrap">{displayContent}</p>
+                      
+                      {/* 内联审批按钮 */}
+                      {approvalId && pendingApprovals[approvalId] && (
+                        <div className="mt-3 pt-3 border-t border-gray-300">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => handleApprovalDecision(approvalId, 'reject')}
+                              className="flex-1 px-3 py-1.5 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                            >
+                              ❌ 拒绝
+                            </button>
+                            <button
+                              onClick={() => handleApprovalDecision(approvalId, 'approve')}
+                              className="flex-1 px-3 py-1.5 text-xs bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                            >
+                              ✅ 批准
+                            </button>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 text-center">
+                            审批ID: {approvalId.slice(-8)}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -834,15 +887,6 @@ ${selectedOption.itinerary}
         />
       )}
 
-      {/* 审批弹框 */}
-      {showApprovalModal && approvalRequest && (
-        <ApprovalModal
-          request={approvalRequest}
-          onApprove={() => handleApprovalDecision('approve')}
-          onReject={() => handleApprovalDecision('reject')}
-          onClose={() => setShowApprovalModal(false)}
-        />
-      )}
     </div>
   )
 }
@@ -1258,73 +1302,4 @@ function TravelOptionsModal({
   );
 }
 
-// 审批弹框组件
-function ApprovalModal({ 
-  request, 
-  onApprove, 
-  onReject, 
-  onClose 
-}: {
-  request: {
-    id: string;
-    actionName: string;
-    message: string;
-    parameters: any;
-  },
-  onApprove: () => void,
-  onReject: () => void,
-  onClose: () => void
-}) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-900">🔐 审批请求</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-xl"
-              aria-label="关闭弹框"
-            >
-              ×
-            </button>
-          </div>
-          
-          <div className="mb-6">
-            <div className="mb-4">
-              <h3 className="font-semibold text-gray-700">动作名称:</h3>
-              <p className="text-gray-600">{request.actionName}</p>
-            </div>
-            
-            <div className="mb-4">
-              <h3 className="font-semibold text-gray-700">详情:</h3>
-              <div className="text-gray-600 bg-gray-50 p-3 rounded text-sm">
-                {request.message}
-              </div>
-            </div>
-            
-            <div className="mb-4">
-              <h3 className="font-semibold text-gray-700">审批ID:</h3>
-              <p className="text-gray-600 font-mono text-sm">{request.id.slice(-8)}</p>
-            </div>
-          </div>
-          
-          <div className="flex space-x-3">
-            <button
-              onClick={onReject}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-            >
-              ❌ 拒绝
-            </button>
-            <button
-              onClick={onApprove}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-            >
-              ✅ 批准
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-} 
+ 
