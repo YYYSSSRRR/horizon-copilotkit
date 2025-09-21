@@ -14,6 +14,7 @@ from pathlib import Path
 import uvicorn
 from dotenv import load_dotenv
 import uuid
+import openai
 
 # 添加 runtime-python 到路径
 current_dir = Path(__file__).parent
@@ -173,6 +174,235 @@ def create_demo_actions() -> List[Action]:
             approval_id_partial=approval_id_partial
         )
     
+    async def generate_travel_plan(arguments: Dict[str, Any]) -> str:
+        """生成AI旅行规划，返回JSON格式的方案数据供前端处理"""
+        import json
+        
+        destination = arguments.get("destination", "")
+        budget = arguments.get("budget", "10000")
+        days = arguments.get("days", 7)
+        preferences = arguments.get("preferences", "")
+        
+        logger.info(f"🧳 开始生成旅行规划: {destination}, 预算: {budget}, 天数: {days}")
+        
+        try:
+            # 构建AI提示词
+            prompt = f"""你是一个专业的旅行规划师，请为用户生成4个不同风格的{destination}旅行方案。
+
+用户需求：
+- 目的地：{destination}
+- 预算：{budget}元
+- 天数：{days}天
+- 偏好：{preferences or '综合体验'}
+
+请生成4个不同主题的旅行方案，每个方案包含：
+1. 标题（例如：东京文化深度游）
+2. 简短描述（50字内）
+3. 4个亮点特色
+4. 建议价格（基于预算调整）
+5. 详细的天天行程安排
+6. AI推荐理由（为什么推荐这个方案）
+
+请严格按照以下JSON格式返回，不要添加任何其他文字：
+{{
+  "plans": [
+    {{
+      "id": 1,
+      "title": "方案标题",
+      "description": "简短描述",
+      "highlights": ["特色1", "特色2", "特色3", "特色4"],
+      "price": 价格数字,
+      "itinerary": "详细行程安排（用\\n分隔每天）",
+      "aiReason": "AI推荐理由"
+    }},
+    {{
+      "id": 2,
+      "title": "方案标题",
+      "description": "简短描述",
+      "highlights": ["特色1", "特色2", "特色3", "特色4"],
+      "price": 价格数字,
+      "itinerary": "详细行程安排（用\\n分隔每天）",
+      "aiReason": "AI推荐理由"
+    }},
+    {{
+      "id": 3,
+      "title": "方案标题",
+      "description": "简短描述",
+      "highlights": ["特色1", "特色2", "特色3", "特色4"],
+      "price": 价格数字,
+      "itinerary": "详细行程安排（用\\n分隔每天）",
+      "aiReason": "AI推荐理由"
+    }},
+    {{
+      "id": 4,
+      "title": "方案标题",
+      "description": "简短描述",
+      "highlights": ["特色1", "特色2", "特色3", "特色4"],
+      "price": 价格数字,
+      "itinerary": "详细行程安排（用\\n分隔每天）",
+      "aiReason": "AI推荐理由"
+    }}
+  ]
+}}
+
+请确保每个方案都有不同的主题风格（如文化、美食、自然、奢华等），价格根据主题合理调整。只返回JSON，不要有任何解释文字。"""
+
+            # 调用AI生成方案
+            logger.info(f"[旅行规划] 开始为{destination}生成旅行方案...")
+            
+            # 使用OpenAI客户端直接调用DeepSeek API
+            
+            # 获取DeepSeek API密钥
+            deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+            if not deepseek_api_key:
+                logger.warning("⚠️ 未设置DEEPSEEK_API_KEY环境变量，使用默认方案")
+                raise Exception("DEEPSEEK_API_KEY not configured")
+            
+            # 创建OpenAI客户端连接DeepSeek
+            client = openai.AsyncOpenAI(
+                api_key=deepseek_api_key,
+                base_url="https://api.deepseek.com/v1"
+            )
+            
+            messages = [{"role": "user", "content": prompt}]
+            
+            # 调用DeepSeek API
+            response = await client.chat.completions.create(
+                model="deepseek-chat",
+                messages=messages,
+                max_tokens=2000
+            )
+            ai_content = response.choices[0].message.content
+            
+            logger.info(f"[旅行规划] AI响应: {ai_content[:200]}...")
+            
+            # 解析AI返回的JSON
+            import re
+            try:
+                # 尝试多种方式提取JSON
+                json_content = None
+                
+                # 方法1: 查找```json代码块
+                if "```json" in ai_content:
+                    json_start = ai_content.find("```json") + 7
+                    json_end = ai_content.find("```", json_start)
+                    json_content = ai_content[json_start:json_end].strip()
+                    logger.info(f"[旅行规划] 使用代码块方式提取JSON")
+                
+                # 方法2: 查找```代码块(不带json标识)
+                elif "```" in ai_content and json_content is None:
+                    json_start = ai_content.find("```") + 3
+                    json_end = ai_content.find("```", json_start)
+                    if json_end > json_start:
+                        potential_json = ai_content[json_start:json_end].strip()
+                        if potential_json.startswith("{"):
+                            json_content = potential_json
+                            logger.info(f"[旅行规划] 使用通用代码块方式提取JSON")
+                
+                # 方法3: 直接查找JSON对象
+                if json_content is None and "{" in ai_content and "}" in ai_content:
+                    # 使用正则表达式找到完整的JSON对象
+                    json_match = re.search(r'\{.*\}', ai_content, re.DOTALL)
+                    if json_match:
+                        json_content = json_match.group(0)
+                        logger.info(f"[旅行规划] 使用正则表达式提取JSON")
+                    else:
+                        # 备用方法：从第一个{到最后一个}
+                        json_start = ai_content.find("{")
+                        json_end = ai_content.rfind("}") + 1
+                        json_content = ai_content[json_start:json_end]
+                        logger.info(f"[旅行规划] 使用位置定位方式提取JSON")
+                
+                if not json_content:
+                    raise ValueError("No JSON found in AI response")
+                
+                logger.info(f"[旅行规划] 提取的JSON内容: {json_content[:300]}...")
+                
+                # 清理JSON内容
+                json_content = json_content.strip()
+                
+                # 尝试解析JSON
+                ai_plans = json.loads(json_content)
+                
+                # 验证JSON结构
+                if not isinstance(ai_plans, dict) or "plans" not in ai_plans:
+                    raise ValueError("Invalid JSON structure: missing 'plans' key")
+                
+                if not isinstance(ai_plans["plans"], list):
+                    raise ValueError("Invalid JSON structure: 'plans' should be a list")
+                
+                if len(ai_plans["plans"]) == 0:
+                    raise ValueError("No travel plans found in AI response")
+                
+                logger.info(f"[旅行规划] 成功解析AI生成的{len(ai_plans['plans'])}个方案")
+                
+                # 返回包含JSON数据的特殊格式字符串，前端将解析此格式
+                travel_data = {
+                    "plans": ai_plans["plans"],
+                    "destination": destination,
+                    "budget": budget,
+                    "days": days,
+                    "preferences": preferences
+                }
+                
+                # 返回JSON数据，前端会识别这个格式并触发interrupt
+                return f"TRAVEL_PLANS_JSON:{json.dumps(travel_data, ensure_ascii=False)}"
+                
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(f"[旅行规划] JSON解析失败: {e}")
+                logger.error(f"[旅行规划] AI原始响应: {ai_content}")
+                
+                # 如果JSON解析失败，提供默认方案
+                fallback_plans = [
+                    {
+                        "id": 1,
+                        "title": f"{destination} 经典文化之旅",
+                        "description": f"{days}天深度文化体验，预算约{budget}元",
+                        "highlights": ["历史古迹游览", "当地文化体验", "传统美食品尝", "民俗活动参与"],
+                        "price": int(float(budget) * 0.8),
+                        "itinerary": f"第1-2天：抵达{destination}，市区观光\\n第3-4天：历史文化景点深度游\\n第5-6天：当地民俗体验\\n第{days}天：返程",
+                        "aiReason": f"根据您的文化偏好，这个行程专注于深度体验{destination}的历史和传统文化"
+                    }
+                ]
+                
+                travel_data = {
+                    "plans": fallback_plans,
+                    "destination": destination,
+                    "budget": budget,
+                    "days": days,
+                    "preferences": preferences,
+                    "note": "AI响应解析失败，返回默认方案"
+                }
+                
+                return f"TRAVEL_PLANS_JSON:{json.dumps(travel_data, ensure_ascii=False)}"
+                
+        except Exception as e:
+            logger.error(f"[旅行规划] 生成旅行方案失败: {e}")
+            
+            # 出现错误时也提供一个基础方案
+            error_plans = [
+                {
+                    "id": 1,
+                    "title": f"{destination} 基础旅行方案",
+                    "description": f"为您准备的{days}天{destination}旅行计划",
+                    "highlights": ["当地景点游览", "特色美食体验", "文化活动参与", "购物休闲"],
+                    "price": int(float(budget) * 0.9),
+                    "itinerary": f"第1天：抵达{destination}\\n第2-{days-1}天：深度游览\\n第{days}天：返程",
+                    "aiReason": "AI生成遇到问题，为您提供基础旅行方案"
+                }
+            ]
+            
+            travel_data = {
+                "plans": error_plans,
+                "destination": destination,
+                "budget": budget,
+                "days": days,
+                "preferences": preferences,
+                "error": str(e)
+            }
+            
+            return f"TRAVEL_PLANS_JSON:{json.dumps(travel_data, ensure_ascii=False)}"
+    
     # 创建动作列表（部分需要审批）
     actions = [
         # 直接执行的工具（无需审批）
@@ -250,6 +480,39 @@ def create_demo_actions() -> List[Action]:
                 )
             ],
             handler=check_status
+        ),
+        
+        # 旅行规划工具 - 直接在对话中生成并触发interrupt
+        Action(
+            name="generateTravelPlan",
+            description="AI智能旅行规划 - 根据目的地、预算等信息，生成多个个性化旅行方案并通过弹窗卡片供用户选择",
+            parameters=[
+                Parameter(
+                    name="destination",
+                    type="string",
+                    description="旅行目的地，例如: 东京, 巴黎, 纽约, 北京",
+                    required=True
+                ),
+                Parameter(
+                    name="budget",
+                    type="string",
+                    description="预算金额（人民币），例如: 10000, 15000, 20000",
+                    required=False
+                ),
+                Parameter(
+                    name="days",
+                    type="integer",
+                    description="旅行天数，例如: 7, 10, 14",
+                    required=False
+                ),
+                Parameter(
+                    name="preferences",
+                    type="string",
+                    description="旅行偏好，例如: 文化体验, 美食之旅, 自然风光, 购物休闲",
+                    required=False
+                )
+            ],
+            handler=generate_travel_plan
         )
     ]
     
@@ -361,207 +624,9 @@ def main():
             }
 
         # ================================
-        # AI旅行规划API端点
+        # 旧的AI旅行规划API端点已移除
+        # 现在使用对话中的generateTravelPlan动作
         # ================================
-        
-        from fastapi import HTTPException
-        from pydantic import BaseModel
-        
-        class TravelPlanRequest(BaseModel):
-            destination: str
-            budget: str = "10000"
-            days: int = 7
-            preferences: str = ""
-        
-        @app.post("/api/ai/generate-travel-plans")
-        async def generate_travel_plans(request: TravelPlanRequest):
-            """使用AI生成旅行方案"""
-            try:
-                # 构建AI提示词
-                prompt = f"""你是一个专业的旅行规划师，请为用户生成4个不同风格的{request.destination}旅行方案。
-
-用户需求：
-- 目的地：{request.destination}
-- 预算：{request.budget}元
-- 天数：{request.days}天
-- 偏好：{request.preferences or '综合体验'}
-
-请生成4个不同主题的旅行方案，每个方案包含：
-1. 标题（例如：东京文化深度游）
-2. 简短描述（50字内）
-3. 4个亮点特色
-4. 建议价格（基于预算调整）
-5. 详细的天天行程安排
-6. AI推荐理由（为什么推荐这个方案）
-
-请严格按照以下JSON格式返回，不要添加任何其他文字：
-{{
-  "plans": [
-    {{
-      "id": 1,
-      "title": "方案标题",
-      "description": "简短描述",
-      "highlights": ["特色1", "特色2", "特色3", "特色4"],
-      "price": 价格数字,
-      "itinerary": "详细行程安排（用\\n分隔每天）",
-      "aiReason": "AI推荐理由"
-    }},
-    {{
-      "id": 2,
-      "title": "方案标题",
-      "description": "简短描述",
-      "highlights": ["特色1", "特色2", "特色3", "特色4"],
-      "price": 价格数字,
-      "itinerary": "详细行程安排（用\\n分隔每天）",
-      "aiReason": "AI推荐理由"
-    }},
-    {{
-      "id": 3,
-      "title": "方案标题",
-      "description": "简短描述",
-      "highlights": ["特色1", "特色2", "特色3", "特色4"],
-      "price": 价格数字,
-      "itinerary": "详细行程安排（用\\n分隔每天）",
-      "aiReason": "AI推荐理由"
-    }},
-    {{
-      "id": 4,
-      "title": "方案标题",
-      "description": "简短描述",
-      "highlights": ["特色1", "特色2", "特色3", "特色4"],
-      "price": 价格数字,
-      "itinerary": "详细行程安排（用\\n分隔每天）",
-      "aiReason": "AI推荐理由"
-    }}
-  ]
-}}
-
-请确保每个方案都有不同的主题风格（如文化、美食、自然、奢华等），价格根据主题合理调整。只返回JSON，不要有任何解释文字。"""
-
-                # 调用AI生成方案
-                print(f"[AI旅行规划] 开始为{request.destination}生成旅行方案...")
-                
-                # 使用现有的DeepSeek适配器调用AI
-                messages = [{"role": "user", "content": prompt}]
-                
-                # 使用DeepSeek适配器的OpenAI兼容客户端
-                response = await deepseek_adapter._client.chat.completions.create(
-                    model="deepseek-chat",
-                    messages=messages,
-                    stream=False,
-                    max_tokens=2000
-                )
-                ai_content = response.choices[0].message.content
-                
-                print(f"[AI旅行规划] AI响应: {ai_content[:200]}...")
-                
-                # 解析AI返回的JSON
-                import json
-                import re
-                try:
-                    # 尝试多种方式提取JSON
-                    json_content = None
-                    
-                    # 方法1: 查找```json代码块
-                    if "```json" in ai_content:
-                        json_start = ai_content.find("```json") + 7
-                        json_end = ai_content.find("```", json_start)
-                        json_content = ai_content[json_start:json_end].strip()
-                        print(f"[AI旅行规划] 使用代码块方式提取JSON")
-                    
-                    # 方法2: 查找```代码块(不带json标识)
-                    elif "```" in ai_content and json_content is None:
-                        json_start = ai_content.find("```") + 3
-                        json_end = ai_content.find("```", json_start)
-                        if json_end > json_start:
-                            potential_json = ai_content[json_start:json_end].strip()
-                            if potential_json.startswith("{"):
-                                json_content = potential_json
-                                print(f"[AI旅行规划] 使用通用代码块方式提取JSON")
-                    
-                    # 方法3: 直接查找JSON对象
-                    if json_content is None and "{" in ai_content and "}" in ai_content:
-                        # 使用正则表达式找到完整的JSON对象
-                        json_match = re.search(r'\{.*\}', ai_content, re.DOTALL)
-                        if json_match:
-                            json_content = json_match.group(0)
-                            print(f"[AI旅行规划] 使用正则表达式提取JSON")
-                        else:
-                            # 备用方法：从第一个{到最后一个}
-                            json_start = ai_content.find("{")
-                            json_end = ai_content.rfind("}") + 1
-                            json_content = ai_content[json_start:json_end]
-                            print(f"[AI旅行规划] 使用位置定位方式提取JSON")
-                    
-                    if not json_content:
-                        raise ValueError("No JSON found in AI response")
-                    
-                    print(f"[AI旅行规划] 提取的JSON内容: {json_content[:300]}...")
-                    
-                    # 清理JSON内容
-                    json_content = json_content.strip()
-                    
-                    # 尝试解析JSON
-                    ai_plans = json.loads(json_content)
-                    
-                    # 验证JSON结构
-                    if not isinstance(ai_plans, dict) or "plans" not in ai_plans:
-                        raise ValueError("Invalid JSON structure: missing 'plans' key")
-                    
-                    if not isinstance(ai_plans["plans"], list):
-                        raise ValueError("Invalid JSON structure: 'plans' should be a list")
-                    
-                    if len(ai_plans["plans"]) == 0:
-                        raise ValueError("No travel plans found in AI response")
-                    
-                    print(f"[AI旅行规划] 成功解析AI生成的{len(ai_plans['plans'])}个方案")
-                    
-                    # 验证每个方案的结构
-                    for i, plan in enumerate(ai_plans["plans"]):
-                        required_keys = ["id", "title", "description", "highlights", "price", "itinerary", "aiReason"]
-                        for key in required_keys:
-                            if key not in plan:
-                                print(f"[AI旅行规划] 警告：方案{i+1}缺少字段: {key}")
-                    
-                    return {
-                        "success": True,
-                        "destination": request.destination,
-                        "budget": request.budget,
-                        "days": request.days,
-                        "preferences": request.preferences,
-                        "plans": ai_plans["plans"]
-                    }
-                    
-                except (json.JSONDecodeError, ValueError) as e:
-                    print(f"[AI旅行规划] JSON解析失败: {e}")
-                    print(f"[AI旅行规划] AI原始响应: {ai_content}")
-                    
-                    # 如果JSON解析失败，返回默认方案
-                    fallback_plans = [
-                        {
-                            "id": 1,
-                            "title": f"{request.destination} 经典文化之旅",
-                            "description": f"{request.days}天深度文化体验，预算约{request.budget}元",
-                            "highlights": ["历史古迹游览", "当地文化体验", "传统美食品尝", "民俗活动参与"],
-                            "price": int(float(request.budget) * 0.8),
-                            "itinerary": f"第1-2天：抵达{request.destination}，市区观光\\n第3-4天：历史文化景点深度游\\n第5-6天：当地民俗体验\\n第{request.days}天：返程",
-                            "aiReason": f"根据您的文化偏好，这个行程专注于深度体验{request.destination}的历史和传统文化"
-                        }
-                    ]
-                    
-                    return {
-                        "success": True,
-                        "destination": request.destination,
-                        "budget": request.budget,
-                        "days": request.days,
-                        "preferences": request.preferences,
-                        "plans": fallback_plans,
-                        "note": "AI响应解析失败，返回默认方案"
-                    }
-                    
-            except Exception as e:
-                print(f"[AI旅行规划] 生成旅行方案失败: {e}")
-                raise HTTPException(status_code=500, detail=f"AI旅行方案生成失败: {str(e)}")
         
         logger.info(f"✅ 创建CopilotRuntime成功，注册了 {len(demo_actions)} 个动作")
         for action in demo_actions:
