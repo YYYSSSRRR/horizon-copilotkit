@@ -167,7 +167,26 @@ export class OpenInulaEventAdapter {
    * 创建 OpenInula 事件对象
    */
   private createOpenInulaEvent(element: Element, eventType: string): OpenInulaEvent {
-    const nativeEvent = new Event(eventType, { bubbles: true, cancelable: true });
+    let nativeEvent: Event;
+
+    // 根据事件类型创建相应的事件对象
+    if (this.isMouseEvent(eventType)) {
+      // 创建 MouseEvent，支持右键等鼠标事件
+      const rect = element.getBoundingClientRect();
+      const mouseEventInit: MouseEventInit = {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        button: this.getMouseButton(eventType),
+        buttons: this.getMouseButtons(eventType),
+        detail: eventType === 'dblclick' ? 2 : 1
+      };
+      nativeEvent = new MouseEvent(eventType, mouseEventInit);
+    } else {
+      // 创建普通 Event
+      nativeEvent = new Event(eventType, { bubbles: true, cancelable: true });
+    }
     
     return {
       target: {
@@ -190,6 +209,48 @@ export class OpenInulaEventAdapter {
       isTrusted: false,
       timeStamp: Date.now()
     };
+  }
+
+  /**
+   * 判断是否为鼠标事件
+   */
+  private isMouseEvent(eventType: string): boolean {
+    const mouseEvents = ['click', 'dblclick', 'mousedown', 'mouseup', 'contextmenu', 'mouseover', 'mouseout', 'mouseenter', 'mouseleave'];
+    return mouseEvents.includes(eventType);
+  }
+
+  /**
+   * 获取鼠标按钮值
+   */
+  private getMouseButton(eventType: string): number {
+    switch (eventType) {
+      case 'contextmenu':
+        return 2; // 右键
+      case 'click':
+      case 'dblclick':
+      case 'mousedown':
+      case 'mouseup':
+        return 0; // 左键
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * 获取鼠标按钮状态
+   */
+  private getMouseButtons(eventType: string): number {
+    switch (eventType) {
+      case 'contextmenu':
+        return 2; // 右键按下
+      case 'click':
+      case 'dblclick':
+      case 'mousedown':
+      case 'mouseup':
+        return 1; // 左键按下
+      default:
+        return 0;
+    }
   }
 
   /**
@@ -267,13 +328,32 @@ export class OpenInulaEventAdapter {
   }
 
   /**
+   * 触发 OpenInula 右键事件 (contextmenu)
+   */
+  async triggerContextMenuEvent(element: Element): Promise<OpenInulaEventTriggerResult> {
+    // 尝试触发 OpenInula 事件
+    const openinulaResult = await this.tryTriggerOpenInulaEvent(element, 'contextmenu');
+    if (openinulaResult.success) {
+      return openinulaResult;
+    }
+
+    // 回退到原生事件
+    return this.triggerNativeContextMenuEvent(element);
+  }
+
+  /**
    * 触发原生 click 事件（备用方案）
    */
   private triggerNativeClickEvent(element: Element): OpenInulaEventTriggerResult {
     try {
-      const clickEvent = new Event('click', { 
+      const rect = element.getBoundingClientRect();
+      const clickEvent = new MouseEvent('click', { 
         bubbles: true, 
-        cancelable: true 
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        button: 0,
+        buttons: 1
       });
 
       // 设置事件的 target 属性
@@ -290,6 +370,39 @@ export class OpenInulaEventAdapter {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.debug(`触发原生 click 事件失败: ${errorMessage}`);
+      return { success: false, method: 'native', error: errorMessage };
+    }
+  }
+
+  /**
+   * 触发原生 contextmenu 事件（备用方案）
+   */
+  private triggerNativeContextMenuEvent(element: Element): OpenInulaEventTriggerResult {
+    try {
+      const rect = element.getBoundingClientRect();
+      const contextMenuEvent = new MouseEvent('contextmenu', { 
+        bubbles: true, 
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+        button: 2,
+        buttons: 2
+      });
+
+      // 设置事件的 target 属性
+      Object.defineProperty(contextMenuEvent, 'target', { 
+        value: element, 
+        enumerable: true 
+      });
+
+      element.dispatchEvent(contextMenuEvent);
+      
+      this.logger.debug('原生 contextmenu 事件已触发');
+      return { success: true, method: 'native' };
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.logger.debug(`触发原生 contextmenu 事件失败: ${errorMessage}`);
       return { success: false, method: 'native', error: errorMessage };
     }
   }
@@ -367,4 +480,15 @@ export async function triggerOpenInulaClickEvent(
 ): Promise<OpenInulaEventTriggerResult> {
   const adapter = getOpenInulaAdapter(logger);
   return adapter.triggerClickEvent(element);
+}
+
+/**
+ * 便捷函数：触发 OpenInula 右键事件
+ */
+export async function triggerOpenInulaContextMenuEvent(
+  element: Element,
+  logger?: any
+): Promise<OpenInulaEventTriggerResult> {
+  const adapter = getOpenInulaAdapter(logger);
+  return adapter.triggerContextMenuEvent(element);
 }

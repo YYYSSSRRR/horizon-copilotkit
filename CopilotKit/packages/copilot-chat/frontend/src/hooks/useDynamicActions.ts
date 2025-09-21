@@ -1,4 +1,4 @@
-import { useDynamicActions as useCoreDynamicActions } from '@copilotkit/react-core-next'
+import { useDynamicActions as useCoreDynamicActions } from '@copilotkit/copilot-client'
 import { page } from '@copilotkit/playwright-actuator';
 import menuData from '../../menu-data/NCE-analysis.json';
 

@@ -8,7 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@copilotkit/react-core-next': fileURLToPath(new URL('../../CopilotKit/packages/react-core-next/src', import.meta.url)),
+      '@copilotkit/copilot-client': fileURLToPath(new URL('../../CopilotKit/packages/copilot-client/src', import.meta.url)),
       '@copilotkit/playwright-actuator': fileURLToPath(new URL('../../CopilotKit/packages/playwright-actuator/src', import.meta.url)),
     },
   },
