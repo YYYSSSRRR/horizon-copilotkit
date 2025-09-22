@@ -40,45 +40,52 @@ export function HomePage() {
   const [showTravelModal, setShowTravelModal] = useState(false)
   const [travelOptions, setTravelOptions] = useState<any[]>([])
   const [currentInterruptId, setCurrentInterruptId] = useState<string | null>(null)
+  // 用于跟踪已处理的消息，避免重复处理
+  const [processedMessageIds, setProcessedMessageIds] = useState<Set<string>>(new Set())
   
   // 审批状态
-  const [showApprovalModal, setShowApprovalModal] = useState(false)
-  const [approvalRequest, setApprovalRequest] = useState<{
-    id: string;
-    actionName: string;
-    message: string;
-    parameters: any;
-  } | null>(null)
+  const [pendingApprovals, setPendingApprovals] = useState<{
+    [key: string]: {
+      id: string;
+      actionName: string;
+      message: string;
+      parameters: any;
+    }
+  }>({})
   
-  // 处理旅行选项选择
+  // 处理旅行选项选择 - 直接模拟预订流程
   const handleTravelOptionSelect = useCallback(async (selectedOption: any) => {
-    if (!currentInterruptId || !interruptManager) return;
-    
     try {
       setShowTravelModal(false);
-      const result = await interruptManager.resumeAction(currentInterruptId, selectedOption);
+      const result = await interruptManager?.resumeAction(currentInterruptId||"", selectedOption);
       toast(`行程预订成功: ${result}`, 'success');
       setCurrentInterruptId(null);
       setTravelOptions([]);
     } catch (error) {
       toast(`处理失败: ${error}`, 'error');
     }
-  }, [currentInterruptId, interruptManager, toast]);
+  }, [toast, interruptManager, currentInterruptId]);
 
   // 处理审批按钮点击
-  const handleApprovalDecision = useCallback(async (decision: 'approve' | 'reject') => {
-    if (!approvalRequest || !interruptManager) return;
+  const handleApprovalDecision = useCallback(async (approvalId: string, decision: 'approve' | 'reject') => {
+    const approval = pendingApprovals[approvalId];
+    if (!approval || !interruptManager) return;
     
     try {
-      setShowApprovalModal(false);
       const decisionText = decision === 'approve' ? 'y' : 'n';
-      const result = await interruptManager.resumeAction(approvalRequest.id, decisionText);
+      const result = await interruptManager.resumeAction(approval.id, decisionText);
       toast(`审批${decision === 'approve' ? '通过' : '拒绝'}: ${result}`, 'success');
-      setApprovalRequest(null);
+      
+      // 移除已处理的审批
+      setPendingApprovals(prev => {
+        const newApprovals = { ...prev };
+        delete newApprovals[approvalId];
+        return newApprovals;
+      });
     } catch (error) {
       toast(`处理失败: ${error}`, 'error');
     }
-  }, [approvalRequest, interruptManager, toast]);
+  }, [pendingApprovals, interruptManager, toast]);
   
   // 表单处理函数
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -233,21 +240,28 @@ export function HomePage() {
       onInterrupt: (actionName: string, parameters: any, interruptId: string) => {
         const dataToSubmit = parameters.formData || formData;
         
-        // 设置审批请求并显示弹框
-        setApprovalRequest({
-          id: interruptId,
-          actionName,
-          message: `提交表单数据：${JSON.stringify(dataToSubmit, null, 2)}`,
-          parameters: parameters
-        });
-        setShowApprovalModal(true);
+        // 添加审批请求到待处理列表
+        setPendingApprovals(prev => ({
+          ...prev,
+          [interruptId]: {
+            id: interruptId,
+            actionName,
+            message: `提交表单数据：${JSON.stringify(dataToSubmit, null, 2)}`,
+            parameters: parameters
+          }
+        }));
         
         return `🔐 **表单提交审批请求已创建**
 
-审批弹框已显示，请在弹框中选择批准或拒绝。`;
+请在下方的审批按钮中选择批准或拒绝。
+
+📋 **待审批操作：** ${actionName}
+📝 **审批ID：** ${interruptId.slice(-8)}
+
+APPROVAL_BUTTONS:${interruptId}`;
       },
       
-      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+      onResume: async (_actionName: string, originalParameters: any, resumeData: any) => {
         const normalizedDecision = String(resumeData).toLowerCase().trim();
         const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
         
@@ -260,7 +274,7 @@ export function HomePage() {
         return `✅ 批准 - ${result}`;
       }
     }
-  }), []);
+  }), [formData, toast]);
 
   useCopilotAction(submitFormAction);
 
@@ -291,21 +305,28 @@ export function HomePage() {
     ],
     interruptHandler: {
       onInterrupt: (actionName: string, parameters: any, interruptId: string) => {
-        // 设置审批请求并显示弹框
-        setApprovalRequest({
-          id: interruptId,
-          actionName,
-          message: `重置表单数据：${JSON.stringify(parameters, null, 2)}`,
-          parameters: parameters
-        });
-        setShowApprovalModal(true);
+        // 添加审批请求到待处理列表
+        setPendingApprovals(prev => ({
+          ...prev,
+          [interruptId]: {
+            id: interruptId,
+            actionName,
+            message: `重置表单数据：${JSON.stringify(parameters, null, 2)}`,
+            parameters: parameters
+          }
+        }));
         
         return `🔐 **表单重置审批请求已创建**
 
-审批弹框已显示，请在弹框中选择批准或拒绝。`;
+请在下方的审批按钮中选择批准或拒绝。
+
+📋 **待审批操作：** ${actionName}
+📝 **审批ID：** ${interruptId.slice(-8)}
+
+APPROVAL_BUTTONS:${interruptId}`;
       },
       
-      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
+      onResume: async (_actionName: string, _originalParameters: any, resumeData: any) => {
         const normalizedDecision = String(resumeData).toLowerCase().trim();
         const isApproved = ['y', 'yes', '同意', '是', 'approve', 'approved'].includes(normalizedDecision);
         
@@ -387,7 +408,10 @@ export function HomePage() {
 
   useCopilotAction(interruptReplyAction);
 
-  // AI生成旅行规划 
+  // 移除前端AI旅行规划action，直接使用后端的generateTravelPlan动作
+  
+  /*
+  // 已注释掉的前端action定义
   const aiTravelPlanAction = useMemo<FrontendAction<[
     { name: "destination"; type: "string"; description: string; required: true },
     { name: "budget"; type: "string"; description: string; required: false },
@@ -422,141 +446,26 @@ export function HomePage() {
         required: false,
       }
     ],
-    asyncInterruptHandler: {
-      onInterrupt: async (actionName: string, parameters: any, interruptId: string, runtimeClient?: any) => {
-        const { destination, budget, days, preferences } = parameters;
-        
-        try {
-          console.log(`[AI旅行规划] 开始调用后端AI为${destination}生成旅行方案...`);
-          
-          // 调用后端AI生成旅行方案
-          const response = await fetch('/api/ai/generate-travel-plans', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              destination,
-              budget: budget || '10000',
-              days: days || 7,
-              preferences: preferences || ''
-            })
-          });
-          
-          if (!response.ok) {
-            throw new Error(`AI调用失败: ${response.status} ${response.statusText}`);
-          }
-          
-          const aiResponse = await response.json();
-          console.log(`[AI旅行规划] AI成功生成${aiResponse.plans?.length || 0}个方案`);
-          
-          if (!aiResponse.success || !aiResponse.plans || aiResponse.plans.length === 0) {
-            throw new Error('AI返回的数据格式错误或没有生成方案');
-          }
-          
-          // 显示旅行选项弹框
-          setTravelOptions(aiResponse.plans);
-          setCurrentInterruptId(interruptId);
-          setShowTravelModal(true);
-          
-          // 返回给聊天的提示消息
-          return `🤖 **AI旅行规划完成！**
-
-基于您的需求，AI已为您量身定制：
-- 📍 目的地：${destination}
-- 💰 预算：${budget || '10000'}元
-- 📅 天数：${days || 7}天
-- 🎯 偏好：${preferences || '综合体验'}
-
-🎊 **AI已生成 ${aiResponse.plans.length} 个个性化旅行方案**：
-
-${aiResponse.plans.map((option: any, index: number) => 
-`**${index + 1}. ${option.title}**
-💡 AI推荐：${option.aiReason}
-💰 价格：¥${option.price}
-✨ 亮点：${option.highlights?.join('、')}
-`).join('\n')}
-
-🎉 **选择弹框已弹出**，请在弹框中选择您心仪的旅行方案！
-
-💭 每个方案都是真正的AI根据${destination}的实际情况和您的个人偏好精心设计的，点击选择即可查看详细行程和预订。`;
-          
-        } catch (error) {
-          console.error(`[AI旅行规划] AI调用失败:`, error);
-          
-          // AI调用失败时的降级方案
-          const fallbackOptions = [
-            {
-              id: 1,
-              title: `${destination} 经典文化之旅`,
-              description: `${days || 7}天深度文化体验，预算约${budget || '10000'}元`,
-              highlights: ['历史古迹游览', '当地文化体验', '传统美食品尝', '民俗活动参与'],
-              price: parseInt(budget || '10000') * 0.8,
-              itinerary: `第1-2天：抵达${destination}，市区观光\n第3-4天：历史文化景点深度游\n第5-6天：当地民俗体验\n第${days || 7}天：返程`,
-              aiReason: `AI暂时不可用，为您提供${destination}的经典文化体验路线`
-            }
-          ];
-          
-          setTravelOptions(fallbackOptions);
-          setCurrentInterruptId(interruptId);
-          setShowTravelModal(true);
-          
-          return `⚠️ **AI旅行规划（降级模式）**
-
-抱歉，AI服务暂时不可用（${error}），为您提供备用方案：
-
-📍 目的地：${destination}
-💰 预算：${budget || '10000'}元
-📅 天数：${days || 7}天
-
-🎯 **备用方案已生成**：
-${fallbackOptions.map((option, index) => 
-`**${index + 1}. ${option.title}**
-💡 说明：${option.aiReason}
-💰 价格：¥${option.price}
-✨ 亮点：${option.highlights.join('、')}
-`).join('\n')}
-
-🎉 **选择弹框已弹出**，请选择方案继续！`;
-        }
-      },
+    // 使用简单的handler，让CopilotKit自动调用后端的generateTravelPlan动作
+    handler: async (args: { destination: string; budget?: string; days?: number; preferences?: string }) => {
+      console.log(`[AI旅行规划] 前端action被调用，参数:`, args);
       
-      onResume: async (actionName: string, originalParameters: any, resumeData: any) => {
-        const selectedOption = resumeData;
-        const { destination } = originalParameters;
-        
-        // 模拟预订处理时间
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        return `✅ **AI旅行方案预订成功！**
+      // 返回一个引导消息，实际的AI生成会由后端的generateTravelPlan动作处理
+      return `🧳 正在为您生成AI旅行规划...
 
-🎊 恭喜您选择了"${selectedOption.title}"！
+目的地：${args.destination}
+预算：${args.budget || '10000'}元  
+天数：${args.days || 7}天
+偏好：${args.preferences || '综合体验'}
 
-📋 **预订详情：**
-- 🏝️ 目的地：${destination}
-- 📊 方案：${selectedOption.title}
-- 🗓️ 描述：${selectedOption.description}
-- 💰 总价：¥${selectedOption.price}
-- ⭐ 特色服务：${selectedOption.highlights?.join('、')}
+AI正在为您精心规划个性化旅行方案，请稍候...
 
-📅 **详细行程安排：**
-${selectedOption.itinerary}
+注意：实际的方案生成将由generateTravelPlan动作处理，生成完成后会自动显示选择弹窗。`;
+  }
+  }), []);
 
-🎫 **预订确认号：** AI-TRIP-${Date.now()}
-
-📧 **后续服务：**
-- 详细行程单将发送到您的邮箱
-- 专属客服将在24小时内联系您确认细节
-- 出行前会提供详细的旅行攻略和注意事项
-
-🤖 **AI贴心提示：** ${selectedOption.aiReason}
-
-祝您旅途愉快！有任何问题随时咨询我们的AI助手。✈️🌟`;
-      }
-    }
-  }), [setTravelOptions, setCurrentInterruptId, setShowTravelModal]);
-
-  useCopilotAction(aiTravelPlanAction);
+  // useCopilotAction(aiTravelPlanAction); // 已移除
+  */
 
   useCopilotScriptAction(askLlmAction);
   useCopilotScriptAction(fillFormAction);
@@ -589,7 +498,7 @@ ${selectedOption.itinerary}
     5. 显示通知消息 (showNotification) - 前端处理，无需审批
     6. 提交表单数据 (submitForm) - 前端中断处理，用户点击弹框按钮确认
     7. 重置表单数据 (resetFormData) - 前端中断处理，用户点击弹框按钮确认
-    8. AI旅行规划 (planAITrip) - 异步中断处理，AI生成方案供用户选择
+    8. AI旅行规划 (generateTravelPlan) - 后端AI生成多个方案，前端显示选择弹窗
     9. 处理前端中断回复 (handleInterruptReply) - 仅用于前端中断请求的处理
   `, [backendStatus, currentTime, userInfo, systemStatus])
 
@@ -672,6 +581,57 @@ ${selectedOption.itinerary}
 
                 if (!content) return null;
                 
+                // 初始化显示内容和审批ID
+                let displayContent = content;
+                let approvalId = null;
+                
+                // 检查是否包含TRAVEL_PLANS_JSON格式的数据
+                const travelPlansMatch = content.match(/TRAVEL_PLANS_JSON:(.+)$/s);
+                const messageId = `${index}_${content.slice(0, 50)}`;
+                
+                if (travelPlansMatch && !showTravelModal && !processedMessageIds.has(messageId)) {
+                  try {
+                    const travelData = JSON.parse(travelPlansMatch[1]);
+                    console.log('[旅行规划] 检测到旅行方案数据:', travelData);
+                    
+                    // 标记消息为已处理
+                    setProcessedMessageIds(prev => new Set([...prev, messageId]));
+                    
+                    // 生成唯一的interrupt ID
+                    const interruptId = `travel_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+                    
+                    // 使用setTimeout避免在渲染过程中直接setState
+                    setTimeout(() => {
+                      setTravelOptions(travelData.plans);
+                      setCurrentInterruptId(interruptId);
+                      setShowTravelModal(true);
+                    }, 0);
+                    
+                    // 显示生成完成的消息
+                    displayContent = `🧳 **AI旅行规划生成完成！**
+
+为您生成了${travelData.plans.length}个${travelData.destination}旅行方案，请在弹出的卡片中选择您喜欢的方案：
+
+${travelData.plans.map((plan: any, index: number) => 
+  `**${index + 1}. ${plan.title}** - ${plan.description} (¥${plan.price})`
+).join('\n')}
+
+请从弹出的卡片中选择一个方案继续预订。`;
+                    
+                  } catch (error) {
+                    console.error('[旅行规划] 解析旅行数据失败:', error);
+                    displayContent = content.replace(/TRAVEL_PLANS_JSON:.+$/s, '旅行方案数据解析失败').trim();
+                  }
+                } else {
+                  // 检查是否包含审批按钮标记
+                  const approvalMatch = content.match(/APPROVAL_BUTTONS:(.+?)$/m);
+                  
+                  if (approvalMatch) {
+                    approvalId = approvalMatch[1];
+                    displayContent = content.replace(/APPROVAL_BUTTONS:.+$/m, '').trim();
+                  }
+                }
+                
                 return (
                   <div
                     key={index}
@@ -686,7 +646,30 @@ ${selectedOption.itinerary}
                           : 'bg-gray-200 text-gray-800'
                       }`}
                     >
-                      <p className="text-sm whitespace-pre-wrap">{content}</p>
+                      <p className="text-sm whitespace-pre-wrap">{displayContent}</p>
+                      
+                      {/* 内联审批按钮 */}
+                      {approvalId && pendingApprovals[approvalId] && (
+                        <div className="mt-3 pt-3 border-t border-gray-300">
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => handleApprovalDecision(approvalId, 'reject')}
+                              className="flex-1 px-3 py-1.5 text-xs bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                            >
+                              ❌ 拒绝
+                            </button>
+                            <button
+                              onClick={() => handleApprovalDecision(approvalId, 'approve')}
+                              className="flex-1 px-3 py-1.5 text-xs bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+                            >
+                              ✅ 批准
+                            </button>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 text-center">
+                            审批ID: {approvalId.slice(-8)}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -768,7 +751,7 @@ ${selectedOption.itinerary}
                   重置表单 (需审批)
                 </button>
                 <button
-                  onClick={() => handleSendMessage("帮我规划一个去日本的7天旅行")}
+                  onClick={() => handleSendMessage("使用generateTravelPlan生成去日本7天的旅行方案，预算15000元，偏好文化体验")}
                   className="w-full px-3 py-2 text-sm bg-pink-500 text-white rounded hover:bg-pink-600"
                 >
                   AI旅行规划 (新功能)
@@ -834,15 +817,6 @@ ${selectedOption.itinerary}
         />
       )}
 
-      {/* 审批弹框 */}
-      {showApprovalModal && approvalRequest && (
-        <ApprovalModal
-          request={approvalRequest}
-          onApprove={() => handleApprovalDecision('approve')}
-          onReject={() => handleApprovalDecision('reject')}
-          onClose={() => setShowApprovalModal(false)}
-        />
-      )}
     </div>
   )
 }
@@ -1258,73 +1232,4 @@ function TravelOptionsModal({
   );
 }
 
-// 审批弹框组件
-function ApprovalModal({ 
-  request, 
-  onApprove, 
-  onReject, 
-  onClose 
-}: {
-  request: {
-    id: string;
-    actionName: string;
-    message: string;
-    parameters: any;
-  },
-  onApprove: () => void,
-  onReject: () => void,
-  onClose: () => void
-}) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-        <div className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold text-gray-900">🔐 审批请求</h2>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 text-xl"
-              aria-label="关闭弹框"
-            >
-              ×
-            </button>
-          </div>
-          
-          <div className="mb-6">
-            <div className="mb-4">
-              <h3 className="font-semibold text-gray-700">动作名称:</h3>
-              <p className="text-gray-600">{request.actionName}</p>
-            </div>
-            
-            <div className="mb-4">
-              <h3 className="font-semibold text-gray-700">详情:</h3>
-              <div className="text-gray-600 bg-gray-50 p-3 rounded text-sm">
-                {request.message}
-              </div>
-            </div>
-            
-            <div className="mb-4">
-              <h3 className="font-semibold text-gray-700">审批ID:</h3>
-              <p className="text-gray-600 font-mono text-sm">{request.id.slice(-8)}</p>
-            </div>
-          </div>
-          
-          <div className="flex space-x-3">
-            <button
-              onClick={onReject}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
-            >
-              ❌ 拒绝
-            </button>
-            <button
-              onClick={onApprove}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
-            >
-              ✅ 批准
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-} 
+ 

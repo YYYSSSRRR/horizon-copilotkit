@@ -171,8 +171,3 @@ export function useFrontendInterruptManager() {
   return frontendInterruptManager;
 }
 
-// 向后兼容的审批管理器Hook
-export function useFrontendApprovalManager() {
-  const { frontendInterruptManager } = useCopilotContext();
-  return frontendInterruptManager;
-} 
