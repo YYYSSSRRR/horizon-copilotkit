@@ -607,7 +607,279 @@ export function useBusinessActions() {
   //   useCopilotAction(action);
   // });
 
+  // 测试函数间数据传递的 Actions
+  const dataFlowTestActions = useMemo(() => [
+    // 第一步：创建用户会话
+    {
+      name: "createUserSession",
+      description: "[Category: DataFlow] 创建用户会话，返回会话ID和用户信息，供后续操作使用",
+      parameters: [
+        {
+          name: "username",
+          description: "用户名",
+          type: "string",
+          required: true,
+        },
+        {
+          name: "email",
+          description: "用户邮箱",
+          type: "string",
+          required: false,
+        },
+      ],
+      handler: async (args: any) => {
+        const { username, email = `${username}@example.com` } = args;
+        const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const userInfo = {
+          id: `user_${Math.random().toString(36).substr(2, 9)}`,
+          username,
+          email,
+          createdAt: new Date().toISOString(),
+        };
+        
+        console.log(`---------------------> Creating user session for: ${username}`);
+        
+        // 返回结构化数据供其他函数使用
+        return {
+          success: true,
+          sessionId,
+          userInfo,
+          message: `已为用户 ${username} 创建会话 ${sessionId}`,
+        };
+      },
+    },
+
+    // 第二步：获取用户权限（依赖会话信息）
+    {
+      name: "getUserPermissions",
+      description: "[Category: DataFlow] [Dependencies: createUserSession] 根据用户会话信息获取用户权限列表",
+      parameters: [
+        {
+          name: "sessionData",
+          description: "来自 createUserSession 的会话数据，包含 sessionId 和 userInfo",
+          type: "object",
+          required: true,
+        },
+      ],
+      handler: async (args: any) => {
+        const { sessionData } = args;
+        
+        if (!sessionData || !sessionData.sessionId || !sessionData.userInfo) {
+          return {
+            success: false,
+            error: "缺少有效的会话数据，请先调用 createUserSession",
+          };
+        }
+
+        const permissions = [
+          "read_projects",
+          "write_projects",
+          sessionData.userInfo.username.includes("admin") ? "admin_access" : "user_access",
+          "create_reports",
+        ];
+
+        console.log(`---------------------> Getting permissions for session: ${sessionData.sessionId}`);
+
+        return {
+          success: true,
+          sessionId: sessionData.sessionId,
+          userInfo: sessionData.userInfo,
+          permissions,
+          message: `已获取用户 ${sessionData.userInfo.username} 的权限: ${permissions.join(", ")}`,
+        };
+      },
+    },
+
+    // 第三步：创建项目（依赖用户权限）
+    {
+      name: "createProject",
+      description: "[Category: DataFlow] [Dependencies: getUserPermissions] 根据用户权限创建新项目",
+      parameters: [
+        {
+          name: "permissionData",
+          description: "来自 getUserPermissions 的权限数据，包含用户信息和权限列表",
+          type: "object",
+          required: true,
+        },
+        {
+          name: "projectName",
+          description: "项目名称",
+          type: "string",
+          required: true,
+        },
+        {
+          name: "projectType",
+          description: "项目类型: web, mobile, desktop, api",
+          type: "string",
+          required: false,
+        },
+      ],
+      handler: async (args: any) => {
+        const { permissionData, projectName, projectType = "web" } = args;
+
+        if (!permissionData || !permissionData.permissions) {
+          return {
+            success: false,
+            error: "缺少权限数据，请先调用 getUserPermissions",
+          };
+        }
+
+        if (!permissionData.permissions.includes("write_projects")) {
+          return {
+            success: false,
+            error: `用户 ${permissionData.userInfo.username} 没有创建项目的权限`,
+          };
+        }
+
+        const projectId = `proj_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const project = {
+          id: projectId,
+          name: projectName,
+          type: projectType,
+          ownerId: permissionData.userInfo.id,
+          ownerName: permissionData.userInfo.username,
+          createdAt: new Date().toISOString(),
+          status: "active",
+        };
+
+        console.log(`---------------------> Creating project: ${projectName} for user: ${permissionData.userInfo.username}`);
+
+        return {
+          success: true,
+          project,
+          sessionData: permissionData,
+          message: `已为用户 ${permissionData.userInfo.username} 创建项目"${projectName}"`,
+        };
+      },
+    },
+
+    // 第四步：生成项目报告（依赖项目信息）
+    {
+      name: "generateProjectReport",
+      description: "[Category: DataFlow] [Dependencies: createProject] 为指定项目生成详细报告",
+      parameters: [
+        {
+          name: "projectData",
+          description: "来自 createProject 的项目数据",
+          type: "object",
+          required: true,
+        },
+        {
+          name: "reportType",
+          description: "报告类型: summary, detailed, analytics",
+          type: "string",
+          required: false,
+        },
+      ],
+      handler: async (args: any) => {
+        const { projectData, reportType = "summary" } = args;
+
+        if (!projectData || !projectData.project) {
+          return {
+            success: false,
+            error: "缺少项目数据，请先调用 createProject",
+          };
+        }
+
+        if (!projectData.sessionData.permissions.includes("create_reports")) {
+          return {
+            success: false,
+            error: `用户 ${projectData.sessionData.userInfo.username} 没有生成报告的权限`,
+          };
+        }
+
+        const reportId = `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const report = {
+          id: reportId,
+          projectId: projectData.project.id,
+          projectName: projectData.project.name,
+          type: reportType,
+          generatedBy: projectData.sessionData.userInfo.username,
+          generatedAt: new Date().toISOString(),
+          content: {
+            summary: `项目 "${projectData.project.name}" 的${reportType}报告`,
+            details: {
+              projectType: projectData.project.type,
+              owner: projectData.project.ownerName,
+              createdDate: projectData.project.createdAt,
+              status: projectData.project.status,
+            },
+          },
+        };
+
+        console.log(`---------------------> Generating ${reportType} report for project: ${projectData.project.name}`);
+
+        return {
+          success: true,
+          report,
+          projectData,
+          message: `已为项目"${projectData.project.name}"生成${reportType}报告`,
+        };
+      },
+    },
+
+    // 第五步：发送报告通知（依赖报告信息）
+    {
+      name: "sendReportNotification",
+      description: "[Category: DataFlow] [Dependencies: generateProjectReport] 向相关用户发送报告生成通知",
+      parameters: [
+        {
+          name: "reportData",
+          description: "来自 generateProjectReport 的报告数据",
+          type: "object",
+          required: true,
+        },
+        {
+          name: "notificationMethod",
+          description: "通知方式: email, sms, system",
+          type: "string",
+          required: false,
+        },
+      ],
+      handler: async (args: any) => {
+        const { reportData, notificationMethod = "system" } = args;
+
+        if (!reportData || !reportData.report) {
+          return {
+            success: false,
+            error: "缺少报告数据，请先调用 generateProjectReport",
+          };
+        }
+
+        const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const notification = {
+          id: notificationId,
+          reportId: reportData.report.id,
+          recipient: reportData.projectData.sessionData.userInfo,
+          method: notificationMethod,
+          subject: `项目报告已生成: ${reportData.projectData.project.name}`,
+          message: `您的项目"${reportData.projectData.project.name}"的${reportData.report.type}报告已生成完成`,
+          sentAt: new Date().toISOString(),
+        };
+
+        console.log(`---------------------> Sending ${notificationMethod} notification for report: ${reportData.report.id}`);
+
+        return {
+          success: true,
+          notification,
+          fullWorkflowData: {
+            session: reportData.projectData.sessionData,
+            project: reportData.projectData.project,
+            report: reportData.report,
+            notification,
+          },
+          message: `已通过${notificationMethod}向用户 ${reportData.projectData.sessionData.userInfo.username} 发送报告通知`,
+        };
+      },
+    },
+  ], []);
+
   scriptActions.forEach(action => {
     useCopilotScriptAction(action);
+  });
+
+  // 注册数据流测试 Actions
+  dataFlowTestActions.forEach(action => {
+    useCopilotAction(action);
   });
 }
