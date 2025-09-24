@@ -164,4 +164,7 @@ def health_check():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    import os
+    port = int(os.getenv('SERVER_PORT', 5000))
+    host = os.getenv('HOST', '127.0.0.1')
+    app.run(debug=True, port=port, host=host)
