@@ -1,10 +1,62 @@
 import axios from 'axios';
 import { GenerateFunctionRequest, RAGStoreRequest, GenerateResponse } from '../types';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-  timeout: 30000,
+// 从环境变量读取后端配置
+const BACKEND_HOST = import.meta.env.VITE_BACKEND_HOST || 'localhost';
+const BACKEND_PORT = import.meta.env.VITE_BACKEND_PORT || '5000';
+const API_BASE_URL = `http://${BACKEND_HOST}:${BACKEND_PORT}/api`;
+
+console.log('API Configuration:', {
+  BACKEND_HOST,
+  BACKEND_PORT,
+  API_BASE_URL
 });
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000'),
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// 添加请求拦截器进行调试
+api.interceptors.request.use(
+  (config) => {
+    console.log('API Request:', {
+      method: config.method,
+      url: config.url,
+      baseURL: config.baseURL,
+      fullURL: `${config.baseURL}${config.url}`
+    });
+    return config;
+  },
+  (error) => {
+    console.error('API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// 添加响应拦截器进行调试
+api.interceptors.response.use(
+  (response) => {
+    console.log('API Response:', {
+      status: response.status,
+      url: response.config.url,
+      data: response.data
+    });
+    return response;
+  },
+  (error) => {
+    console.error('API Response Error:', {
+      message: error.message,
+      status: error.response?.status,
+      url: error.config?.url,
+      data: error.response?.data
+    });
+    return Promise.reject(error);
+  }
+);
 
 export const generateFunction = async (data: GenerateFunctionRequest): Promise<GenerateResponse> => {
   try {
