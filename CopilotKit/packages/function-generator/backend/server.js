@@ -602,50 +602,97 @@ async function verifyPlaywrightProcess(pid) {
     let cmd, args;
     
     if (platform === 'win32') {
-      // Windows: 使用 tasklist
+      // Windows: 使用 tasklist，获取进程名称和命令行
       cmd = 'tasklist';
       args = ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'];
     } else {
-      // Unix/Linux/macOS: 使用 ps
+      // Unix/Linux/macOS: 使用 ps 获取完整命令行
       cmd = 'ps';
-      args = ['-p', pid.toString(), '-o', 'comm='];
+      args = ['-p', pid.toString(), '-o', 'pid,comm,args', '--no-headers'];
     }
     
     return new Promise((resolve) => {
-      const process = spawn(cmd, args, { stdio: 'pipe', shell: true });
+      const childProcess = spawn(cmd, args, { stdio: 'pipe', shell: true });
       let output = '';
+      let errorOutput = '';
       
-      process.stdout.on('data', (data) => {
+      childProcess.stdout.on('data', (data) => {
         output += data.toString();
       });
       
-      process.on('close', (code) => {
-        if (code !== 0) {
-          // 命令执行失败，进程可能不存在
+      childProcess.stderr.on('data', (data) => {
+        errorOutput += data.toString();
+      });
+      
+      childProcess.on('close', (code) => {
+        logger.info('进程验证命令执行完成', { 
+          pid, 
+          cmd: `${cmd} ${args.join(' ')}`, 
+          exitCode: code, 
+          output: output.trim(),
+          errorOutput: errorOutput.trim()
+        });
+        
+        // 检查输出内容来判断进程是否存在和类型
+        const outputTrimmed = output.trim();
+        
+        if (!outputTrimmed || outputTrimmed.length === 0) {
+          // 没有输出，说明进程不存在
+          logger.info('进程不存在（无输出）', { pid });
           resolve(false);
           return;
         }
         
-        const outputLower = output.toLowerCase();
-        // 检查输出是否包含 playwright 或 node 相关关键词
+        // 在 Windows 下，tasklist 没有找到进程时会返回特殊信息
+        if (platform === 'win32' && outputTrimmed.includes('INFO: No tasks are running')) {
+          logger.info('Windows 进程不存在', { pid });
+          resolve(false);
+          return;
+        }
+        
+        // 检查输出是否包含我们的 PID（额外验证）
+        if (!outputTrimmed.includes(pid.toString())) {
+          logger.info('输出中未找到目标 PID', { pid, output: outputTrimmed });
+          resolve(false);
+          return;
+        }
+        
+        // 进程存在，检查是否是 Playwright 相关进程
+        const outputLower = outputTrimmed.toLowerCase();
         const isPlaywright = outputLower.includes('playwright') || 
                             outputLower.includes('node') || 
                             outputLower.includes('npx') ||
                             outputLower.includes('chrome') ||
-                            outputLower.includes('chromium');
+                            outputLower.includes('chromium') ||
+                            outputLower.includes('codegen'); // Playwright codegen 命令
+        
+        logger.info('进程验证结果', { 
+          pid, 
+          exists: true, 
+          isPlaywright,
+          processInfo: outputTrimmed 
+        });
         
         resolve(isPlaywright);
       });
       
-      // 3秒超时
-      setTimeout(() => {
-        process.kill();
+      childProcess.on('error', (error) => {
+        logger.warn('进程验证命令执行失败', { pid, error: error.message });
         resolve(false);
-      }, 3000);
+      });
+      
+      // 5秒超时
+      setTimeout(() => {
+        if (!childProcess.killed) {
+          logger.warn('进程验证命令超时，终止执行', { pid });
+          childProcess.kill('SIGKILL');
+          resolve(false);
+        }
+      }, 5000);
     });
   } catch (error) {
-    logger.warn('验证 Playwright 进程失败', { pid, error: error.message });
-    return true; // 保守地认为是 Playwright 进程
+    logger.warn('验证 Playwright 进程异常', { pid, error: error.message });
+    return false; // 出错时保守地认为进程不存在
   }
 }
 
