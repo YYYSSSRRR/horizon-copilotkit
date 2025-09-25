@@ -289,7 +289,6 @@ app.post('/api/playwright/record', async (req, res) => {
 
     // ========== 尝试获取 Playwright 路径 ==========
     // 先尝试获取 Playwright 的实际安装路径（用于调试）
-    let playwrightPath = 'npx';
     try {
       const whichCmd = spawn('where', ['playwright'], { stdio: 'pipe', shell: true });
       let pathOutput = '';
@@ -455,36 +454,183 @@ app.post('/api/playwright/record', async (req, res) => {
 
 /**
  * 检查录制的脚本
+ * 智能判断录制是否真正完成，避免读取未完成的文件
  */
 app.post('/api/playwright/check-script', async (req, res) => {
   try {
-    const { filePath } = req.body;
+    const { filePath, processId } = req.body;
     
-    logger.info('检查录制脚本', { filePath });
+    logger.info('检查录制脚本', { filePath, processId });
     
+    // ========== 文件存在性检查 ==========
     if (!filePath || !fs.existsSync(filePath)) {
       logger.info('脚本文件不存在', { filePath });
-      return res.json({ exists: false, content: '' });
+      return res.json({ 
+        exists: false, 
+        content: '',
+        recording: true,
+        message: '录制进行中，文件尚未生成'
+      });
     }
     
+    // ========== 进程状态检查 ==========
+    let processRunning = false;
+    if (processId) {
+      try {
+        // 检查进程是否还在运行
+        process.kill(processId, 0);
+        processRunning = true;
+        logger.info('录制进程仍在运行', { processId });
+      } catch (error) {
+        // 进程不存在，说明已经结束
+        processRunning = false;
+        logger.info('录制进程已结束', { processId });
+      }
+    }
+    
+    // ========== 文件内容和状态检查 ==========
+    const stats = fs.statSync(filePath);
     const content = fs.readFileSync(filePath, 'utf-8');
+    const contentTrimmed = content.trim();
     
-    logger.info('脚本文件读取成功', { 
-      filePath, 
-      size: `${content.length} 字符` 
+    // 计算文件最后修改时间距离现在的时间差（毫秒）
+    const timeSinceLastModified = Date.now() - stats.mtime.getTime();
+    
+    logger.info('文件状态检查', { 
+      filePath,
+      fileSize: stats.size,
+      contentLength: contentTrimmed.length,
+      lastModified: stats.mtime,
+      timeSinceLastModified: `${timeSinceLastModified}ms`,
+      processRunning
     });
     
-    res.json({
-      exists: true,
-      content: content,
-      message: '脚本录制完成'
-    });
+    // ========== 录制完成判断逻辑 ==========
+    const isRecordingComplete = checkRecordingComplete(contentTrimmed, timeSinceLastModified, processRunning);
+    
+    if (isRecordingComplete.complete) {
+      logger.info('录制已完成', { 
+        filePath, 
+        reason: isRecordingComplete.reason,
+        contentSize: `${contentTrimmed.length} 字符` 
+      });
+      
+      res.json({
+        exists: true,
+        content: contentTrimmed,
+        recording: false,
+        message: isRecordingComplete.message
+      });
+    } else {
+      logger.info('录制仍在进行中', { 
+        filePath, 
+        reason: isRecordingComplete.reason 
+      });
+      
+      res.json({
+        exists: true,
+        content: contentTrimmed,
+        recording: true,
+        message: isRecordingComplete.message
+      });
+    }
     
   } catch (error) {
     logger.error('检查录制脚本失败', { error: error.message, stack: error.stack });
     res.status(500).json({ error: error.message });
   }
 });
+
+/**
+ * 检查录制是否完成的智能判断函数
+ * @param {string} content - 文件内容
+ * @param {number} timeSinceLastModified - 距离最后修改的时间（毫秒）
+ * @param {boolean} processRunning - 进程是否还在运行
+ * @returns {object} - { complete: boolean, reason: string, message: string }
+ */
+function checkRecordingComplete(content, timeSinceLastModified, processRunning) {
+  // 如果内容为空，肯定还没完成
+  if (!content || content.length === 0) {
+    return {
+      complete: false,
+      reason: '文件内容为空',
+      message: '录制进行中，等待内容生成...'
+    };
+  }
+  
+  // 检查是否包含 Playwright 的基本结构
+  const hasPlaywrightImports = content.includes('test(') || 
+                               content.includes('page.') || 
+                               content.includes('await page') ||
+                               content.includes('import { test, expect }');
+  
+  if (!hasPlaywrightImports) {
+    return {
+      complete: false,
+      reason: '缺少 Playwright 基本结构',
+      message: '录制进行中，等待脚本生成...'
+    };
+  }
+  
+  // 检查是否包含完整的测试结构
+  const hasTestStructure = content.includes('test(') && 
+                          (content.includes('await page.goto') || content.includes('page.goto')) &&
+                          content.includes('}');
+  
+  if (!hasTestStructure) {
+    return {
+      complete: false,
+      reason: '测试结构不完整',
+      message: '录制进行中，脚本结构生成中...'
+    };
+  }
+  
+  // 如果进程还在运行，需要额外检查
+  if (processRunning) {
+    // 如果文件在最近5秒内还在修改，认为还在录制中
+    if (timeSinceLastModified < 5000) {
+      return {
+        complete: false,
+        reason: '文件最近还在修改中',
+        message: '录制进行中，请继续操作...'
+      };
+    }
+    
+    // 如果进程在运行但文件很久没更新了，可能用户还在操作中
+    if (timeSinceLastModified < 30000) { // 30秒内
+      return {
+        complete: false,
+        reason: '录制进程运行中',
+        message: '录制进行中，等待用户操作...'
+      };
+    }
+  }
+  
+  // 进程已结束且有完整内容，认为录制完成
+  if (!processRunning && hasTestStructure) {
+    return {
+      complete: true,
+      reason: '录制进程已结束且内容完整',
+      message: '脚本录制完成！'
+    };
+  }
+  
+  // 文件很长时间没有修改了，且内容看起来完整，可能已经完成
+  if (timeSinceLastModified > 10000 && hasTestStructure && content.length > 100) {
+    return {
+      complete: true,
+      reason: '文件长时间未修改且内容完整',
+      message: '脚本录制完成！'
+    };
+  }
+  
+  // 默认认为还在录制中
+  return {
+    complete: false,
+    reason: '等待录制完成',
+    message: '录制进行中，请继续在浏览器中操作...'
+  };
+}
 
 /**
  * 安装 Playwright 浏览器

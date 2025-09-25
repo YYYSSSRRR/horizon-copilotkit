@@ -104,18 +104,24 @@ const Tab1FunctionDescription: React.FC<Tab1Props> = ({ onGenerated }) => {
           // 开始轮询检查录制结果
           const checkInterval = setInterval(async () => {
             try {
-              const checkResult = await checkRecordedScript(response.filePath);
+              const checkResult = await checkRecordedScript(response.filePath, response.processId);
               
-              if (checkResult.exists && checkResult.content.trim()) {
-                // 录制完成，设置脚本内容
-                setPlaywrightScript(checkResult.content);
-                message.success(checkResult.message || '脚本录制完成！');
-                
-                // 清理定时器并关闭对话框
-                clearInterval(checkInterval);
-                setRecordModalVisible(false);
-                setRecordLoading(false);
-                recordForm.resetFields();
+              if (checkResult.exists) {
+                if (!checkResult.recording && checkResult.content.trim()) {
+                  // 录制完成，设置脚本内容
+                  setPlaywrightScript(checkResult.content);
+                  message.success(checkResult.message || '脚本录制完成！');
+                  
+                  // 清理定时器并关闭对话框
+                  clearInterval(checkInterval);
+                  setRecordModalVisible(false);
+                  setRecordLoading(false);
+                  recordForm.resetFields();
+                } else {
+                  // 录制还在进行中，显示进度信息
+                  console.log('录制进行中:', checkResult.message);
+                  // 可以在这里更新UI显示录制状态
+                }
               }
             } catch (checkError) {
               console.error('Check script error:', checkError);
