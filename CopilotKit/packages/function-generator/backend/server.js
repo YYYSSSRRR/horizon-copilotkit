@@ -703,20 +703,6 @@ function checkRecordingComplete(content, timeSinceLastModified, processRunning) 
     };
   }
   
-  // 检查是否包含 Playwright 的基本结构
-  const hasPlaywrightImports = content.includes('test(') || 
-                               content.includes('page.') || 
-                               content.includes('await page') ||
-                               content.includes('import { test, expect }');
-  
-  if (!hasPlaywrightImports) {
-    return {
-      complete: false,
-      reason: '缺少 Playwright 基本结构',
-      message: '录制进行中，等待脚本生成...'
-    };
-  }
-  
   // 如果进程还在运行，需要额外检查
   if (processRunning) {
     // 如果文件在最近5秒内还在修改，认为还在录制中
