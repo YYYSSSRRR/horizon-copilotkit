@@ -477,14 +477,16 @@ app.post('/api/playwright/check-script', async (req, res) => {
     let processRunning = false;
     if (processId) {
       try {
-        // 检查进程是否还在运行
-        process.kill(processId, 0);
-        processRunning = true;
-        logger.info('录制进程仍在运行', { processId });
+        // 使用更可靠的方式检查进程状态
+        processRunning = await checkProcessRunning(processId);
+        if (processRunning) {
+          logger.info('录制进程仍在运行', { processId });
+        } else {
+          logger.info('录制进程已结束', { processId });
+        }
       } catch (error) {
-        // 进程不存在，说明已经结束
+        logger.warn('检查进程状态失败', { processId, error: error.message });
         processRunning = false;
-        logger.info('录制进程已结束', { processId });
       }
     }
     
@@ -540,6 +542,149 @@ app.post('/api/playwright/check-script', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+/**
+ * 检查进程是否正在运行
+ * 使用跨平台的方式来检查进程状态
+ * @param {number} pid - 进程ID
+ * @returns {Promise<boolean>} - 进程是否运行中
+ */
+async function checkProcessRunning(pid) {
+  if (!pid || pid <= 0) {
+    return false;
+  }
+
+  try {
+    // 方法1: 尝试使用 process.kill(pid, 0) 检查
+    try {
+      process.kill(pid, 0);
+      
+      // 进程存在，但需要进一步验证是否是 Playwright 进程
+      const isPlaywrightProcess = await verifyPlaywrightProcess(pid);
+      return isPlaywrightProcess;
+    } catch (error) {
+      if (error.code === 'ESRCH') {
+        // No such process - 进程不存在
+        return false;
+      } else if (error.code === 'EPERM') {
+        // Operation not permitted - 进程存在但没权限，认为还在运行
+        const isPlaywrightProcess = await verifyPlaywrightProcess(pid);
+        return isPlaywrightProcess;
+      } else {
+        throw error;
+      }
+    }
+  } catch (error) {
+    // 如果 process.kill 方法失败，尝试其他方法
+    try {
+      return await checkProcessByCommand(pid);
+    } catch (cmdError) {
+      // 所有方法都失败，保守地认为进程已结束
+      logger.warn('所有进程检查方法都失败，假定进程已结束', { 
+        pid, 
+        killError: error.message, 
+        cmdError: cmdError.message 
+      });
+      return false;
+    }
+  }
+}
+
+/**
+ * 验证进程是否为 Playwright 相关进程
+ * @param {number} pid - 进程ID
+ * @returns {Promise<boolean>}
+ */
+async function verifyPlaywrightProcess(pid) {
+  try {
+    // 根据操作系统使用不同的命令来检查进程详情
+    const platform = process.platform;
+    let cmd, args;
+    
+    if (platform === 'win32') {
+      // Windows: 使用 tasklist
+      cmd = 'tasklist';
+      args = ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'];
+    } else {
+      // Unix/Linux/macOS: 使用 ps
+      cmd = 'ps';
+      args = ['-p', pid.toString(), '-o', 'comm='];
+    }
+    
+    return new Promise((resolve) => {
+      const process = spawn(cmd, args, { stdio: 'pipe', shell: true });
+      let output = '';
+      
+      process.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+      
+      process.on('close', (code) => {
+        if (code !== 0) {
+          // 命令执行失败，进程可能不存在
+          resolve(false);
+          return;
+        }
+        
+        const outputLower = output.toLowerCase();
+        // 检查输出是否包含 playwright 或 node 相关关键词
+        const isPlaywright = outputLower.includes('playwright') || 
+                            outputLower.includes('node') || 
+                            outputLower.includes('npx') ||
+                            outputLower.includes('chrome') ||
+                            outputLower.includes('chromium');
+        
+        resolve(isPlaywright);
+      });
+      
+      // 3秒超时
+      setTimeout(() => {
+        process.kill();
+        resolve(false);
+      }, 3000);
+    });
+  } catch (error) {
+    logger.warn('验证 Playwright 进程失败', { pid, error: error.message });
+    return true; // 保守地认为是 Playwright 进程
+  }
+}
+
+/**
+ * 使用系统命令检查进程状态
+ * @param {number} pid - 进程ID
+ * @returns {Promise<boolean>}
+ */
+async function checkProcessByCommand(pid) {
+  return new Promise((resolve) => {
+    const platform = process.platform;
+    let cmd, args;
+    
+    if (platform === 'win32') {
+      cmd = 'tasklist';
+      args = ['/FI', `PID eq ${pid}`];
+    } else {
+      cmd = 'ps';
+      args = ['-p', pid.toString()];
+    }
+    
+    const process = spawn(cmd, args, { stdio: 'pipe', shell: true });
+    
+    process.on('close', (code) => {
+      // 退出码为0表示进程存在
+      resolve(code === 0);
+    });
+    
+    process.on('error', () => {
+      resolve(false);
+    });
+    
+    // 5秒超时
+    setTimeout(() => {
+      process.kill();
+      resolve(false);
+    }, 5000);
+  });
+}
 
 /**
  * 检查录制是否完成的智能判断函数
