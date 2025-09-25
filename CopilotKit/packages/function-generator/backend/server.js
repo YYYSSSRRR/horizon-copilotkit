@@ -717,19 +717,6 @@ function checkRecordingComplete(content, timeSinceLastModified, processRunning) 
     };
   }
   
-  // 检查是否包含完整的测试结构
-  const hasTestStructure = content.includes('test(') && 
-                          (content.includes('await page.goto') || content.includes('page.goto')) &&
-                          content.includes('}');
-  
-  if (!hasTestStructure) {
-    return {
-      complete: false,
-      reason: '测试结构不完整',
-      message: '录制进行中，脚本结构生成中...'
-    };
-  }
-  
   // 如果进程还在运行，需要额外检查
   if (processRunning) {
     // 如果文件在最近5秒内还在修改，认为还在录制中
@@ -752,19 +739,10 @@ function checkRecordingComplete(content, timeSinceLastModified, processRunning) 
   }
   
   // 进程已结束且有完整内容，认为录制完成
-  if (!processRunning && hasTestStructure) {
+  if (!processRunning) {
     return {
       complete: true,
       reason: '录制进程已结束且内容完整',
-      message: '脚本录制完成！'
-    };
-  }
-  
-  // 文件很长时间没有修改了，且内容看起来完整，可能已经完成
-  if (timeSinceLastModified > 10000 && hasTestStructure && content.length > 100) {
-    return {
-      complete: true,
-      reason: '文件长时间未修改且内容完整',
       message: '脚本录制完成！'
     };
   }
