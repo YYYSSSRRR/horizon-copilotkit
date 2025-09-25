@@ -132,12 +132,64 @@ app.post('/api/playwright/record', async (req, res) => {
       logger.info('自动添加 https 协议', { originalUrl: req.body.url, finalUrl: url });
     }
 
-    logger.info('开始 Playwright 录制', { url, savePath, fileName });
+    // ========== 路径标准化和安全性检查 ==========
+    // 规范化保存路径，防止路径遍历攻击
+    const normalizedSavePath = path.resolve(savePath);
+    
+    // 基础安全检查：确保路径在当前工作目录或其子目录下
+    const workingDir = process.cwd();
+    if (!normalizedSavePath.startsWith(workingDir) && !path.isAbsolute(normalizedSavePath)) {
+      // 如果不是绝对路径且不在工作目录下，则使用工作目录作为基准
+      savePath = path.join(workingDir, savePath);
+    } else {
+      savePath = normalizedSavePath;
+    }
+
+    logger.info('开始 Playwright 录制', { 
+      url, 
+      originalSavePath: req.body.savePath,
+      resolvedSavePath: savePath, 
+      fileName 
+    });
 
     // ========== 文件目录准备 ==========
     // 确保保存录制脚本的目录存在，如果不存在则递归创建
-    if (!fs.existsSync(savePath)) {
-      fs.mkdirSync(savePath, { recursive: true });
+    try {
+      if (!fs.existsSync(savePath)) {
+        logger.info('创建保存目录', { savePath });
+        fs.mkdirSync(savePath, { recursive: true, mode: 0o755 });
+        logger.info('目录创建成功', { savePath });
+      } else {
+        logger.info('目录已存在', { savePath });
+        
+        // 检查目录是否可写
+        try {
+          fs.accessSync(savePath, fs.constants.W_OK);
+        } catch (accessError) {
+          logger.error('目录不可写', { savePath, error: accessError.message });
+          return res.status(500).json({
+            error: '保存目录不可写',
+            details: `目录: ${savePath}`,
+            suggestions: ['检查目录权限', '确保有写入权限']
+          });
+        }
+      }
+    } catch (dirError) {
+      logger.error('创建保存目录失败', { 
+        savePath, 
+        error: dirError.message,
+        code: dirError.code 
+      });
+      return res.status(500).json({
+        error: '无法创建保存目录',
+        details: `目录: ${savePath}, 错误: ${dirError.message}`,
+        suggestions: [
+          '检查路径是否有效',
+          '检查是否有写入权限',
+          '确保父目录存在且可访问',
+          '检查磁盘空间是否充足'
+        ]
+      });
     }
 
     // 生成完整的文件保存路径

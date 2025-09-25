@@ -19,6 +19,28 @@ const Tab1FunctionDescription: React.FC<Tab1Props> = ({ onGenerated }) => {
   const [recordLoading, setRecordLoading] = React.useState(false);
   const [recordForm] = ProForm.useForm();
 
+  // 从 localStorage 获取上次使用的 URL
+  const getLastUsedUrl = () => {
+    return localStorage.getItem('playwright-record-url') || '';
+  };
+
+  // 保存 URL 到 localStorage
+  const saveLastUsedUrl = (url: string) => {
+    if (url.trim()) {
+      localStorage.setItem('playwright-record-url', url);
+    }
+  };
+
+  // 打开录制模态框并设置默认值
+  const handleOpenRecordModal = () => {
+    setRecordModalVisible(true);
+    // 设置默认值
+    recordForm.setFieldsValue({
+      recordUrl: getLastUsedUrl(),
+      savePath: 'playwright-scripts'
+    });
+  };
+
   const handleGenerate = async (values: any) => {
     setLoading(true);
     try {
@@ -62,10 +84,13 @@ const Tab1FunctionDescription: React.FC<Tab1Props> = ({ onGenerated }) => {
         return;
       }
 
+      // 保存 URL 到 localStorage
+      saveLastUsedUrl(values.recordUrl);
+
       // 调用真实的 Playwright 录制 API
       const recordRequest = {
         url: values.recordUrl,
-        savePath: values.savePath,
+        savePath: values.savePath || 'playwright-scripts',
         fileName: `${functionName}.spec.js`
       };
 
@@ -97,14 +122,14 @@ const Tab1FunctionDescription: React.FC<Tab1Props> = ({ onGenerated }) => {
             }
           }, 2000); // 每2秒检查一次
           
-          // 30秒后停止检查（超时保护）
+          // 300秒后停止检查（超时保护）
           setTimeout(() => {
             clearInterval(checkInterval);
             if (recordLoading) {
               message.warning('录制超时，请手动检查脚本文件');
               setRecordLoading(false);
             }
-          }, 30000);
+          }, 300000);
           
         } else {
           throw new Error('启动录制失败');
@@ -169,8 +194,7 @@ await page.goto('${values.recordUrl}');
           label="Function name"
           placeholder="请输入函数名称，如: createUserSession"
           rules={[
-            { required: true, message: '请输入函数名称' },
-            { pattern: /^[a-zA-Z][a-zA-Z0-9_]*$/, message: '函数名称只能包含字母、数字和下划线，且以字母开头' }
+            { required: true, message: '请输入函数名称' }
           ]}
         />
         
@@ -181,7 +205,7 @@ await page.goto('${values.recordUrl}');
             </label>
             <Button 
               type="default"
-              onClick={() => setRecordModalVisible(true)}
+              onClick={handleOpenRecordModal}
               style={{ fontSize: '12px', height: '28px' }}
             >
               录制脚本
@@ -256,7 +280,7 @@ await page.goto('${values.recordUrl}');
           <ProFormText
             name="recordUrl"
             label="录制页面URL"
-            placeholder="请输入要录制的页面URL，如: https://example.com"
+            placeholder="请输入要录制的页面URL"
             rules={[
               { required: true, message: '请输入录制页面URL' },
               { type: 'url', message: '请输入有效的URL地址' }
@@ -266,7 +290,7 @@ await page.goto('${values.recordUrl}');
           <ProFormText
             name="savePath"
             label="脚本保存路径"
-            placeholder="请输入脚本保存路径，如: ./playwright-scripts"
+            placeholder="请输入脚本保存路径"
             rules={[
               { required: true, message: '请输入脚本保存路径' }
             ]}
