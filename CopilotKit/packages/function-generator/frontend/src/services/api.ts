@@ -115,9 +115,9 @@ export const startPlaywrightRecord = async (data: PlaywrightRecordRequest): Prom
   }
 };
 
-export const checkRecordedScript = async (filePath: string): Promise<{ exists: boolean; content: string; message?: string }> => {
+export const checkRecordedScript = async (filePath: string, processId?: number): Promise<{ exists: boolean; content: string; recording?: boolean; message?: string }> => {
   try {
-    const response = await api.post('/playwright/check-script', { filePath });
+    const response = await api.post('/playwright/check-script', { filePath, processId });
     return response.data;
   } catch (error) {
     console.error('Check recorded script error:', error);
