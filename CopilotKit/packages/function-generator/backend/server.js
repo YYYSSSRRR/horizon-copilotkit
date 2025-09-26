@@ -514,7 +514,6 @@ app.post('/api/playwright/check-script', async (req, res) => {
     if (isRecordingComplete.complete) {
       logger.info('录制已完成', { 
         filePath, 
-        reason: isRecordingComplete.reason,
         contentSize: `${contentTrimmed.length} 字符` 
       });
       
@@ -525,10 +524,7 @@ app.post('/api/playwright/check-script', async (req, res) => {
         message: isRecordingComplete.message
       });
     } else {
-      logger.info('录制仍在进行中', { 
-        filePath, 
-        reason: isRecordingComplete.reason 
-      });
+      logger.info('录制仍在进行中', { filePath });
       
       res.json({
         exists: true,
@@ -545,8 +541,7 @@ app.post('/api/playwright/check-script', async (req, res) => {
 });
 
 /**
- * 检查进程是否正在运行
- * 使用跨平台的方式来检查进程状态
+ * 简单检查进程是否正在运行
  * @param {number} pid - 进程ID
  * @returns {Promise<boolean>} - 进程是否运行中
  */
@@ -556,285 +551,50 @@ async function checkProcessRunning(pid) {
   }
 
   try {
-    // 方法1: 尝试使用 process.kill(pid, 0) 检查
-    try {
-      process.kill(pid, 0);
-      
-      // 进程存在，但需要进一步验证是否是 Playwright 进程
-      const isPlaywrightProcess = await verifyPlaywrightProcess(pid);
-      return isPlaywrightProcess;
-    } catch (error) {
-      if (error.code === 'ESRCH') {
-        // No such process - 进程不存在
-        return false;
-      } else if (error.code === 'EPERM') {
-        // Operation not permitted - 进程存在但没权限，认为还在运行
-        const isPlaywrightProcess = await verifyPlaywrightProcess(pid);
-        return isPlaywrightProcess;
-      } else {
-        throw error;
-      }
-    }
+    // 使用 Node.js 原生方法检查进程是否存在
+    process.kill(pid, 0);
+    logger.info('进程仍在运行', { pid });
+    return true; // 进程存在就认为还在运行
   } catch (error) {
-    // 如果 process.kill 方法失败，尝试其他方法
-    try {
-      return await checkProcessByCommand(pid);
-    } catch (cmdError) {
-      // 所有方法都失败，保守地认为进程已结束
-      logger.warn('所有进程检查方法都失败，假定进程已结束', { 
-        pid, 
-        killError: error.message, 
-        cmdError: cmdError.message 
-      });
+    if (error.code === 'ESRCH') {
+      logger.info('进程已结束', { pid });
       return false;
     }
+    // 其他错误（如权限问题）保守地认为进程还在运行
+    logger.info('进程状态未知，假定仍在运行', { pid, error: error.code });
+    return true;
   }
 }
 
-/**
- * 验证进程是否为 Playwright 相关进程
- * @param {number} pid - 进程ID
- * @returns {Promise<boolean>}
- */
-async function verifyPlaywrightProcess(pid) {
-  try {
-    // 根据操作系统使用不同的命令来检查进程详情
-    const platform = process.platform;
-    let cmd, args, encoding;
-    
-    if (platform === 'win32') {
-      // Windows: 使用 wmic 替代 tasklist，更兼容
-      // wmic process where "ProcessId=PID" get ProcessId,Name,CommandLine /format:csv
-      cmd = 'wmic';
-      args = ['process', 'where', `"ProcessId=${pid}"`, 'get', 'ProcessId,Name,CommandLine', '/format:csv'];
-      encoding = 'gbk'; // Windows 系统使用 GBK 编码
-    } else {
-      // Unix/Linux/macOS: 使用 ps 获取完整命令行
-      cmd = 'ps';
-      args = ['-p', pid.toString(), '-o', 'pid,comm,args', '--no-headers'];
-      encoding = 'utf8'; // Unix/Linux 系统使用 UTF-8 编码
-    }
-    
-    return new Promise((resolve) => {
-      const childProcess = spawn(cmd, args, { 
-        stdio: 'pipe', 
-        shell: true,
-        encoding: 'buffer' // 使用 buffer 模式以便手动处理编码
-      });
-      let outputBuffer = Buffer.alloc(0);
-      let errorBuffer = Buffer.alloc(0);
-      
-      childProcess.stdout.on('data', (data) => {
-        outputBuffer = Buffer.concat([outputBuffer, data]);
-      });
-      
-      childProcess.stderr.on('data', (data) => {
-        errorBuffer = Buffer.concat([errorBuffer, data]);
-      });
-      
-      childProcess.on('close', (code) => {
-        // 根据系统编码解码输出
-        let output = '';
-        let errorOutput = '';
-        
-        try {
-          if (platform === 'win32') {
-            // Windows 系统使用 GBK 编码解码
-            output = iconv.decode(outputBuffer, 'gbk');
-            errorOutput = iconv.decode(errorBuffer, 'gbk');
-          } else {
-            // Unix/Linux/macOS 系统使用 UTF-8 编码
-            output = outputBuffer.toString('utf8');
-            errorOutput = errorBuffer.toString('utf8');
-          }
-        } catch (decodeError) {
-          // 如果解码失败，回退到默认 UTF-8
-          logger.warn('解码输出失败，使用 UTF-8 回退', { 
-            pid, 
-            error: decodeError.message 
-          });
-          output = outputBuffer.toString('utf8');
-          errorOutput = errorBuffer.toString('utf8');
-        }
-        
-        logger.info('进程验证命令执行完成', { 
-          pid, 
-          cmd: `${cmd} ${args.join(' ')}`, 
-          exitCode: code, 
-          output: output.trim(),
-          errorOutput: errorOutput.trim(),
-          platform,
-          encoding
-        });
-        
-        // 检查输出内容来判断进程是否存在和类型
-        const outputTrimmed = output.trim();
-        
-        if (!outputTrimmed || outputTrimmed.length === 0) {
-          // 没有输出，说明进程不存在
-          logger.info('进程不存在（无输出）', { pid });
-          resolve(false);
-          return;
-        }
-        
-        // 在 Windows 下，wmic 没有找到进程时输出只有头部信息
-        if (platform === 'win32') {
-          // wmic 输出格式：头部信息 + 数据行
-          // 如果没有找到进程，只会有头部信息，没有数据行
-          const lines = outputTrimmed.split('\n').filter(line => line.trim());
-          const hasDataLines = lines.some(line => 
-            line.includes(pid.toString()) && 
-            !line.toLowerCase().includes('node') && 
-            !line.toLowerCase().includes('commandline')
-          );
-          
-          if (lines.length <= 1 || !hasDataLines) {
-            logger.info('Windows 进程不存在（wmic 无数据行）', { 
-              pid, 
-              output: outputTrimmed,
-              lines: lines.length 
-            });
-            resolve(false);
-            return;
-          }
-        }
-        
-        // 检查输出是否包含我们的 PID（额外验证）
-        if (!outputTrimmed.includes(pid.toString())) {
-          logger.info('输出中未找到目标 PID', { pid, output: outputTrimmed });
-          resolve(false);
-          return;
-        }
-        
-        // 进程存在，检查是否是 Playwright 相关进程
-        const outputLower = outputTrimmed.toLowerCase();
-        const isPlaywright = outputLower.includes('playwright') || 
-                            outputLower.includes('node') || 
-                            outputLower.includes('npx') ||
-                            outputLower.includes('chrome') ||
-                            outputLower.includes('chromium') ||
-                            outputLower.includes('codegen') || // Playwright codegen 命令
-                            outputLower.includes('node.exe'); // Windows Node.js 进程
-        
-        logger.info('进程验证结果', { 
-          pid, 
-          exists: true, 
-          isPlaywright,
-          processInfo: outputTrimmed 
-        });
-        
-        resolve(isPlaywright);
-      });
-      
-      childProcess.on('error', (error) => {
-        logger.warn('进程验证命令执行失败', { pid, error: error.message });
-        resolve(false);
-      });
-      
-      // 5秒超时
-      setTimeout(() => {
-        if (!childProcess.killed) {
-          logger.warn('进程验证命令超时，终止执行', { pid });
-          childProcess.kill('SIGKILL');
-          resolve(false);
-        }
-      }, 5000);
-    });
-  } catch (error) {
-    logger.warn('验证 Playwright 进程异常', { pid, error: error.message });
-    return false; // 出错时保守地认为进程不存在
-  }
-}
 
 /**
- * 使用系统命令检查进程状态
- * @param {number} pid - 进程ID
- * @returns {Promise<boolean>}
- */
-async function checkProcessByCommand(pid) {
-  return new Promise((resolve) => {
-    const platform = process.platform;
-    let cmd, args;
-    
-    if (platform === 'win32') {
-      cmd = 'wmic';
-      args = ['process', 'where', `"ProcessId=${pid}"`, 'get', 'ProcessId'];
-    } else {
-      cmd = 'ps';
-      args = ['-p', pid.toString()];
-    }
-    
-    const process = spawn(cmd, args, { stdio: 'pipe', shell: true });
-    
-    process.on('close', (code) => {
-      // 退出码为0表示进程存在
-      resolve(code === 0);
-    });
-    
-    process.on('error', () => {
-      resolve(false);
-    });
-    
-    // 5秒超时
-    setTimeout(() => {
-      process.kill();
-      resolve(false);
-    }, 5000);
-  });
-}
-
-/**
- * 检查录制是否完成的智能判断函数
+ * 简单检查录制是否完成
  * @param {string} content - 文件内容
  * @param {number} timeSinceLastModified - 距离最后修改的时间（毫秒）
  * @param {boolean} processRunning - 进程是否还在运行
- * @returns {object} - { complete: boolean, reason: string, message: string }
+ * @returns {object} - { complete: boolean, message: string }
  */
 function checkRecordingComplete(content, timeSinceLastModified, processRunning) {
-  // 如果内容为空，肯定还没完成
+  // 没有内容说明还没录制完成
   if (!content || content.length === 0) {
     return {
       complete: false,
-      reason: '文件内容为空',
       message: '录制进行中，等待内容生成...'
     };
   }
   
-  // 如果进程还在运行，需要额外检查
-  if (processRunning) {
-    // 如果文件在最近5秒内还在修改，认为还在录制中
-    if (timeSinceLastModified < 5000) {
-      return {
-        complete: false,
-        reason: '文件最近还在修改中',
-        message: '录制进行中，请继续操作...'
-      };
-    }
-    
-    // 如果进程在运行但文件很久没更新了，可能用户还在操作中
-    if (timeSinceLastModified < 30000) { // 30秒内
-      return {
-        complete: false,
-        reason: '录制进程运行中',
-        message: '录制进行中，等待用户操作...'
-      };
-    }
-  }
-  
-  // 进程已结束且有完整内容，认为录制完成
-  if (!processRunning) {
+  // 进程结束且有内容，认为录制完成
+  if (!processRunning && content.trim().length > 0) {
     return {
       complete: true,
-      reason: '录制进程已结束且内容完整',
       message: '脚本录制完成！'
     };
   }
   
-  // 默认认为还在录制中
+  // 其他情况认为还在录制中
   return {
     complete: false,
-    reason: '等待录制完成',
-    message: '录制进行中，请继续在浏览器中操作...'
+    message: '录制进行中，请继续操作...'
   };
 }
 
