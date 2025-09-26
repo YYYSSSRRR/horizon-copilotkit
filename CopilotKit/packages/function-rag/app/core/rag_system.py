@@ -227,6 +227,20 @@ class FunctionRAGSystem:
             logger.error(f"Failed to get function by ID: {e}")
             raise
     
+    async def get_all_function_names(self) -> List[str]:
+        """Get all function names in the system."""
+        if not self._initialized:
+            await self.initialize()
+        
+        try:
+            names = await self.vector_storage.get_all_function_names()
+            logger.info(f"Retrieved {len(names)} function names")
+            return names
+            
+        except Exception as e:
+            logger.error(f"Failed to get all function names: {e}")
+            raise
+    
     async def delete_function(self, function_id: str) -> bool:
         """Delete a function from the system."""
         if not self._initialized:

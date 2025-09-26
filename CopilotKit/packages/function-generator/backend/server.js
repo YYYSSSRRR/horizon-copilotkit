@@ -12,6 +12,8 @@ const { spawn } = require('child_process');
 const winston = require('winston');
 const rateLimit = require('express-rate-limit');
 const iconv = require('iconv-lite');
+const OpenAI = require('openai');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 require('dotenv').config();
 
 // 配置日志
@@ -38,6 +40,34 @@ const logger = winston.createLogger({
 });
 
 const app = express();
+
+// ============================================================================
+// DeepSeek LLM 客户端配置
+// ============================================================================
+
+// 设置代理（如果有）
+let proxyAgent;
+try {
+  const proxy = process.env.HTTP_PROXY || process.env.HTTPS_PROXY;
+  if (proxy) {
+    proxyAgent = new HttpsProxyAgent(proxy);
+    logger.info('使用代理配置', { proxy });
+  }
+} catch (error) {
+  logger.warn('代理配置失败', { error: error.message });
+}
+
+// 初始化 DeepSeek 客户端
+const deepSeekClient = new OpenAI({
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com',
+  httpAgent: proxyAgent,
+  httpsAgent: proxyAgent
+});
+
+if (!process.env.DEEPSEEK_API_KEY) {
+  logger.warn('DEEPSEEK_API_KEY 未设置，LLM Function 生成功能将不可用');
+}
 
 // 配置中间件
 app.use(cors({
@@ -598,6 +628,204 @@ function checkRecordingComplete(content, timeSinceLastModified, processRunning) 
   };
 }
 
+// ============================================================================
+// LLM Function 生成逻辑
+// ============================================================================
+
+/**
+ * 使用 DeepSeek 生成 LLM Function 定义和 Executor 代码
+ */
+async function generateLLMFunction({ functionName, playwrightScript, description, outputDesc, dependencies }) {
+  try {
+    // 构建提示词
+    const prompt = buildGenerationPrompt({
+      functionName,
+      playwrightScript,
+      description,
+      outputDesc,
+      dependencies
+    });
+
+    // 调用 DeepSeek API
+    const response = await deepSeekClient.chat.completions.create({
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+      messages: [
+        {
+          role: 'system',
+          content: getSystemPrompt()
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.1, // 低温度保证生成代码的一致性
+      max_tokens: 4000
+    });
+
+    const content = response.choices[0]?.message?.content;
+    logger.info('DeepSeek 原始响应', { 
+      response: JSON.stringify(response, null, 2),
+      content: content?.substring(0, 500) + '...'
+    });
+    
+    if (!content) {
+      throw new Error('DeepSeek 返回内容为空');
+    }
+
+    // 解析生成的结果
+    const result = parseGeneratedCode(content);
+    
+    return result;
+
+  } catch (error) {
+    logger.error('DeepSeek 生成失败', { error: error.message });
+    throw new Error(`生成失败: ${error.message}`);
+  }
+}
+
+/**
+ * 获取系统提示词
+ */
+function getSystemPrompt() {
+  return `你是一个专业的前端自动化代码生成专家，专门将 Playwright 录制脚本转换为 LLM Function 定义和 Executor 代码。
+
+你的任务是：
+1. 分析 Playwright 录制脚本，理解其操作流程
+2. 生成标准的 LLM Function 定义 (JSON Schema 格式)
+3. 生成对应的 Executor 执行代码
+
+重要要求：
+- Function 定义必须遵循 JSON Schema 规范
+- Function 定义必须使用 export const functionNameDefinition = { ... } 格式
+- Executor 代码必须使用 @copilotkit/playwright-actuator 的 page 对象
+- Executor 必须使用 export const functionNameExecutor = async (params) => { } 格式
+- 参数需要合理抽象，避免硬编码
+- 错误处理要完善
+- 代码要清晰易读
+- 必须严格按照指定的 JSON 格式返回结果
+
+返回格式必须是有效的 JSON，包含三个字段：
+- functionDefinition: LLM Function 定义代码字符串 (export const 格式)
+- executorCode: Executor 代码字符串 (export const 格式)
+- ragRequest: RAG 存储请求对象`;
+}
+
+/**
+ * 构建生成提示词
+ */
+function buildGenerationPrompt({ functionName, playwrightScript, description, outputDesc, dependencies }) {
+  // 构建依赖信息
+  const dependenciesText = dependencies.length > 0 
+    ? `依赖的 Function：${dependencies.join(', ')}`
+    : '无依赖';
+
+  // 构建完整描述
+  let fullDescription = description;
+  if (dependencies.length > 0) {
+    fullDescription = `[Dependencies: ${dependencies.join(', ')}] ${description}`;
+  }
+  if (outputDesc) {
+    fullDescription += ` 输出：${outputDesc}`;
+  }
+
+  return `请根据以下信息生成 LLM Function 定义和 Executor 代码：
+
+## 基本信息
+- Function 名称：${functionName}
+- 功能描述：${description}
+- 输出描述：${outputDesc || '无特定输出描述'}
+- ${dependenciesText}
+
+## Playwright 录制脚本
+\`\`\`javascript
+${playwrightScript}
+\`\`\`
+
+## 生成要求
+
+### 1. LLM Function 定义要求：
+- 使用格式：export const ${functionName}Definition = { ... }
+- name: "${functionName}"
+- description: "${fullDescription}"
+- parameters: 根据脚本分析出需要的参数，类型要准确
+- 参数必须有合理的 description
+- 对于选择类型的参数，要提供 enum 选项
+- required 数组只包含必需的参数
+- 必须使用 export const 方式导出定义对象
+
+### 2. Executor 代码要求：
+- 导入：import { page } from '@copilotkit/playwright-actuator';
+- 函数定义：export const ${functionName}Executor = async (params) => {
+- 参数解构要完整
+- 每个操作步骤要有注释
+- 要有完善的错误处理
+- 返回有意义的结果消息
+- 必须使用 export const 方式导出函数
+
+### 3. RAG 存储要求：
+- 包含 function 的完整信息
+- 便于后续检索和复用
+
+请严格按照以下 JSON 格式返回结果：
+
+\`\`\`json
+{
+  "functionDefinition": "export const functionNameDefinition = {\\n  name: '函数名',\\n  description: '函数描述',\\n  parameters: {\\n    type: 'object',\\n    properties: {\\n      // 参数定义\\n    },\\n    required: []\\n  }\\n};",
+  "executorCode": "import { page } from '@copilotkit/playwright-actuator';\\n\\nexport const functionNameExecutor = async (params) => {\\n  // 完整的 executor 代码\\n};",
+  "ragRequest": {
+    "functionName": "函数名",
+    "description": "函数描述",
+    "category": "自动化操作",
+    "script": "playwright脚本",
+    "generated": "生成时间",
+    "dependencies": []
+  }
+}
+\`\`\``;
+}
+
+/**
+ * 解析生成的代码
+ */
+function parseGeneratedCode(content) {
+  try {
+    // 尝试提取 JSON 代码块
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || 
+                     content.match(/```\s*([\s\S]*?)\s*```/) ||
+                     content.match(/(\{[\s\S]*\})/);
+    
+    let jsonStr = jsonMatch ? jsonMatch[1] : content;
+    
+    // 清理可能的额外字符
+    jsonStr = jsonStr.trim();
+    
+    const result = JSON.parse(jsonStr);
+    
+    // 验证必需字段
+    if (!result.functionDefinition || !result.executorCode) {
+      throw new Error('生成结果缺少必需字段');
+    }
+    
+    // 添加生成时间到 RAG 请求
+    if (result.ragRequest) {
+      result.ragRequest.generated = new Date().toISOString();
+    }
+    
+    logger.info('成功解析生成的代码', {
+      functionName: result.ragRequest?.functionName || 'unknown',
+      definitionLength: result.functionDefinition.length,
+      codeLength: result.executorCode.length
+    });
+    
+    return result;
+    
+  } catch (error) {
+    logger.error('解析生成代码失败', { error: error.message, content });
+    throw new Error(`解析生成结果失败: ${error.message}`);
+  }
+}
+
 /**
  * 安装 Playwright 浏览器
  */
@@ -652,16 +880,50 @@ app.post('/api/playwright/install', async (req, res) => {
  */
 app.post('/api/generate-function', async (req, res) => {
   try {
-    // TODO: 实现函数生成逻辑
+    const { functionName, playwrightScript, description, outputDesc, dependencies = [] } = req.body;
+
+    // 参数验证
+    if (!functionName) {
+      return res.status(400).json({ error: 'functionName 是必需的' });
+    }
+    if (!playwrightScript) {
+      return res.status(400).json({ error: 'playwrightScript 是必需的' });
+    }
+    if (!process.env.DEEPSEEK_API_KEY) {
+      return res.status(500).json({ error: 'DEEPSEEK_API_KEY 未配置' });
+    }
+
+    logger.info('开始生成 LLM Function', {
+      functionName,
+      scriptLength: playwrightScript.length,
+      description,
+      dependencies: dependencies.length
+    });
+
+    // 调用 DeepSeek 生成代码
+    const { functionDefinition, executorCode, ragRequest } = await generateLLMFunction({
+      functionName,
+      playwrightScript,
+      description,
+      outputDesc,
+      dependencies
+    });
+
+    logger.info('LLM Function 生成成功', { functionName });
+
     res.json({
       success: true,
-      functionDefinition: {},
-      executorCode: '',
-      ragRequest: {}
+      functionDefinition,
+      executorCode,
+      ragRequest
     });
+
   } catch (error) {
     logger.error('生成函数失败', { error: error.message });
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: error.message,
+      success: false
+    });
   }
 });
 
@@ -728,7 +990,7 @@ app.listen(PORT, HOST, () => {
   logger.info('  POST /api/playwright/record      - 启动 Playwright 录制');
   logger.info('  POST /api/playwright/check-script - 检查录制的脚本');
   logger.info('  POST /api/playwright/install     - 安装 Playwright 浏览器');
-  logger.info('  POST /api/generate-function      - 生成 LLM Function (待实现)');
+  logger.info('  POST /api/generate-function      - 生成 LLM Function 定义和 Executor');
   logger.info('  POST /api/rag/store              - 存储到 RAG 数据库 (待实现)');
   logger.info('  GET  /api/export/:type           - 导出文件 (待实现)');
   logger.info('  GET  /api/health                 - 健康检查');

@@ -14,7 +14,7 @@ console.log('API Configuration:', {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '30000'),
+  timeout: parseInt(import.meta.env.VITE_API_TIMEOUT || '120000'),
   headers: {
     'Content-Type': 'application/json',
   },
@@ -132,5 +132,27 @@ export const installPlaywright = async (): Promise<{ success: boolean; message: 
   } catch (error) {
     console.error('Install Playwright error:', error);
     throw error;
+  }
+};
+
+// RAG 服务相关 API
+const RAG_BASE_URL = import.meta.env.VITE_RAG_BASE_URL || 'http://localhost:8000';
+
+const ragApi = axios.create({
+  baseURL: RAG_BASE_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+export const getFunctionNames = async (): Promise<string[]> => {
+  try {
+    const response = await ragApi.get('/functions/names');
+    return response.data || [];
+  } catch (error) {
+    console.error('Get function names error:', error);
+    // 返回默认的 function 名称作为备用
+    return ['openMainMenu', 'createUserSession', 'getUserPermissions'];
   }
 };

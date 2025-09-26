@@ -126,7 +126,7 @@ const Tab2FunctionDefinition: React.FC<Tab2Props> = ({
           >
             <CodeMirror
               value={functionDefinition}
-              height="300px"
+              height="350px"
               extensions={[javascript()]}
               theme={oneDark}
               onChange={onFunctionDefinitionChange}
