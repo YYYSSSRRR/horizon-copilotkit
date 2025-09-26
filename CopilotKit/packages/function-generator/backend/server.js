@@ -11,6 +11,7 @@ const path = require('path');
 const { spawn } = require('child_process');
 const winston = require('winston');
 const rateLimit = require('express-rate-limit');
+const iconv = require('iconv-lite');
 require('dotenv').config();
 
 // 配置日志
@@ -599,38 +600,70 @@ async function verifyPlaywrightProcess(pid) {
   try {
     // 根据操作系统使用不同的命令来检查进程详情
     const platform = process.platform;
-    let cmd, args;
+    let cmd, args, encoding;
     
     if (platform === 'win32') {
       // Windows: 使用 tasklist，获取进程名称和命令行
       cmd = 'tasklist';
       args = ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'];
+      encoding = 'gbk'; // Windows 系统使用 GBK 编码
     } else {
       // Unix/Linux/macOS: 使用 ps 获取完整命令行
       cmd = 'ps';
       args = ['-p', pid.toString(), '-o', 'pid,comm,args', '--no-headers'];
+      encoding = 'utf8'; // Unix/Linux 系统使用 UTF-8 编码
     }
     
     return new Promise((resolve) => {
-      const childProcess = spawn(cmd, args, { stdio: 'pipe', shell: true });
-      let output = '';
-      let errorOutput = '';
+      const childProcess = spawn(cmd, args, { 
+        stdio: 'pipe', 
+        shell: true,
+        encoding: 'buffer' // 使用 buffer 模式以便手动处理编码
+      });
+      let outputBuffer = Buffer.alloc(0);
+      let errorBuffer = Buffer.alloc(0);
       
       childProcess.stdout.on('data', (data) => {
-        output += data.toString();
+        outputBuffer = Buffer.concat([outputBuffer, data]);
       });
       
       childProcess.stderr.on('data', (data) => {
-        errorOutput += data.toString();
+        errorBuffer = Buffer.concat([errorBuffer, data]);
       });
       
       childProcess.on('close', (code) => {
+        // 根据系统编码解码输出
+        let output = '';
+        let errorOutput = '';
+        
+        try {
+          if (platform === 'win32') {
+            // Windows 系统使用 GBK 编码解码
+            output = iconv.decode(outputBuffer, 'gbk');
+            errorOutput = iconv.decode(errorBuffer, 'gbk');
+          } else {
+            // Unix/Linux/macOS 系统使用 UTF-8 编码
+            output = outputBuffer.toString('utf8');
+            errorOutput = errorBuffer.toString('utf8');
+          }
+        } catch (decodeError) {
+          // 如果解码失败，回退到默认 UTF-8
+          logger.warn('解码输出失败，使用 UTF-8 回退', { 
+            pid, 
+            error: decodeError.message 
+          });
+          output = outputBuffer.toString('utf8');
+          errorOutput = errorBuffer.toString('utf8');
+        }
+        
         logger.info('进程验证命令执行完成', { 
           pid, 
           cmd: `${cmd} ${args.join(' ')}`, 
           exitCode: code, 
           output: output.trim(),
-          errorOutput: errorOutput.trim()
+          errorOutput: errorOutput.trim(),
+          platform,
+          encoding
         });
         
         // 检查输出内容来判断进程是否存在和类型
@@ -644,8 +677,12 @@ async function verifyPlaywrightProcess(pid) {
         }
         
         // 在 Windows 下，tasklist 没有找到进程时会返回特殊信息
-        if (platform === 'win32' && outputTrimmed.includes('INFO: No tasks are running')) {
-          logger.info('Windows 进程不存在', { pid });
+        if (platform === 'win32' && (
+          outputTrimmed.includes('INFO: No tasks are running') ||
+          outputTrimmed.includes('信息: 没有运行的任务匹配指定标准') ||
+          outputTrimmed.includes('没有运行的任务')
+        )) {
+          logger.info('Windows 进程不存在', { pid, output: outputTrimmed });
           resolve(false);
           return;
         }
