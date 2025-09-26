@@ -15,7 +15,8 @@ import { fillFormExecutor } from './executors/fill-form.executor.js';
  */
 const askLlmAction = {
   ...askLlmDefinition,
-  handler: askLlmExecutor
+  handler: askLlmExecutor,
+  requireApproval: false  // 向LLM提问无需审批
 };
 
 /**
@@ -24,7 +25,8 @@ const askLlmAction = {
  */
 const fillFormAction = {
   ...fillFormDefinition,
-  handler: fillFormExecutor
+  handler: fillFormExecutor,
+  requireApproval: true  // 🔑 填写表单需要审批
 };
 
 // 导出所有 ScriptActions

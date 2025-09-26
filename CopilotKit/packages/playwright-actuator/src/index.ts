@@ -12,11 +12,12 @@ import type {
 
 // 导入所有依赖模块
 import PlaywrightLogger from './utils/logger.js';
-import PlaywrightWaitManager from './dom/wait-manager.js';
 import PlaywrightEventSimulator from './dom/event-simulator.js';
 import PlaywrightLocatorAdapter from './adapters/locator-adapter.js';
 import PlaywrightPageAdapter from './adapters/page-adapter.js';
 import PlaywrightExpectAdapter, { createExpect } from './adapters/expect-adapter.js';
+import PlaywrightFrameAdapter from './adapters/frame-adapter.js';
+import PlaywrightFrameLocatorAdapter from './adapters/frame-locator-adapter.js';
 import PlaywrightRuntime from './runtime/playwright-runtime.js';
 import PlaywrightTestRunner from './runtime/test-runner.js';
 import * as FrameworkAdapters from './framework-adapters/index.js';
@@ -25,12 +26,13 @@ import * as FrameworkAdapters from './framework-adapters/index.js';
 function ensureDependencies(): void {
   const dependencies = {
     PlaywrightLogger,
-    PlaywrightWaitManager, 
     PlaywrightEventSimulator,
     PlaywrightLocatorAdapter,
     PlaywrightPageAdapter,
     PlaywrightExpectAdapter,
     createExpect,
+    PlaywrightFrameAdapter,
+    PlaywrightFrameLocatorAdapter,
     PlaywrightRuntime,
     PlaywrightTestRunner
   };
@@ -66,7 +68,7 @@ class PlaywrightExecutionEngine {
     this.logger = new PlaywrightLogger(this.options.logLevel);
     this.runtime = new PlaywrightRuntime();
     this.testRunner = new PlaywrightTestRunner(this.options);
-    
+
     this.logger.info('Playwright 执行引擎初始化完成');
   }
 
@@ -207,11 +209,12 @@ class PlaywrightExecutionEngine {
    */
   static Components = {
     Logger: PlaywrightLogger,
-    WaitManager: PlaywrightWaitManager,
     EventSimulator: PlaywrightEventSimulator,
     PageAdapter: PlaywrightPageAdapter,
     LocatorAdapter: PlaywrightLocatorAdapter,
     ExpectAdapter: PlaywrightExpectAdapter,
+    FrameAdapter: PlaywrightFrameAdapter,
+    FrameLocatorAdapter: PlaywrightFrameLocatorAdapter,
     Runtime: PlaywrightRuntime,
     TestRunner: PlaywrightTestRunner
   };
@@ -244,6 +247,10 @@ if (typeof window !== 'undefined') {
   window.runPlaywrightScript = PlaywrightExecutionEngine.run;
   window.loadPlaywrightScript = PlaywrightExecutionEngine.load;
   
+  // 导出 Frame 相关组件到全局
+  window.PlaywrightFrameAdapter = PlaywrightFrameAdapter;
+  window.PlaywrightFrameLocatorAdapter = PlaywrightFrameLocatorAdapter;
+  
   // 导出全局实例到 window
   window.page = page;
   window.expect = expect;
@@ -261,12 +268,13 @@ export default PlaywrightExecutionEngine;
 // 命名导出
 export {
   PlaywrightLogger,
-  PlaywrightWaitManager,
   PlaywrightEventSimulator,
   PlaywrightLocatorAdapter,
   PlaywrightPageAdapter,
   PlaywrightExpectAdapter,
   createExpect,
+  PlaywrightFrameAdapter,
+  PlaywrightFrameLocatorAdapter,
   PlaywrightRuntime,
   PlaywrightTestRunner,
   // 导出框架适配器

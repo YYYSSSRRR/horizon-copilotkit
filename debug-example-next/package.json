@@ -1,7 +1,7 @@
 {
   "name": "copilotkit-debug-example-next",
   "version": "1.0.0",
-  "description": "CopilotKit Debug Example Next - 基于 react-core-next 和 runtime-next 的完整调试示例",
+  "description": "CopilotKit Debug Example Next - 基于 copilot-client 和 runtime-next 的完整调试示例",
   "private": true,
   "scripts": {
     "install-all": "npm run install-backend && npm run install-frontend",

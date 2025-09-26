@@ -5,7 +5,10 @@ import type {
   TypeOptions, 
   LocatorOptions, 
   ElementWaitOptions,
-  Logger 
+  Logger,
+  PageContext,
+  EventSimulator,
+  FrameAdapter as FrameAdapterType
 } from '../../types/index.js';
 import { getReactAdapter } from '../framework-adapters/react-adapter.js';
 import { getOpenInulaAdapter } from '../framework-adapters/openinula-adapter.js';
@@ -51,11 +54,11 @@ interface QueryStrategy {
  * Locator 适配器 - 实现 Playwright Locator API with Lazy Execution
  */
 class LocatorAdapter {
-  private page: any; // TODO: Type this properly
+  private page: PageContext;
   private options: LocatorOptions;
   private filters: FilterOptions[];
   private logger: Logger;
-  private eventSimulator: any; // TODO: Type this properly
+  private eventSimulator: EventSimulator;
   private _element?: Element;
   private _queryStrategy: QueryStrategy; // 查询策略，延迟执行
   private _resolvedElements?: Element[]; // 缓存已解析的元素集合，仅在需要时计算
@@ -98,7 +101,7 @@ class LocatorAdapter {
     }
   }
 
-  constructor(queryStrategy: QueryStrategy | string, page: any, options: LocatorOptions = {}) {
+  constructor(queryStrategy: QueryStrategy | string, page: PageContext, options: LocatorOptions = {}) {
     // 兼容旧的构造函数调用方式
     if (typeof queryStrategy === 'string') {
       this._queryStrategy = {
@@ -112,16 +115,76 @@ class LocatorAdapter {
     this.page = page;
     this.options = options;
     this.filters = [];
-    this.logger = (typeof window !== 'undefined' && window.PlaywrightLogger) 
+    this.logger = page.logger || ((typeof window !== 'undefined' && window.PlaywrightLogger) 
       ? new window.PlaywrightLogger() 
-      : console as unknown as Logger;
+      : console as unknown as Logger);
     this.eventSimulator = page.eventSimulator;
+  }
+
+  /**
+   * 获取正确的文档对象（支持 iframe 场景）
+   */
+  private getDocument(): Document {
+    // 如果 page 是 BasePageContext 实例，使用其 getContext() 方法获取正确的 document
+    if (this.page && typeof (this.page as any).getContext === 'function') {
+      const context = (this.page as any).getContext();
+      return context.document;
+    }
+    // 兼容旧的接口：如果 page 有 frameDocument 属性，说明是在 iframe 中
+    if (this.page && (this.page as any).frameDocument) {
+      return (this.page as any).frameDocument;
+    }
+    // 否则使用主页面的 document
+    return document;
+  }
+
+  /**
+   * 获取正确的 window 对象（支持 iframe 场景）
+   */
+  private getContextWindow(): Window {
+    // 如果 page 是 BasePageContext 实例，使用其 getContext() 方法获取正确的 window
+    if (this.page && typeof (this.page as any).getContext === 'function') {
+      const context = (this.page as any).getContext();
+      return context.window;
+    }
+    // 兼容旧的接口：如果 page 有 frameWindow 属性，说明是在 iframe 中
+    if (this.page && (this.page as any).frameWindow) {
+      return (this.page as any).frameWindow;
+    }
+    // 否则使用主页面的 window
+    return window;
+  }
+
+  /**
+   * 检查元素是否是指定的 HTML 元素类型（支持 iframe 场景）
+   */
+  private isHTMLElement(element: Element, type: 'HTMLElement' | 'HTMLInputElement' | 'HTMLTextAreaElement' | 'HTMLSelectElement' | 'HTMLButtonElement' | 'HTMLIFrameElement'): boolean {
+    const contextWindow = this.getContextWindow();
+    const Constructor = (contextWindow as any)[type];
+    if (!Constructor) {
+      // 如果无法获取构造函数，回退到全局检查
+      return element instanceof (globalThis as any)[type];
+    }
+    return element instanceof Constructor;
+  }
+
+  /**
+   * 创建事件对象（支持 iframe 场景）
+   */
+  private createEvent(type: string, options?: EventInit): Event {
+    const contextWindow = this.getContextWindow();
+    const EventConstructor = (contextWindow as any).Event;
+    if (EventConstructor) {
+      return new EventConstructor(type, options);
+    }
+    // 回退到全局 Event 构造函数
+    return new Event(type, options);
   }
 
   /**
    * 基于已解析元素创建新的 locator（保留用于内部使用）
    */
-  static fromElements(elements: Element[], page: any, queryStrategy: QueryStrategy): LocatorAdapter {
+  static fromElements(elements: Element[], page: PageContext, queryStrategy: QueryStrategy): LocatorAdapter {
     const locator = new LocatorAdapter(queryStrategy, page);
     locator._resolvedElements = elements;
     return locator;
@@ -508,12 +571,12 @@ class LocatorAdapter {
    */
   private triggerNativeInputEvents(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
     // 触发 input 事件
-    const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+    const inputEvent = this.createEvent('input', { bubbles: true, cancelable: true });
     Object.defineProperty(inputEvent, 'target', { value: element, enumerable: true });
     element.dispatchEvent(inputEvent);
     
     // 触发 change 事件
-    const changeEvent = new Event('change', { bubbles: true, cancelable: true });
+    const changeEvent = this.createEvent('change', { bubbles: true, cancelable: true });
     Object.defineProperty(changeEvent, 'target', { value: element, enumerable: true });
     element.dispatchEvent(changeEvent);
     
@@ -525,7 +588,7 @@ class LocatorAdapter {
    * 触发原生 change 事件
    */
   private triggerNativeChangeEvent(element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): void {
-    const changeEvent = new Event('change', { bubbles: true, cancelable: true });
+    const changeEvent = this.createEvent('change', { bubbles: true, cancelable: true });
     Object.defineProperty(changeEvent, 'target', { value: element, enumerable: true });
     element.dispatchEvent(changeEvent);
   }
@@ -535,9 +598,9 @@ class LocatorAdapter {
    */
   private triggerNativeInteractionEvents(element: Element): void {
     try {
-      element.dispatchEvent(new Event('focus', { bubbles: true }));
+      element.dispatchEvent(this.createEvent('focus', { bubbles: true }));
       setTimeout(() => {
-        element.dispatchEvent(new Event('blur', { bubbles: true }));
+        element.dispatchEvent(this.createEvent('blur', { bubbles: true }));
       }, 10);
     } catch (error) {
       // 忽略交互事件错误
@@ -558,6 +621,9 @@ class LocatorAdapter {
     
     await this.page.scrollIntoViewIfNeeded(element);
     
+    // 检查是否是右键点击
+    const isRightClick = options.button === 'right';
+    
     // 检查框架组件类型并使用相应适配器
     const reactAdapter = getReactAdapter(this.logger);
     const openinulaAdapter = getOpenInulaAdapter(this.logger);
@@ -567,16 +633,26 @@ class LocatorAdapter {
     
     if (isReactComponent) {
       // React 组件：使用 React 适配器
-      const clickResult = await reactAdapter.triggerClickEvent(element);
-      this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+      if (isRightClick) {
+        const clickResult = await reactAdapter.triggerContextMenuEvent(element);
+        this.logger.debug(`右键点击元素完成: ${this.selector} (${clickResult.method})`);
+      } else {
+        const clickResult = await reactAdapter.triggerClickEvent(element);
+        this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+      }
     } else if (isOpenInulaComponent) {
       // OpenInula 组件：使用 OpenInula 适配器
-      const clickResult = await openinulaAdapter.triggerClickEvent(element);
-      this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+      if (isRightClick) {
+        const clickResult = await openinulaAdapter.triggerContextMenuEvent(element);
+        this.logger.debug(`右键点击元素完成: ${this.selector} (${clickResult.method})`);
+      } else {
+        const clickResult = await openinulaAdapter.triggerClickEvent(element);
+        this.logger.debug(`点击元素完成: ${this.selector} (${clickResult.method})`);
+      }
     } else {
       // 原生元素：使用原生事件模拟器
       this.eventSimulator.simulateClick(element, options);
-      this.logger.debug(`点击元素: ${this.selector} (native)`);
+      this.logger.debug(`${isRightClick ? '右键' : ''}点击元素: ${this.selector} (native)`);
     }
   }
 
@@ -698,8 +774,8 @@ class LocatorAdapter {
     
     if (isReactComponent || isOpenInulaComponent) {
       // 对于框架组件，触发 mouseenter 和 mouseover 事件
-      element.dispatchEvent(new Event('mouseenter', { bubbles: true }));
-      element.dispatchEvent(new Event('mouseover', { bubbles: true }));
+      element.dispatchEvent(this.createEvent('mouseenter', { bubbles: true }));
+      element.dispatchEvent(this.createEvent('mouseover', { bubbles: true }));
       this.logger.debug(`悬停元素完成: ${this.selector} (${isReactComponent ? 'react' : 'openinula'})`);
     } else {
       // 原生元素：使用原生事件模拟器
@@ -884,6 +960,23 @@ class LocatorAdapter {
     }
   }
 
+  /**
+   * 检查元素是否具有指定的CSS类 - 立即判断，不等待
+   */
+  async hasClass(className: string): Promise<boolean> {
+    try {
+      const elements = this.getCurrentElements();
+      if (elements.length === 0) {
+        return false;
+      }
+      
+      const element = elements[0];
+      return element.classList.contains(className);
+    } catch (error) {
+      return false;
+    }
+  }
+
   // =============== 内容获取方法 ===============
 
   /**
@@ -1021,7 +1114,8 @@ class LocatorAdapter {
         
         if (selector.startsWith('xpath=')) {
           const xpath = selector.substring(6);
-          const result = document.evaluate(xpath, parentElement, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+          const doc = this.getDocument();
+          const result = doc.evaluate(xpath, parentElement, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
           for (let i = 0; i < result.snapshotLength; i++) {
             const element = result.snapshotItem(i);
             if (element) childElements.push(element as Element);
@@ -1037,9 +1131,10 @@ class LocatorAdapter {
     }
     
     // 全局查询 - 如果没有父元素或父元素为空数组
+    const doc = this.getDocument();
     if (selector.startsWith('xpath=')) {
       const xpath = selector.substring(6);
-      const result = document.evaluate(xpath, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      const result = doc.evaluate(xpath, doc, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
       const elements: Element[] = [];
       for (let i = 0; i < result.snapshotLength; i++) {
         const element = result.snapshotItem(i);
@@ -1047,7 +1142,7 @@ class LocatorAdapter {
       }
       return elements;
     } else {
-      return Array.from(document.querySelectorAll(selector));
+      return Array.from(doc.querySelectorAll(selector));
     }
   }
 
@@ -1168,12 +1263,12 @@ class LocatorAdapter {
             }
             break;
           case 'attached':
-            if (document.contains(element)) {
+            if (this.getDocument().contains(element)) {
               return element;
             }
             break;
           case 'detached':
-            if (!document.contains(element)) {
+            if (!this.getDocument().contains(element)) {
               throw new Error('元素已分离');
             }
             break;
@@ -1196,11 +1291,13 @@ class LocatorAdapter {
    * 检查元素是否可见
    */
   private isElementVisible(element: Element): boolean {
-    if (typeof window === 'undefined' || !window.getComputedStyle) {
+    // 获取正确的 window 对象（支持 iframe 环境）
+    const contextWindow = this.getContextWindow();
+    if (typeof contextWindow === 'undefined' || !contextWindow.getComputedStyle) {
       return true;
     }
 
-    const style = window.getComputedStyle(element);
+    const style = contextWindow.getComputedStyle(element);
     
     // 检查基本可见性属性
     if (style.display === 'none' || 
@@ -1226,19 +1323,21 @@ class LocatorAdapter {
     }
 
     // 检查是否被禁用
-    if (element instanceof HTMLElement && element.hasAttribute('disabled')) {
+    if (this.isHTMLElement(element, 'HTMLElement') && element.hasAttribute('disabled')) {
       return false;
     }
 
-    // 检查是否被其他元素遮挡
-    const rect = element.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    // 先不检查位置，让click可以点击滚动条外的内容
+    // // 检查是否被其他元素遮挡
+    // const rect = element.getBoundingClientRect();
+    // const centerX = rect.left + rect.width / 2;
+    // const centerY = rect.top + rect.height / 2;
     
-    const elementAtPoint = document.elementFromPoint(centerX, centerY);
+    // const elementAtPoint = document.elementFromPoint(centerX, centerY);
     
-    // 如果点击点的元素是目标元素或其子元素，则可点击
-    return element === elementAtPoint || element.contains(elementAtPoint);
+    // // 如果点击点的元素是目标元素或其子元素，则可点击
+    // return element === elementAtPoint || element.contains(elementAtPoint);
+    return true;
   }
 
   /**
@@ -1268,7 +1367,7 @@ class LocatorAdapter {
     }
 
     // 检查是否被禁用
-    if (element instanceof HTMLElement && (
+    if (this.isHTMLElement(element, 'HTMLElement') && (
         element.hasAttribute('disabled') 
         // 暂时不支持 readonly 属性
         // element.hasAttribute('readonly')
@@ -1277,14 +1376,14 @@ class LocatorAdapter {
     }
 
     // 检查是否是可编辑元素
-    if (element instanceof HTMLInputElement || 
-        element instanceof HTMLTextAreaElement || 
-        element instanceof HTMLSelectElement) {
+    if (this.isHTMLElement(element, 'HTMLInputElement') || 
+        this.isHTMLElement(element, 'HTMLTextAreaElement') || 
+        this.isHTMLElement(element, 'HTMLSelectElement')) {
       return true;
     }
 
     // 检查 contenteditable
-    if (element instanceof HTMLElement && element.isContentEditable) {
+    if (this.isHTMLElement(element, 'HTMLElement') && (element as HTMLElement).isContentEditable) {
       return true;
     }
 
@@ -1313,7 +1412,7 @@ class LocatorAdapter {
    * 立即获取元素（不等待）
    */
   private async getElementImmediate(): Promise<Element> {
-    if (this._element && document.contains(this._element)) {
+    if (this._element && this.getDocument().contains(this._element)) {
       return this._element;
     }
 
@@ -1395,7 +1494,7 @@ class LocatorAdapter {
     const path: string[] = [];
     let current: Element | null = element;
     
-    while (current && current !== document.body) {
+    while (current && current !== this.getDocument().body) {
       let selector = current.tagName.toLowerCase();
       
       if (current.className) {
@@ -1419,6 +1518,68 @@ class LocatorAdapter {
     }
     
     return path.join(' > ');
+  }
+
+  /**
+   * 获取 iframe 元素的 contentFrame
+   * 适用于通过 Locator 查找 iframe 元素再获取其 frame 的场景
+   */
+  async contentFrame(): Promise<FrameAdapterType | null> {
+    try {
+      // 等待元素出现
+      const element = await this.waitFor({ state: 'attached', timeout: 10000 });
+      
+      // 检查是否是 iframe 或 frame 元素
+      if (!element || (element.tagName.toLowerCase() !== 'iframe' && element.tagName.toLowerCase() !== 'frame')) {
+        this.logger.warn(`Element is not an iframe or frame: ${this.selector}`);
+        return null;
+      }
+      
+      const frameElement = element as HTMLIFrameElement;
+      
+      // 检查 frame 是否可访问
+      try {
+        const frameWindow = frameElement.contentWindow;
+        if (!frameWindow) {
+          this.logger.warn(`Cannot access frame window (cross-origin?): ${this.selector}`);
+          return null;
+        }
+        
+        const frameDocument = frameWindow.document;
+        if (!frameDocument) {
+          this.logger.warn(`Cannot access frame document: ${this.selector}`);
+          return null;
+        }
+      } catch (error) {
+        this.logger.warn(`Frame access denied (cross-origin?): ${this.selector}`, error);
+        return null;
+      }
+      
+      // 创建 FrameAdapter 实例 - 支持测试和生产环境
+      let FrameAdapterClass: any;
+      if (typeof window !== 'undefined' && (window as any).PlaywrightFrameAdapter) {
+        FrameAdapterClass = (window as any).PlaywrightFrameAdapter;
+      } else if ((global as any).window && (global as any).window.PlaywrightFrameAdapter) {
+        FrameAdapterClass = (global as any).window.PlaywrightFrameAdapter;
+      }
+      
+      if (!FrameAdapterClass) {
+        throw new Error('PlaywrightFrameAdapter not found in global scope');
+      }
+      
+      try {
+        const frameAdapter = new FrameAdapterClass(frameElement);
+        this.logger.debug(`Created frame adapter for: ${this.selector}`);
+        return frameAdapter;
+      } catch (error) {
+        this.logger.error(`Failed to create frame adapter: ${(error as Error).message}`);
+        return null;
+      }
+      
+    } catch (error) {
+      this.logger.error(`contentFrame failed: ${(error as Error).message}`);
+      return null;
+    }
   }
 }
 

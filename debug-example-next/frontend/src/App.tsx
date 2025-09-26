@@ -1,4 +1,4 @@
-import { CopilotKit } from '../../../CopilotKit/packages/react-core-next/src'
+import { CopilotKit } from '../../../CopilotKit/packages/copilot-client/src'
 import './App.css'
 import { HomePage } from './components/HomePage'
 
