@@ -5,7 +5,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { GenerateFunctionRequest } from '../types';
-import { generateFunction, startPlaywrightRecord, checkRecordedScript } from '../services/api';
+import { generateFunction, startPlaywrightRecord, checkRecordedScript, getFunctionNames } from '../services/api';
 
 interface Tab1Props {
   onGenerated: (functionDefinition: string, executorCode: string, ragRequest: string) => void;
@@ -18,6 +18,27 @@ const Tab1FunctionDescription: React.FC<Tab1Props> = ({ onGenerated }) => {
   const [recordModalVisible, setRecordModalVisible] = React.useState(false);
   const [recordLoading, setRecordLoading] = React.useState(false);
   const [recordForm] = ProForm.useForm();
+  const [functionNames, setFunctionNames] = React.useState<string[]>([]);
+  const [loadingFunctionNames, setLoadingFunctionNames] = React.useState(true);
+
+  // 获取可用的 Function 名称
+  React.useEffect(() => {
+    const loadFunctionNames = async () => {
+      setLoadingFunctionNames(true);
+      try {
+        const names = await getFunctionNames();
+        setFunctionNames(names);
+      } catch (error) {
+        console.error('Failed to load function names:', error);
+        // 使用默认值
+        setFunctionNames(['openMainMenu', 'createUserSession', 'getUserPermissions']);
+      } finally {
+        setLoadingFunctionNames(false);
+      }
+    };
+
+    loadFunctionNames();
+  }, []);
 
   // 从 localStorage 获取上次使用的 URL
   const getLastUsedUrl = () => {
@@ -57,7 +78,7 @@ const Tab1FunctionDescription: React.FC<Tab1Props> = ({ onGenerated }) => {
       if (response.success && response.functionDefinition && response.executorCode && response.ragRequest) {
         message.success('LLM Function 定义和 Executor 生成成功！');
         onGenerated(
-          JSON.stringify(response.functionDefinition, null, 2),
+          response.functionDefinition, // 现在是代码字符串，不需要 JSON.stringify
           response.executorCode,
           JSON.stringify(response.ragRequest, null, 2)
         );
@@ -206,8 +227,8 @@ await page.goto('${values.recordUrl}');
         
         <div style={{ marginBottom: 24 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <label style={{ fontWeight: 500 }}>
-              Playwright脚本 <span style={{ color: '#ff4d4f' }}>*</span>
+            <label>
+            <span style={{ color: '#ff4d4f' }}>*</span> Playwright脚本 
             </label>
             <Button 
               type="default"
@@ -243,7 +264,6 @@ await page.goto('${values.recordUrl}');
           label="基础功能描述"
           placeholder="这是一个用于用户登录的自动化脚本，它会填写用户名和密码，然后点击登录按钮..."
           rows={3}
-          rules={[{ required: true, message: '请输入基础功能描述' }]}
         />
         
         <ProFormTextArea
@@ -258,11 +278,13 @@ await page.goto('${values.recordUrl}');
           label="依赖Function"
           mode="tags"
           placeholder="输入依赖的函数名称，支持多选"
-          options={[
-            { label: 'openMainMenu', value: 'openMainMenu' },
-            { label: 'createUserSession', value: 'createUserSession' },
-            { label: 'getUserPermissions', value: 'getUserPermissions' },
-          ]}
+          options={functionNames.map(name => ({ label: name, value: name }))}
+          fieldProps={{
+            loading: loadingFunctionNames,
+            showSearch: true,
+            filterOption: (input: string, option: any) =>
+              option?.label?.toLowerCase().indexOf(input.toLowerCase()) >= 0
+          }}
         />
       </ProForm>
 

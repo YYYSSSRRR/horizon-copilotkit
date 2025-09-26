@@ -353,6 +353,29 @@ class VectorStorageService:
             logger.error(f"Failed to clear all functions: {e}")
             raise StorageError(f"Failed to clear all functions: {str(e)}")
     
+    async def get_all_function_names(self) -> List[str]:
+        """Get all function names from the collection."""
+        try:
+            # Scroll through all points to get function names
+            scroll_result = await self.client.scroll(
+                collection_name=self.collection_name,
+                limit=1000,  # Adjust based on expected number of functions
+                with_payload=True,
+                with_vectors=False  # We only need the payload, not vectors
+            )
+            
+            names = []
+            if scroll_result and hasattr(scroll_result, 'points'):
+                for point in scroll_result.points:
+                    if point.payload and 'name' in point.payload:
+                        names.append(point.payload['name'])
+            
+            return sorted(list(set(names)))  # Remove duplicates and sort
+            
+        except Exception as e:
+            logger.error(f"Failed to get all function names: {e}")
+            raise StorageError(f"Failed to get all function names: {str(e)}")
+    
     async def get_collection_stats(self) -> Dict[str, Any]:
         """Get collection statistics."""
         try:

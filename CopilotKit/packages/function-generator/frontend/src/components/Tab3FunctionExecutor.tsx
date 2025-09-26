@@ -124,31 +124,20 @@ const Tab3FunctionExecutor: React.FC<Tab3Props> = ({
       >
         <CodeMirror
           value={executorCode}
-          height="400px"
+          height="650px"
           extensions={[javascript()]}
           theme={oneDark}
           onChange={onExecutorCodeChange}
           placeholder="Function Executor 代码将在生成后显示在这里...
 
 示例代码结构：
-async function executeFunction(args) {
-  try {
-    // 执行 Playwright 脚本
-    const result = await runPlaywrightScript(args);
-    
-    // 返回结构化结果
-    return {
-      success: true,
-      data: result,
-      message: '执行成功'
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message
-    };
-  }
-}"
+import { page } from '@copilotkit/playwright-actuator';
+
+export const askLlmExecutor = async (message) => {
+  await page.getByRole('textbox', { name: '输入消息' }).click();
+  await page.getByRole('textbox', { name: '输入消息' }).fill(message);
+  await page.getByRole('button', { name: '发送' }).click();
+};"
           basicSetup={{
             lineNumbers: true,
             foldGutter: true,

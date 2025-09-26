@@ -39,7 +39,7 @@ export interface FunctionDefinition {
 
 export interface GenerateResponse {
   success: boolean;
-  functionDefinition?: FunctionDefinition;
+  functionDefinition?: string; // Changed to string as backend now returns JS code
   executorCode?: string;
   ragRequest?: RAGStoreRequest;
   error?: string;
