@@ -5,7 +5,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { GenerateFunctionRequest } from '../types';
-import { generateFunction, startPlaywrightRecord, checkRecordedScript, getFunctionNames } from '../services/api';
+import { generateFunction, startPlaywrightRecord, checkRecordedScript, getFunctionSummaries, FunctionSummary } from '../services/api';
 
 interface Tab1Props {
   onGenerated: (functionDefinition: string, executorCode: string, ragRequest: string) => void;
@@ -18,26 +18,30 @@ const Tab1FunctionDescription: React.FC<Tab1Props> = ({ onGenerated }) => {
   const [recordModalVisible, setRecordModalVisible] = React.useState(false);
   const [recordLoading, setRecordLoading] = React.useState(false);
   const [recordForm] = ProForm.useForm();
-  const [functionNames, setFunctionNames] = React.useState<string[]>([]);
-  const [loadingFunctionNames, setLoadingFunctionNames] = React.useState(true);
+  const [functionSummaries, setFunctionSummaries] = React.useState<FunctionSummary[]>([]);
+  const [loadingFunctionSummaries, setLoadingFunctionSummaries] = React.useState(true);
 
-  // 获取可用的 Function 名称
+  // 获取可用的 Function 摘要信息
   React.useEffect(() => {
-    const loadFunctionNames = async () => {
-      setLoadingFunctionNames(true);
+    const loadFunctionSummaries = async () => {
+      setLoadingFunctionSummaries(true);
       try {
-        const names = await getFunctionNames();
-        setFunctionNames(names);
+        const summaries = await getFunctionSummaries();
+        setFunctionSummaries(summaries);
       } catch (error) {
-        console.error('Failed to load function names:', error);
+        console.error('Failed to load function summaries:', error);
         // 使用默认值
-        setFunctionNames(['openMainMenu', 'createUserSession', 'getUserPermissions']);
+        setFunctionSummaries([
+          { name: 'openMainMenu', category: 'Navigation', description: 'Opens the main application menu' },
+          { name: 'createUserSession', category: 'Authentication', description: 'Creates a new user session' },
+          { name: 'getUserPermissions', category: 'Authorization', description: 'Gets user permissions and roles' }
+        ]);
       } finally {
-        setLoadingFunctionNames(false);
+        setLoadingFunctionSummaries(false);
       }
     };
 
-    loadFunctionNames();
+    loadFunctionSummaries();
   }, []);
 
   // 从 localStorage 获取上次使用的 URL
@@ -278,9 +282,12 @@ await page.goto('${values.recordUrl}');
           label="依赖Function"
           mode="tags"
           placeholder="输入依赖的函数名称，支持多选"
-          options={functionNames.map(name => ({ label: name, value: name }))}
+          options={functionSummaries.map(summary => ({ 
+            label: `${summary.name} (${summary.category}) - ${summary.description}`, 
+            value: summary.name 
+          }))}
           fieldProps={{
-            loading: loadingFunctionNames,
+            loading: loadingFunctionSummaries,
             showSearch: true,
             filterOption: (input: string, option: any) =>
               option?.label?.toLowerCase().indexOf(input.toLowerCase()) >= 0
