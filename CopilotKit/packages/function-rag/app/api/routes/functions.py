@@ -133,6 +133,20 @@ async def search_functions_get(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/names")
+async def get_all_function_names(
+    rag_system: FunctionRAGSystem = Depends(get_rag_system)
+) -> List[str]:
+    """Get all function names in the system."""
+    try:
+        names = await rag_system.get_all_function_names()
+        return names
+        
+    except Exception as e:
+        logger.error(f"Failed to get function names: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{function_id}")
 async def get_function(
     function_id: str,
@@ -223,20 +237,6 @@ async def get_functions_by_category(
         
     except Exception as e:
         logger.error(f"Failed to get functions by category: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/names")
-async def get_all_function_names(
-    rag_system: FunctionRAGSystem = Depends(get_rag_system)
-) -> List[str]:
-    """Get all function names in the system."""
-    try:
-        names = await rag_system.get_all_function_names()
-        return names
-        
-    except Exception as e:
-        logger.error(f"Failed to get function names: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
