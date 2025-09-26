@@ -603,9 +603,10 @@ async function verifyPlaywrightProcess(pid) {
     let cmd, args, encoding;
     
     if (platform === 'win32') {
-      // Windows: 使用 tasklist，获取进程名称和命令行
-      cmd = 'tasklist';
-      args = ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'];
+      // Windows: 使用 wmic 替代 tasklist，更兼容
+      // wmic process where "ProcessId=PID" get ProcessId,Name,CommandLine /format:csv
+      cmd = 'wmic';
+      args = ['process', 'where', `"ProcessId=${pid}"`, 'get', 'ProcessId,Name,CommandLine', '/format:csv'];
       encoding = 'gbk'; // Windows 系统使用 GBK 编码
     } else {
       // Unix/Linux/macOS: 使用 ps 获取完整命令行
@@ -676,15 +677,26 @@ async function verifyPlaywrightProcess(pid) {
           return;
         }
         
-        // 在 Windows 下，tasklist 没有找到进程时会返回特殊信息
-        if (platform === 'win32' && (
-          outputTrimmed.includes('INFO: No tasks are running') ||
-          outputTrimmed.includes('信息: 没有运行的任务匹配指定标准') ||
-          outputTrimmed.includes('没有运行的任务')
-        )) {
-          logger.info('Windows 进程不存在', { pid, output: outputTrimmed });
-          resolve(false);
-          return;
+        // 在 Windows 下，wmic 没有找到进程时输出只有头部信息
+        if (platform === 'win32') {
+          // wmic 输出格式：头部信息 + 数据行
+          // 如果没有找到进程，只会有头部信息，没有数据行
+          const lines = outputTrimmed.split('\n').filter(line => line.trim());
+          const hasDataLines = lines.some(line => 
+            line.includes(pid.toString()) && 
+            !line.toLowerCase().includes('node') && 
+            !line.toLowerCase().includes('commandline')
+          );
+          
+          if (lines.length <= 1 || !hasDataLines) {
+            logger.info('Windows 进程不存在（wmic 无数据行）', { 
+              pid, 
+              output: outputTrimmed,
+              lines: lines.length 
+            });
+            resolve(false);
+            return;
+          }
         }
         
         // 检查输出是否包含我们的 PID（额外验证）
@@ -701,7 +713,8 @@ async function verifyPlaywrightProcess(pid) {
                             outputLower.includes('npx') ||
                             outputLower.includes('chrome') ||
                             outputLower.includes('chromium') ||
-                            outputLower.includes('codegen'); // Playwright codegen 命令
+                            outputLower.includes('codegen') || // Playwright codegen 命令
+                            outputLower.includes('node.exe'); // Windows Node.js 进程
         
         logger.info('进程验证结果', { 
           pid, 
@@ -744,8 +757,8 @@ async function checkProcessByCommand(pid) {
     let cmd, args;
     
     if (platform === 'win32') {
-      cmd = 'tasklist';
-      args = ['/FI', `PID eq ${pid}`];
+      cmd = 'wmic';
+      args = ['process', 'where', `"ProcessId=${pid}"`, 'get', 'ProcessId'];
     } else {
       cmd = 'ps';
       args = ['-p', pid.toString()];
