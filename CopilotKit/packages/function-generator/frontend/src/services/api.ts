@@ -146,10 +146,32 @@ const ragApi = axios.create({
   },
 });
 
+// Function summary type
+export interface FunctionSummary {
+  name: string;
+  category: string;
+  description: string;
+}
+
+export const getFunctionSummaries = async (): Promise<FunctionSummary[]> => {
+  try {
+    const response = await ragApi.get('/functions/summaries');
+    return response.data || [];
+  } catch (error) {
+    console.error('Get function summaries error:', error);
+    // 返回默认的 function 数据作为备用
+    return [
+      { name: 'openMainMenu', category: 'Navigation', description: 'Opens the main application menu' },
+      { name: 'createUserSession', category: 'Authentication', description: 'Creates a new user session' },
+      { name: 'getUserPermissions', category: 'Authorization', description: 'Gets user permissions and roles' }
+    ];
+  }
+};
+
 export const getFunctionNames = async (): Promise<string[]> => {
   try {
-    const response = await ragApi.get('/functions/names');
-    return response.data || [];
+    const summaries = await getFunctionSummaries();
+    return summaries.map(summary => summary.name);
   } catch (error) {
     console.error('Get function names error:', error);
     // 返回默认的 function 名称作为备用

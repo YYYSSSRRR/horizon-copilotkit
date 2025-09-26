@@ -353,10 +353,10 @@ class VectorStorageService:
             logger.error(f"Failed to clear all functions: {e}")
             raise StorageError(f"Failed to clear all functions: {str(e)}")
     
-    async def get_all_function_names(self) -> List[str]:
-        """Get all function names from the collection."""
+    async def get_all_function_summaries(self) -> List[Dict[str, str]]:
+        """Get all function summaries with name, category, and description."""
         try:
-            # Scroll through all points to get function names
+            # Scroll through all points to get function summaries
             scroll_result = await self.client.scroll(
                 collection_name=self.collection_name,
                 limit=1000,  # Adjust based on expected number of functions
@@ -364,13 +364,38 @@ class VectorStorageService:
                 with_vectors=False  # We only need the payload, not vectors
             )
             
-            names = []
-            if scroll_result and hasattr(scroll_result, 'points'):
-                for point in scroll_result.points:
-                    if point.payload and 'name' in point.payload:
-                        names.append(point.payload['name'])
+            summaries = []
+            seen_names = set()  # Track unique names to avoid duplicates
             
-            return sorted(list(set(names)))  # Remove duplicates and sort
+            if scroll_result and len(scroll_result) > 0:
+                points = scroll_result[0]  # Get points from tuple (points, next_page_offset)
+                for point in points:
+                    if point.payload and 'name' in point.payload:
+                        name = point.payload.get('name', '')
+                        category = point.payload.get('category', 'Unknown')
+                        description = point.payload.get('description', '')
+                        
+                        # Only add if we haven't seen this name before
+                        if name and name not in seen_names:
+                            seen_names.add(name)
+                            summaries.append({
+                                'name': name,
+                                'category': category,
+                                'description': description
+                            })
+            
+            # Sort by name
+            return sorted(summaries, key=lambda x: x['name'])
+            
+        except Exception as e:
+            logger.error(f"Failed to get all function summaries: {e}")
+            raise StorageError(f"Failed to get all function summaries: {str(e)}")
+    
+    async def get_all_function_names(self) -> List[str]:
+        """Get all function names from the collection (legacy method)."""
+        try:
+            summaries = await self.get_all_function_summaries()
+            return [summary['name'] for summary in summaries]
             
         except Exception as e:
             logger.error(f"Failed to get all function names: {e}")

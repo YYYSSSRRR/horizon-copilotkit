@@ -222,6 +222,13 @@ class BatchAddResponse(BaseModel):
     function_ids: List[str]
 
 
+class FunctionSummary(BaseModel):
+    """Function summary with basic information."""
+    name: str
+    category: str
+    description: str
+
+
 class SystemStats(BaseModel):
     """System statistics model."""
     total_functions: int

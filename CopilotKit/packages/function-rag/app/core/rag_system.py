@@ -227,6 +227,20 @@ class FunctionRAGSystem:
             logger.error(f"Failed to get function by ID: {e}")
             raise
     
+    async def get_all_function_summaries(self) -> List[Dict[str, str]]:
+        """Get all function summaries with name, category, and description."""
+        if not self._initialized:
+            await self.initialize()
+        
+        try:
+            summaries = await self.vector_storage.get_all_function_summaries()
+            logger.info(f"Retrieved {len(summaries)} function summaries")
+            return summaries
+            
+        except Exception as e:
+            logger.error(f"Failed to get all function summaries: {e}")
+            raise
+    
     async def get_all_function_names(self) -> List[str]:
         """Get all function names in the system."""
         if not self._initialized:
