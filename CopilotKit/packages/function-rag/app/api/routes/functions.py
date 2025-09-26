@@ -12,6 +12,7 @@ from app.models import (
     AddFunctionResponse,
     BatchAddRequest,
     BatchAddResponse,
+    FunctionSummary,
     SearchRequest,
     SearchResponse,
     SearchResult,
@@ -130,6 +131,20 @@ async def search_functions_get(
         
     except Exception as e:
         logger.error(f"Failed to search functions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/summaries")
+async def get_all_function_summaries(
+    rag_system: FunctionRAGSystem = Depends(get_rag_system)
+) -> List[Dict]:
+    """Get all function summaries with name, category, and description."""
+    try:
+        summaries = await rag_system.get_all_function_summaries()
+        return summaries
+        
+    except Exception as e:
+        logger.error(f"Failed to get function summaries: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
